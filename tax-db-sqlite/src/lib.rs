@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::{sqlite::SqlitePool, FromRow};
+use sqlx::{sqlite::SqlitePool, Row, SqliteExecutor};
 use tax_core::{
     EstimatedTaxCalculation, FilingStatus, FilingStatusCode, NewEstimatedTaxCalculation,
     RepositoryError, StandardDeduction, TaxBracket, TaxRepository, TaxYearConfig,
@@ -36,152 +36,52 @@ impl SqliteRepository {
     }
 }
 
-#[derive(FromRow)]
-struct TaxYearConfigRow {
-    tax_year: i32,
-    ss_wage_max: f64,
-    ss_tax_rate: f64,
-    medicare_tax_rate: f64,
-    se_tax_deductible_percentage: f64,
-    se_deduction_factor: f64,
-    required_payment_threshold: f64,
-}
+// Helper function to get a decimal value from a row, handling both INTEGER and REAL
+fn get_decimal(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Decimal, RepositoryError> {
+    use sqlx::ValueRef;
+    use sqlx::sqlite::SqliteValueRef;
+    use sqlx::TypeInfo;
 
-impl TryFrom<TaxYearConfigRow> for TaxYearConfig {
-    type Error = RepositoryError;
+    let value_ref = row.try_get_raw(column)
+        .map_err(|e| RepositoryError::Database(format!("Column '{}' not found: {}", column, e)))?;
 
-    fn try_from(row: TaxYearConfigRow) -> Result<Self, Self::Error> {
-        Ok(TaxYearConfig {
-            tax_year: row.tax_year,
-            ss_wage_max: decimal_from_f64(row.ss_wage_max)?,
-            ss_tax_rate: decimal_from_f64(row.ss_tax_rate)?,
-            medicare_tax_rate: decimal_from_f64(row.medicare_tax_rate)?,
-            se_tax_deductible_percentage: decimal_from_f64(row.se_tax_deductible_percentage)?,
-            se_deduction_factor: decimal_from_f64(row.se_deduction_factor)?,
-            required_payment_threshold: decimal_from_f64(row.required_payment_threshold)?,
-        })
+    let type_info = value_ref.type_info();
+    let type_name = type_info.name();
+
+    match type_name {
+        "INTEGER" => {
+            let val: i64 = row.try_get(column)
+                .map_err(|e| RepositoryError::Database(format!("Failed to get INTEGER from '{}': {}", column, e)))?;
+            Ok(Decimal::from(val))
+        },
+        "REAL" => {
+            let val: f64 = row.try_get(column)
+                .map_err(|e| RepositoryError::Database(format!("Failed to get REAL from '{}': {}", column, e)))?;
+            Decimal::try_from(val)
+                .map_err(|e| RepositoryError::Database(format!("Failed to convert {} to Decimal: {}", val, e)))
+        },
+        "NULL" => Ok(Decimal::ZERO),
+        _ => Err(RepositoryError::Database(format!("Unexpected type '{}' for column '{}'", type_name, column)))
     }
 }
 
-#[derive(FromRow)]
-struct FilingStatusRow {
-    id: i32,
-    status_code: String,
-    status_name: String,
-}
+// Helper function for optional decimal columns
+fn get_optional_decimal(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<Decimal>, RepositoryError> {
+    use sqlx::ValueRef;
 
-impl TryFrom<FilingStatusRow> for FilingStatus {
-    type Error = RepositoryError;
+    let value_ref = row.try_get_raw(column)
+        .map_err(|e| RepositoryError::Database(format!("Column '{}' not found: {}", column, e)))?;
 
-    fn try_from(row: FilingStatusRow) -> Result<Self, Self::Error> {
-        let status_code = FilingStatusCode::from_str(&row.status_code)
-            .ok_or_else(|| RepositoryError::Database(format!("Invalid status code: {}", row.status_code)))?;
-        Ok(FilingStatus {
-            id: row.id,
-            status_code,
-            status_name: row.status_name,
-        })
+    if value_ref.is_null() {
+        return Ok(None);
     }
+
+    get_decimal(row, column).map(Some)
 }
 
-#[derive(FromRow)]
-struct StandardDeductionRow {
-    tax_year: i32,
-    filing_status_id: i32,
-    amount: f64,
-}
-
-impl TryFrom<StandardDeductionRow> for StandardDeduction {
-    type Error = RepositoryError;
-
-    fn try_from(row: StandardDeductionRow) -> Result<Self, Self::Error> {
-        Ok(StandardDeduction {
-            tax_year: row.tax_year,
-            filing_status_id: row.filing_status_id,
-            amount: decimal_from_f64(row.amount)?,
-        })
-    }
-}
-
-#[derive(FromRow)]
-struct TaxBracketRow {
-    tax_year: i32,
-    filing_status_id: i32,
-    min_income: f64,
-    max_income: Option<f64>,
-    tax_rate: f64,
-    base_tax: f64,
-}
-
-impl TryFrom<TaxBracketRow> for TaxBracket {
-    type Error = RepositoryError;
-
-    fn try_from(row: TaxBracketRow) -> Result<Self, Self::Error> {
-        Ok(TaxBracket {
-            tax_year: row.tax_year,
-            filing_status_id: row.filing_status_id,
-            min_income: decimal_from_f64(row.min_income)?,
-            max_income: row.max_income.map(decimal_from_f64).transpose()?,
-            tax_rate: decimal_from_f64(row.tax_rate)?,
-            base_tax: decimal_from_f64(row.base_tax)?,
-        })
-    }
-}
-
-#[derive(FromRow)]
-struct EstimatedTaxCalculationRow {
-    id: i64,
-    tax_year: i32,
-    filing_status_id: i32,
-    expected_agi: f64,
-    expected_deduction: f64,
-    expected_qbi_deduction: Option<f64>,
-    expected_amt: Option<f64>,
-    expected_credits: Option<f64>,
-    expected_other_taxes: Option<f64>,
-    prior_year_tax: Option<f64>,
-    expected_withholding: Option<f64>,
-    se_income: Option<f64>,
-    expected_crp_payments: Option<f64>,
-    expected_wages: Option<f64>,
-    calculated_se_tax: Option<f64>,
-    calculated_total_tax: Option<f64>,
-    calculated_required_payment: Option<f64>,
-    created_at: String,
-    updated_at: String,
-}
-
-impl TryFrom<EstimatedTaxCalculationRow> for EstimatedTaxCalculation {
-    type Error = RepositoryError;
-
-    fn try_from(row: EstimatedTaxCalculationRow) -> Result<Self, Self::Error> {
-        Ok(EstimatedTaxCalculation {
-            id: row.id,
-            tax_year: row.tax_year,
-            filing_status_id: row.filing_status_id,
-            expected_agi: decimal_from_f64(row.expected_agi)?,
-            expected_deduction: decimal_from_f64(row.expected_deduction)?,
-            expected_qbi_deduction: row.expected_qbi_deduction.map(decimal_from_f64).transpose()?,
-            expected_amt: row.expected_amt.map(decimal_from_f64).transpose()?,
-            expected_credits: row.expected_credits.map(decimal_from_f64).transpose()?,
-            expected_other_taxes: row.expected_other_taxes.map(decimal_from_f64).transpose()?,
-            prior_year_tax: row.prior_year_tax.map(decimal_from_f64).transpose()?,
-            expected_withholding: row.expected_withholding.map(decimal_from_f64).transpose()?,
-            se_income: row.se_income.map(decimal_from_f64).transpose()?,
-            expected_crp_payments: row.expected_crp_payments.map(decimal_from_f64).transpose()?,
-            expected_wages: row.expected_wages.map(decimal_from_f64).transpose()?,
-            calculated_se_tax: row.calculated_se_tax.map(decimal_from_f64).transpose()?,
-            calculated_total_tax: row.calculated_total_tax.map(decimal_from_f64).transpose()?,
-            calculated_required_payment: row.calculated_required_payment.map(decimal_from_f64).transpose()?,
-            created_at: parse_datetime(&row.created_at)?,
-            updated_at: parse_datetime(&row.updated_at)?,
-        })
-    }
-}
-
-fn decimal_from_f64(val: f64) -> Result<Decimal, RepositoryError> {
-    Decimal::try_from(val)
-        .map_err(|e| RepositoryError::Database(format!("Failed to convert {} to Decimal: {}", val, e)))
+fn decimal_to_f64(d: Decimal) -> f64 {
+    use rust_decimal::prelude::ToPrimitive;
+    d.to_f64().unwrap_or(0.0)
 }
 
 fn parse_datetime(s: &str) -> Result<DateTime<Utc>, RepositoryError> {
@@ -195,7 +95,7 @@ fn parse_datetime(s: &str) -> Result<DateTime<Utc>, RepositoryError> {
 #[async_trait]
 impl TaxRepository for SqliteRepository {
     async fn get_tax_year_config(&self, year: i32) -> Result<TaxYearConfig, RepositoryError> {
-        let row: TaxYearConfigRow = sqlx::query_as(
+        let row = sqlx::query(
             "SELECT tax_year, ss_wage_max, ss_tax_rate, medicare_tax_rate,
                     se_tax_deductible_percentage, se_deduction_factor, required_payment_threshold
              FROM tax_year_config WHERE tax_year = ?"
@@ -206,20 +106,32 @@ impl TaxRepository for SqliteRepository {
         .map_err(|e| RepositoryError::Database(e.to_string()))?
         .ok_or(RepositoryError::NotFound)?;
 
-        row.try_into()
+        Ok(TaxYearConfig {
+            tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            ss_wage_max: get_decimal(&row, "ss_wage_max")?,
+            ss_tax_rate: get_decimal(&row, "ss_tax_rate")?,
+            medicare_tax_rate: get_decimal(&row, "medicare_tax_rate")?,
+            se_tax_deductible_percentage: get_decimal(&row, "se_tax_deductible_percentage")?,
+            se_deduction_factor: get_decimal(&row, "se_deduction_factor")?,
+            required_payment_threshold: get_decimal(&row, "required_payment_threshold")?,
+        })
     }
 
     async fn list_tax_years(&self) -> Result<Vec<i32>, RepositoryError> {
-        let rows: Vec<(i32,)> = sqlx::query_as("SELECT tax_year FROM tax_year_config ORDER BY tax_year DESC")
+        let rows = sqlx::query("SELECT tax_year FROM tax_year_config ORDER BY tax_year DESC")
             .fetch_all(&self.pool)
             .await
             .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        Ok(rows.into_iter().map(|(year,)| year).collect())
+        let mut years = Vec::new();
+        for row in rows {
+            years.push(row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?);
+        }
+        Ok(years)
     }
 
     async fn get_filing_status(&self, id: i32) -> Result<FilingStatus, RepositoryError> {
-        let row: FilingStatusRow = sqlx::query_as(
+        let row = sqlx::query(
             "SELECT id, status_code, status_name FROM filing_status WHERE id = ?"
         )
         .bind(id)
@@ -228,18 +140,40 @@ impl TaxRepository for SqliteRepository {
         .map_err(|e| RepositoryError::Database(e.to_string()))?
         .ok_or(RepositoryError::NotFound)?;
 
-        row.try_into()
+        let status_code_str: String = row.try_get("status_code")
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        let status_code = FilingStatusCode::from_str(&status_code_str)
+            .ok_or_else(|| RepositoryError::Database(format!("Invalid status code: {}", status_code_str)))?;
+
+        Ok(FilingStatus {
+            id: row.try_get("id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            status_code,
+            status_name: row.try_get("status_name").map_err(|e| RepositoryError::Database(e.to_string()))?,
+        })
     }
 
     async fn list_filing_statuses(&self) -> Result<Vec<FilingStatus>, RepositoryError> {
-        let rows: Vec<FilingStatusRow> = sqlx::query_as(
+        let rows = sqlx::query(
             "SELECT id, status_code, status_name FROM filing_status ORDER BY id"
         )
         .fetch_all(&self.pool)
         .await
         .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        rows.into_iter().map(|r| r.try_into()).collect()
+        let mut statuses = Vec::new();
+        for row in rows {
+            let status_code_str: String = row.try_get("status_code")
+                .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            let status_code = FilingStatusCode::from_str(&status_code_str)
+                .ok_or_else(|| RepositoryError::Database(format!("Invalid status code: {}", status_code_str)))?;
+
+            statuses.push(FilingStatus {
+                id: row.try_get("id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+                status_code,
+                status_name: row.try_get("status_name").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            });
+        }
+        Ok(statuses)
     }
 
     async fn get_standard_deduction(
@@ -247,7 +181,7 @@ impl TaxRepository for SqliteRepository {
         tax_year: i32,
         filing_status_id: i32,
     ) -> Result<StandardDeduction, RepositoryError> {
-        let row: StandardDeductionRow = sqlx::query_as(
+        let row = sqlx::query(
             "SELECT tax_year, filing_status_id, amount
              FROM standard_deductions
              WHERE tax_year = ? AND filing_status_id = ?"
@@ -259,7 +193,11 @@ impl TaxRepository for SqliteRepository {
         .map_err(|e| RepositoryError::Database(e.to_string()))?
         .ok_or(RepositoryError::NotFound)?;
 
-        row.try_into()
+        Ok(StandardDeduction {
+            tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            filing_status_id: row.try_get("filing_status_id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            amount: get_decimal(&row, "amount")?,
+        })
     }
 
     async fn get_tax_brackets(
@@ -267,7 +205,7 @@ impl TaxRepository for SqliteRepository {
         tax_year: i32,
         filing_status_id: i32,
     ) -> Result<Vec<TaxBracket>, RepositoryError> {
-        let rows: Vec<TaxBracketRow> = sqlx::query_as(
+        let rows = sqlx::query(
             "SELECT tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax
              FROM tax_brackets
              WHERE tax_year = ? AND filing_status_id = ?
@@ -279,7 +217,18 @@ impl TaxRepository for SqliteRepository {
         .await
         .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        rows.into_iter().map(|r| r.try_into()).collect()
+        let mut brackets = Vec::new();
+        for row in rows {
+            brackets.push(TaxBracket {
+                tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
+                filing_status_id: row.try_get("filing_status_id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+                min_income: get_decimal(&row, "min_income")?,
+                max_income: get_optional_decimal(&row, "max_income")?,
+                tax_rate: get_decimal(&row, "tax_rate")?,
+                base_tax: get_decimal(&row, "base_tax")?,
+            });
+        }
+        Ok(brackets)
     }
 
     async fn create_calculation(
@@ -321,7 +270,7 @@ impl TaxRepository for SqliteRepository {
     }
 
     async fn get_calculation(&self, id: i64) -> Result<EstimatedTaxCalculation, RepositoryError> {
-        let row: EstimatedTaxCalculationRow = sqlx::query_as(
+        let row = sqlx::query(
             "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
                     expected_qbi_deduction, expected_amt, expected_credits,
                     expected_other_taxes, prior_year_tax, expected_withholding,
@@ -336,7 +285,27 @@ impl TaxRepository for SqliteRepository {
         .map_err(|e| RepositoryError::Database(e.to_string()))?
         .ok_or(RepositoryError::NotFound)?;
 
-        row.try_into()
+        Ok(EstimatedTaxCalculation {
+            id: row.try_get("id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            filing_status_id: row.try_get("filing_status_id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+            expected_agi: get_decimal(&row, "expected_agi")?,
+            expected_deduction: get_decimal(&row, "expected_deduction")?,
+            expected_qbi_deduction: get_optional_decimal(&row, "expected_qbi_deduction")?,
+            expected_amt: get_optional_decimal(&row, "expected_amt")?,
+            expected_credits: get_optional_decimal(&row, "expected_credits")?,
+            expected_other_taxes: get_optional_decimal(&row, "expected_other_taxes")?,
+            prior_year_tax: get_optional_decimal(&row, "prior_year_tax")?,
+            expected_withholding: get_optional_decimal(&row, "expected_withholding")?,
+            se_income: get_optional_decimal(&row, "se_income")?,
+            expected_crp_payments: get_optional_decimal(&row, "expected_crp_payments")?,
+            expected_wages: get_optional_decimal(&row, "expected_wages")?,
+            calculated_se_tax: get_optional_decimal(&row, "calculated_se_tax")?,
+            calculated_total_tax: get_optional_decimal(&row, "calculated_total_tax")?,
+            calculated_required_payment: get_optional_decimal(&row, "calculated_required_payment")?,
+            created_at: parse_datetime(&row.try_get::<String, _>("created_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
+            updated_at: parse_datetime(&row.try_get::<String, _>("updated_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
+        })
     }
 
     async fn update_calculation(
@@ -402,9 +371,9 @@ impl TaxRepository for SqliteRepository {
         &self,
         tax_year: Option<i32>,
     ) -> Result<Vec<EstimatedTaxCalculation>, RepositoryError> {
-        let rows: Vec<EstimatedTaxCalculationRow> = match tax_year {
+        let rows = match tax_year {
             Some(year) => {
-                sqlx::query_as(
+                sqlx::query(
                     "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
                             expected_qbi_deduction, expected_amt, expected_credits,
                             expected_other_taxes, prior_year_tax, expected_withholding,
@@ -418,7 +387,7 @@ impl TaxRepository for SqliteRepository {
                 .await
             }
             None => {
-                sqlx::query_as(
+                sqlx::query(
                     "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
                             expected_qbi_deduction, expected_amt, expected_credits,
                             expected_other_taxes, prior_year_tax, expected_withholding,
@@ -433,15 +402,35 @@ impl TaxRepository for SqliteRepository {
         }
         .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        rows.into_iter().map(|r| r.try_into()).collect()
+        let mut calcs = Vec::new();
+        for row in rows {
+            calcs.push(EstimatedTaxCalculation {
+                id: row.try_get("id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+                tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
+                filing_status_id: row.try_get("filing_status_id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+                expected_agi: get_decimal(&row, "expected_agi")?,
+                expected_deduction: get_decimal(&row, "expected_deduction")?,
+                expected_qbi_deduction: get_optional_decimal(&row, "expected_qbi_deduction")?,
+                expected_amt: get_optional_decimal(&row, "expected_amt")?,
+                expected_credits: get_optional_decimal(&row, "expected_credits")?,
+                expected_other_taxes: get_optional_decimal(&row, "expected_other_taxes")?,
+                prior_year_tax: get_optional_decimal(&row, "prior_year_tax")?,
+                expected_withholding: get_optional_decimal(&row, "expected_withholding")?,
+                se_income: get_optional_decimal(&row, "se_income")?,
+                expected_crp_payments: get_optional_decimal(&row, "expected_crp_payments")?,
+                expected_wages: get_optional_decimal(&row, "expected_wages")?,
+                calculated_se_tax: get_optional_decimal(&row, "calculated_se_tax")?,
+                calculated_total_tax: get_optional_decimal(&row, "calculated_total_tax")?,
+                calculated_required_payment: get_optional_decimal(&row, "calculated_required_payment")?,
+                created_at: parse_datetime(&row.try_get::<String, _>("created_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
+                updated_at: parse_datetime(&row.try_get::<String, _>("updated_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
+            });
+        }
+        Ok(calcs)
     }
 }
 
-fn decimal_to_f64(d: Decimal) -> f64 {
-    use rust_decimal::prelude::ToPrimitive;
-    d.to_f64().unwrap_or(0.0)
-}
-
+// Keep all the test code exactly the same
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,6 +448,7 @@ mod tests {
         repo
     }
 
+    // All test functions remain exactly the same...
     #[tokio::test]
     async fn test_get_tax_year_config() {
         let repo = setup_test_db().await;
