@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::{sqlite::SqlitePool, FromRow, Row};
+use sqlx::{sqlite::SqlitePool, FromRow};
 use tax_core::{
     EstimatedTaxCalculation, FilingStatus, FilingStatusCode, NewEstimatedTaxCalculation,
     RepositoryError, StandardDeduction, TaxBracket, TaxRepository, TaxYearConfig,
@@ -156,7 +156,7 @@ impl TryFrom<EstimatedTaxCalculationRow> for EstimatedTaxCalculation {
 
     fn try_from(row: EstimatedTaxCalculationRow) -> Result<Self, Self::Error> {
         Ok(EstimatedTaxCalculation {
-            id: row.i,
+            id: row.id,
             tax_year: row.tax_year,
             filing_status_id: row.filing_status_id,
             expected_agi: parse_decimal(&row.expected_agi)?,
