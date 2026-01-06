@@ -1,0 +1,8 @@
+[package]
+name = "tax-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tax-core = { path = "../tax-core" }
+tokio.workspace = true

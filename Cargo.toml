@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "tax-core",
+    "tax-db-sqlite",
+    "tax-ui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Your Name <your@email.com>"]
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+
+# Error handling
+thiserror = "2"
+
+# Async traits
+async-trait = "0.1"
+
+# Decimal handling for money
+rust_decimal = { version = "1", features = ["serde"] }
+
+# Chrono for timestamps
+chrono = { version = "0.4", features = ["serde"] }

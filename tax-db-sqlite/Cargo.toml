@@ -1,0 +1,12 @@
+[package]
+name = "tax-db-sqlite"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tax-core = { path = "../tax-core" }
+tokio.workspace = true
+sqlx = { workspace = true, features = ["sqlite"] }
+async-trait.workspace = true
+rust_decimal.workspace = true
+chrono.workspace = true
