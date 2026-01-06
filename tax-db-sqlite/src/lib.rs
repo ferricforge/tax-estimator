@@ -84,14 +84,6 @@ fn decimal_to_f64(d: Decimal) -> f64 {
     d.to_f64().unwrap_or(0.0)
 }
 
-fn parse_datetime(s: &str) -> Result<DateTime<Utc>, RepositoryError> {
-    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f"))
-        .map(|naive| naive.and_utc())
-        .map_err(|e| RepositoryError::Database(format!("Failed to parse datetime '{}': {}", s, e)))
-}
-
 #[async_trait]
 impl TaxRepository for SqliteRepository {
     async fn get_tax_year_config(&self, year: i32) -> Result<TaxYearConfig, RepositoryError> {
@@ -235,7 +227,7 @@ impl TaxRepository for SqliteRepository {
         &self,
         calc: NewEstimatedTaxCalculation,
     ) -> Result<EstimatedTaxCalculation, RepositoryError> {
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = Utc::now();
 
         let result = sqlx::query(
             "INSERT INTO estimated_tax_calculation (
@@ -259,8 +251,8 @@ impl TaxRepository for SqliteRepository {
         .bind(calc.se_income.map(decimal_to_f64))
         .bind(calc.expected_crp_payments.map(decimal_to_f64))
         .bind(calc.expected_wages.map(decimal_to_f64))
-        .bind(&now)
-        .bind(&now)
+        .bind(now)
+        .bind(now)
         .execute(&self.pool)
         .await
         .map_err(|e| RepositoryError::Database(e.to_string()))?;
@@ -303,8 +295,10 @@ impl TaxRepository for SqliteRepository {
             calculated_se_tax: get_optional_decimal(&row, "calculated_se_tax")?,
             calculated_total_tax: get_optional_decimal(&row, "calculated_total_tax")?,
             calculated_required_payment: get_optional_decimal(&row, "calculated_required_payment")?,
-            created_at: parse_datetime(&row.try_get::<String, _>("created_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
-            updated_at: parse_datetime(&row.try_get::<String, _>("updated_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
+            created_at: row.try_get::<DateTime<Utc>, _>("created_at")
+                .map_err(|e| RepositoryError::Database(format!("Failed to get created_at: {}", e)))?,
+            updated_at: row.try_get::<DateTime<Utc>, _>("updated_at")
+                .map_err(|e| RepositoryError::Database(format!("Failed to get updated_at: {}", e)))?,
         })
     }
 
@@ -312,7 +306,7 @@ impl TaxRepository for SqliteRepository {
         &self,
         calc: &EstimatedTaxCalculation,
     ) -> Result<(), RepositoryError> {
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = Utc::now();
 
         let result = sqlx::query(
             "UPDATE estimated_tax_calculation SET
@@ -340,7 +334,7 @@ impl TaxRepository for SqliteRepository {
         .bind(calc.calculated_se_tax.map(decimal_to_f64))
         .bind(calc.calculated_total_tax.map(decimal_to_f64))
         .bind(calc.calculated_required_payment.map(decimal_to_f64))
-        .bind(&now)
+        .bind(now)
         .bind(calc.id)
         .execute(&self.pool)
         .await
@@ -422,8 +416,10 @@ impl TaxRepository for SqliteRepository {
                 calculated_se_tax: get_optional_decimal(&row, "calculated_se_tax")?,
                 calculated_total_tax: get_optional_decimal(&row, "calculated_total_tax")?,
                 calculated_required_payment: get_optional_decimal(&row, "calculated_required_payment")?,
-                created_at: parse_datetime(&row.try_get::<String, _>("created_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
-                updated_at: parse_datetime(&row.try_get::<String, _>("updated_at").map_err(|e| RepositoryError::Database(e.to_string()))?)?,
+                created_at: row.try_get::<DateTime<Utc>, _>("created_at")
+                    .map_err(|e| RepositoryError::Database(format!("Failed to get created_at: {}", e)))?,
+                updated_at: row.try_get::<DateTime<Utc>, _>("updated_at")
+                    .map_err(|e| RepositoryError::Database(format!("Failed to get updated_at: {}", e)))?,
             });
         }
         Ok(calcs)
