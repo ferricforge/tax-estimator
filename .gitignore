@@ -53,6 +53,7 @@ coverage/
 **/tests/**/target/
 **/tests/**/Cargo.lock
 data/test*.csv
+*.db
 
 # Ignore binaries produced by `cargo doc`
 /doc/

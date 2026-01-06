@@ -10,3 +10,7 @@ sqlx = { workspace = true, features = ["sqlite"] }
 async-trait.workspace = true
 rust_decimal.workspace = true
 chrono.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+rust_decimal_macros.workspace = true
