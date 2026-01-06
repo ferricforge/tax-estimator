@@ -39,12 +39,12 @@ impl SqliteRepository {
 #[derive(FromRow)]
 struct TaxYearConfigRow {
     tax_year: i32,
-    ss_wage_max: String,
-    ss_tax_rate: String,
-    medicare_tax_rate: String,
-    se_tax_deductible_percentage: String,
-    se_deduction_factor: String,
-    required_payment_threshold: String,
+    ss_wage_max: f64,
+    ss_tax_rate: f64,
+    medicare_tax_rate: f64,
+    se_tax_deductible_percentage: f64,
+    se_deduction_factor: f64,
+    required_payment_threshold: f64,
 }
 
 impl TryFrom<TaxYearConfigRow> for TaxYearConfig {
@@ -53,12 +53,12 @@ impl TryFrom<TaxYearConfigRow> for TaxYearConfig {
     fn try_from(row: TaxYearConfigRow) -> Result<Self, Self::Error> {
         Ok(TaxYearConfig {
             tax_year: row.tax_year,
-            ss_wage_max: parse_decimal(&row.ss_wage_max)?,
-            ss_tax_rate: parse_decimal(&row.ss_tax_rate)?,
-            medicare_tax_rate: parse_decimal(&row.medicare_tax_rate)?,
-            se_tax_deductible_percentage: parse_decimal(&row.se_tax_deductible_percentage)?,
-            se_deduction_factor: parse_decimal(&row.se_deduction_factor)?,
-            required_payment_threshold: parse_decimal(&row.required_payment_threshold)?,
+            ss_wage_max: decimal_from_f64(row.ss_wage_max)?,
+            ss_tax_rate: decimal_from_f64(row.ss_tax_rate)?,
+            medicare_tax_rate: decimal_from_f64(row.medicare_tax_rate)?,
+            se_tax_deductible_percentage: decimal_from_f64(row.se_tax_deductible_percentage)?,
+            se_deduction_factor: decimal_from_f64(row.se_deduction_factor)?,
+            required_payment_threshold: decimal_from_f64(row.required_payment_threshold)?,
         })
     }
 }
@@ -88,7 +88,7 @@ impl TryFrom<FilingStatusRow> for FilingStatus {
 struct StandardDeductionRow {
     tax_year: i32,
     filing_status_id: i32,
-    amount: String,
+    amount: f64,
 }
 
 impl TryFrom<StandardDeductionRow> for StandardDeduction {
@@ -98,7 +98,7 @@ impl TryFrom<StandardDeductionRow> for StandardDeduction {
         Ok(StandardDeduction {
             tax_year: row.tax_year,
             filing_status_id: row.filing_status_id,
-            amount: parse_decimal(&row.amount)?,
+            amount: decimal_from_f64(row.amount)?,
         })
     }
 }
@@ -107,10 +107,10 @@ impl TryFrom<StandardDeductionRow> for StandardDeduction {
 struct TaxBracketRow {
     tax_year: i32,
     filing_status_id: i32,
-    min_income: String,
-    max_income: Option<String>,
-    tax_rate: String,
-    base_tax: String,
+    min_income: f64,
+    max_income: Option<f64>,
+    tax_rate: f64,
+    base_tax: f64,
 }
 
 impl TryFrom<TaxBracketRow> for TaxBracket {
@@ -120,10 +120,10 @@ impl TryFrom<TaxBracketRow> for TaxBracket {
         Ok(TaxBracket {
             tax_year: row.tax_year,
             filing_status_id: row.filing_status_id,
-            min_income: parse_decimal(&row.min_income)?,
-            max_income: row.max_income.as_ref().map(|s| parse_decimal(s)).transpose()?,
-            tax_rate: parse_decimal(&row.tax_rate)?,
-            base_tax: parse_decimal(&row.base_tax)?,
+            min_income: decimal_from_f64(row.min_income)?,
+            max_income: row.max_income.map(decimal_from_f64).transpose()?,
+            tax_rate: decimal_from_f64(row.tax_rate)?,
+            base_tax: decimal_from_f64(row.base_tax)?,
         })
     }
 }
@@ -133,20 +133,20 @@ struct EstimatedTaxCalculationRow {
     id: i64,
     tax_year: i32,
     filing_status_id: i32,
-    expected_agi: String,
-    expected_deduction: String,
-    expected_qbi_deduction: Option<String>,
-    expected_amt: Option<String>,
-    expected_credits: Option<String>,
-    expected_other_taxes: Option<String>,
-    prior_year_tax: Option<String>,
-    expected_withholding: Option<String>,
-    se_income: Option<String>,
-    expected_crp_payments: Option<String>,
-    expected_wages: Option<String>,
-    calculated_se_tax: Option<String>,
-    calculated_total_tax: Option<String>,
-    calculated_required_payment: Option<String>,
+    expected_agi: f64,
+    expected_deduction: f64,
+    expected_qbi_deduction: Option<f64>,
+    expected_amt: Option<f64>,
+    expected_credits: Option<f64>,
+    expected_other_taxes: Option<f64>,
+    prior_year_tax: Option<f64>,
+    expected_withholding: Option<f64>,
+    se_income: Option<f64>,
+    expected_crp_payments: Option<f64>,
+    expected_wages: Option<f64>,
+    calculated_se_tax: Option<f64>,
+    calculated_total_tax: Option<f64>,
+    calculated_required_payment: Option<f64>,
     created_at: String,
     updated_at: String,
 }
@@ -159,37 +159,32 @@ impl TryFrom<EstimatedTaxCalculationRow> for EstimatedTaxCalculation {
             id: row.id,
             tax_year: row.tax_year,
             filing_status_id: row.filing_status_id,
-            expected_agi: parse_decimal(&row.expected_agi)?,
-            expected_deduction: parse_decimal(&row.expected_deduction)?,
-            expected_qbi_deduction: parse_optional_decimal(&row.expected_qbi_deduction)?,
-            expected_amt: parse_optional_decimal(&row.expected_amt)?,
-            expected_credits: parse_optional_decimal(&row.expected_credits)?,
-            expected_other_taxes: parse_optional_decimal(&row.expected_other_taxes)?,
-            prior_year_tax: parse_optional_decimal(&row.prior_year_tax)?,
-            expected_withholding: parse_optional_decimal(&row.expected_withholding)?,
-            se_income: parse_optional_decimal(&row.se_income)?,
-            expected_crp_payments: parse_optional_decimal(&row.expected_crp_payments)?,
-            expected_wages: parse_optional_decimal(&row.expected_wages)?,
-            calculated_se_tax: parse_optional_decimal(&row.calculated_se_tax)?,
-            calculated_total_tax: parse_optional_decimal(&row.calculated_total_tax)?,
-            calculated_required_payment: parse_optional_decimal(&row.calculated_required_payment)?,
+            expected_agi: decimal_from_f64(row.expected_agi)?,
+            expected_deduction: decimal_from_f64(row.expected_deduction)?,
+            expected_qbi_deduction: row.expected_qbi_deduction.map(decimal_from_f64).transpose()?,
+            expected_amt: row.expected_amt.map(decimal_from_f64).transpose()?,
+            expected_credits: row.expected_credits.map(decimal_from_f64).transpose()?,
+            expected_other_taxes: row.expected_other_taxes.map(decimal_from_f64).transpose()?,
+            prior_year_tax: row.prior_year_tax.map(decimal_from_f64).transpose()?,
+            expected_withholding: row.expected_withholding.map(decimal_from_f64).transpose()?,
+            se_income: row.se_income.map(decimal_from_f64).transpose()?,
+            expected_crp_payments: row.expected_crp_payments.map(decimal_from_f64).transpose()?,
+            expected_wages: row.expected_wages.map(decimal_from_f64).transpose()?,
+            calculated_se_tax: row.calculated_se_tax.map(decimal_from_f64).transpose()?,
+            calculated_total_tax: row.calculated_total_tax.map(decimal_from_f64).transpose()?,
+            calculated_required_payment: row.calculated_required_payment.map(decimal_from_f64).transpose()?,
             created_at: parse_datetime(&row.created_at)?,
             updated_at: parse_datetime(&row.updated_at)?,
         })
     }
 }
 
-fn parse_decimal(s: &str) -> Result<Decimal, RepositoryError> {
-    s.parse::<Decimal>()
-        .map_err(|e| RepositoryError::Database(format!("Failed to parse decimal '{}': {}", s, e)))
-}
-
-fn parse_optional_decimal(s: &Option<String>) -> Result<Option<Decimal>, RepositoryError> {
-    s.as_ref().map(|s| parse_decimal(s)).transpose()
+fn decimal_from_f64(val: f64) -> Result<Decimal, RepositoryError> {
+    Decimal::try_from(val)
+        .map_err(|e| RepositoryError::Database(format!("Failed to convert {} to Decimal: {}", val, e)))
 }
 
 fn parse_datetime(s: &str) -> Result<DateTime<Utc>, RepositoryError> {
-    // SQLite stores timestamps in various formats, try common ones
     chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f"))
@@ -304,17 +299,17 @@ impl TaxRepository for SqliteRepository {
         )
         .bind(calc.tax_year)
         .bind(calc.filing_status_id)
-        .bind(calc.expected_agi.to_string())
-        .bind(calc.expected_deduction.to_string())
-        .bind(calc.expected_qbi_deduction.map(|d| d.to_string()))
-        .bind(calc.expected_amt.map(|d| d.to_string()))
-        .bind(calc.expected_credits.map(|d| d.to_string()))
-        .bind(calc.expected_other_taxes.map(|d| d.to_string()))
-        .bind(calc.prior_year_tax.map(|d| d.to_string()))
-        .bind(calc.expected_withholding.map(|d| d.to_string()))
-        .bind(calc.se_income.map(|d| d.to_string()))
-        .bind(calc.expected_crp_payments.map(|d| d.to_string()))
-        .bind(calc.expected_wages.map(|d| d.to_string()))
+        .bind(decimal_to_f64(calc.expected_agi))
+        .bind(decimal_to_f64(calc.expected_deduction))
+        .bind(calc.expected_qbi_deduction.map(decimal_to_f64))
+        .bind(calc.expected_amt.map(decimal_to_f64))
+        .bind(calc.expected_credits.map(decimal_to_f64))
+        .bind(calc.expected_other_taxes.map(decimal_to_f64))
+        .bind(calc.prior_year_tax.map(decimal_to_f64))
+        .bind(calc.expected_withholding.map(decimal_to_f64))
+        .bind(calc.se_income.map(decimal_to_f64))
+        .bind(calc.expected_crp_payments.map(decimal_to_f64))
+        .bind(calc.expected_wages.map(decimal_to_f64))
         .bind(&now)
         .bind(&now)
         .execute(&self.pool)
@@ -362,20 +357,20 @@ impl TaxRepository for SqliteRepository {
         )
         .bind(calc.tax_year)
         .bind(calc.filing_status_id)
-        .bind(calc.expected_agi.to_string())
-        .bind(calc.expected_deduction.to_string())
-        .bind(calc.expected_qbi_deduction.map(|d| d.to_string()))
-        .bind(calc.expected_amt.map(|d| d.to_string()))
-        .bind(calc.expected_credits.map(|d| d.to_string()))
-        .bind(calc.expected_other_taxes.map(|d| d.to_string()))
-        .bind(calc.prior_year_tax.map(|d| d.to_string()))
-        .bind(calc.expected_withholding.map(|d| d.to_string()))
-        .bind(calc.se_income.map(|d| d.to_string()))
-        .bind(calc.expected_crp_payments.map(|d| d.to_string()))
-        .bind(calc.expected_wages.map(|d| d.to_string()))
-        .bind(calc.calculated_se_tax.map(|d| d.to_string()))
-        .bind(calc.calculated_total_tax.map(|d| d.to_string()))
-        .bind(calc.calculated_required_payment.map(|d| d.to_string()))
+        .bind(decimal_to_f64(calc.expected_agi))
+        .bind(decimal_to_f64(calc.expected_deduction))
+        .bind(calc.expected_qbi_deduction.map(decimal_to_f64))
+        .bind(calc.expected_amt.map(decimal_to_f64))
+        .bind(calc.expected_credits.map(decimal_to_f64))
+        .bind(calc.expected_other_taxes.map(decimal_to_f64))
+        .bind(calc.prior_year_tax.map(decimal_to_f64))
+        .bind(calc.expected_withholding.map(decimal_to_f64))
+        .bind(calc.se_income.map(decimal_to_f64))
+        .bind(calc.expected_crp_payments.map(decimal_to_f64))
+        .bind(calc.expected_wages.map(decimal_to_f64))
+        .bind(calc.calculated_se_tax.map(decimal_to_f64))
+        .bind(calc.calculated_total_tax.map(decimal_to_f64))
+        .bind(calc.calculated_required_payment.map(decimal_to_f64))
         .bind(&now)
         .bind(calc.id)
         .execute(&self.pool)
@@ -440,6 +435,11 @@ impl TaxRepository for SqliteRepository {
 
         rows.into_iter().map(|r| r.try_into()).collect()
     }
+}
+
+fn decimal_to_f64(d: Decimal) -> f64 {
+    use rust_decimal::prelude::ToPrimitive;
+    d.to_f64().unwrap_or(0.0)
 }
 
 #[cfg(test)]
@@ -536,7 +536,7 @@ mod tests {
         assert_eq!(brackets.len(), 7);
         assert_eq!(brackets[0].tax_rate, dec!(0.10));
         assert_eq!(brackets[6].tax_rate, dec!(0.37));
-        assert!(brackets[6].max_income.is_none()); // Top bracket has no max
+        assert!(brackets[6].max_income.is_none());
     }
 
     #[tokio::test]
