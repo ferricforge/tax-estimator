@@ -2,14 +2,17 @@
 name = "tax-db-sqlite"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 tax-core = { path = "../tax-core" }
-tokio.workspace = true
-sqlx = { workspace = true, features = ["sqlite"] }
 async-trait.workspace = true
-rust_decimal.workspace = true
 chrono.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
