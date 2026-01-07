@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["tax-core", "tax-db-sqlite", "tax-ui"]
 
 [workspace.package]

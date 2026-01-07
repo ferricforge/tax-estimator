@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sqlx::{sqlite::SqlitePool, FromRow, Row, TypeInfo, ValueRef};
+use sqlx::{sqlite::SqlitePool, Row, TypeInfo, ValueRef};
 use tax_core::{
     EstimatedTaxCalculation, FilingStatus, FilingStatusCode, NewEstimatedTaxCalculation,
     RepositoryError, StandardDeduction, TaxBracket, TaxRepository, TaxYearConfig,
@@ -78,36 +78,31 @@ fn decimal_to_f64(d: Decimal) -> f64 {
     d.to_f64().unwrap_or(0.0)
 }
 
-// SQLx can't auto-derive FromRow for EstimatedTaxCalculation due to custom Decimal handling,
-// so we implement TryFrom instead
-impl TryFrom<&sqlx::sqlite::SqliteRow> for EstimatedTaxCalculation {
-    type Error = RepositoryError;
-
-    fn try_from(row: &sqlx::sqlite::SqliteRow) -> Result<Self, Self::Error> {
-        Ok(EstimatedTaxCalculation {
-            id: row.try_get("id").map_err(|e| RepositoryError::Database(e.to_string()))?,
-            tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
-            filing_status_id: row.try_get("filing_status_id").map_err(|e| RepositoryError::Database(e.to_string()))?,
-            expected_agi: get_decimal(row, "expected_agi")?,
-            expected_deduction: get_decimal(row, "expected_deduction")?,
-            expected_qbi_deduction: get_optional_decimal(row, "expected_qbi_deduction")?,
-            expected_amt: get_optional_decimal(row, "expected_amt")?,
-            expected_credits: get_optional_decimal(row, "expected_credits")?,
-            expected_other_taxes: get_optional_decimal(row, "expected_other_taxes")?,
-            prior_year_tax: get_optional_decimal(row, "prior_year_tax")?,
-            expected_withholding: get_optional_decimal(row, "expected_withholding")?,
-            se_income: get_optional_decimal(row, "se_income")?,
-            expected_crp_payments: get_optional_decimal(row, "expected_crp_payments")?,
-            expected_wages: get_optional_decimal(row, "expected_wages")?,
-            calculated_se_tax: get_optional_decimal(row, "calculated_se_tax")?,
-            calculated_total_tax: get_optional_decimal(row, "calculated_total_tax")?,
-            calculated_required_payment: get_optional_decimal(row, "calculated_required_payment")?,
-            created_at: row.try_get::<DateTime<Utc>, _>("created_at")
-                .map_err(|e| RepositoryError::Database(format!("Failed to get created_at: {}", e)))?,
-            updated_at: row.try_get::<DateTime<Utc>, _>("updated_at")
-                .map_err(|e| RepositoryError::Database(format!("Failed to get updated_at: {}", e)))?,
-        })
-    }
+// Helper to convert a row to EstimatedTaxCalculation
+fn row_to_calculation(row: &sqlx::sqlite::SqliteRow) -> Result<EstimatedTaxCalculation, RepositoryError> {
+    Ok(EstimatedTaxCalculation {
+        id: row.try_get("id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+        tax_year: row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?,
+        filing_status_id: row.try_get("filing_status_id").map_err(|e| RepositoryError::Database(e.to_string()))?,
+        expected_agi: get_decimal(row, "expected_agi")?,
+        expected_deduction: get_decimal(row, "expected_deduction")?,
+        expected_qbi_deduction: get_optional_decimal(row, "expected_qbi_deduction")?,
+        expected_amt: get_optional_decimal(row, "expected_amt")?,
+        expected_credits: get_optional_decimal(row, "expected_credits")?,
+        expected_other_taxes: get_optional_decimal(row, "expected_other_taxes")?,
+        prior_year_tax: get_optional_decimal(row, "prior_year_tax")?,
+        expected_withholding: get_optional_decimal(row, "expected_withholding")?,
+        se_income: get_optional_decimal(row, "se_income")?,
+        expected_crp_payments: get_optional_decimal(row, "expected_crp_payments")?,
+        expected_wages: get_optional_decimal(row, "expected_wages")?,
+        calculated_se_tax: get_optional_decimal(row, "calculated_se_tax")?,
+        calculated_total_tax: get_optional_decimal(row, "calculated_total_tax")?,
+        calculated_required_payment: get_optional_decimal(row, "calculated_required_payment")?,
+        created_at: row.try_get::<DateTime<Utc>, _>("created_at")
+            .map_err(|e| RepositoryError::Database(format!("Failed to get created_at: {}", e)))?,
+        updated_at: row.try_get::<DateTime<Utc>, _>("updated_at")
+            .map_err(|e| RepositoryError::Database(format!("Failed to get updated_at: {}", e)))?,
+    })
 }
 
 #[async_trait]
@@ -303,7 +298,7 @@ impl TaxRepository for SqliteRepository {
         .map_err(|e| RepositoryError::Database(e.to_string()))?
         .ok_or(RepositoryError::NotFound)?;
 
-        EstimatedTaxCalculation::try_from(&row)
+        row_to_calculation(&row)
     }
 
     async fn update_calculation(
@@ -393,7 +388,7 @@ impl TaxRepository for SqliteRepository {
         .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
         rows.iter()
-            .map(EstimatedTaxCalculation::try_from)
+            .map(row_to_calculation)
             .collect()
     }
 }
