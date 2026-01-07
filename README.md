@@ -81,6 +81,18 @@ Captures user inputs and calculated results for a tax estimate.
 - Prior year tax liability
 - Income tax withheld estimate
 
+## Current Limitations
+
+The following tax scenarios are not currently supported:
+
+- **Additional Medicare Tax**: The 0.9% surtax on wages/SE income exceeding $200k (Single/HOH) or $250k (MFJ) is not calculated
+- **Net Investment Income Tax (NIIT)**: The 3.8% tax on investment income for high earners is not modeled
+- **Safe Harbor 110% Rule**: For prior year AGI > $150k, safe harbor is 110% of prior year tax (not 100%); this distinction is not enforced
+- **Farm vs. Non-Farm SE Income**: The SE Worksheet lines 1a/1b distinction is combined into a single field
+- **Quarterly Payment Tracking**: Due dates and individual quarterly payments are not tracked
+
+See [EVALUATION.md](EVALUATION.md) for detailed analysis and recommendations.
+
 ## Development
 
 ### Prerequisites
