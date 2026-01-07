@@ -136,11 +136,9 @@ impl TaxRepository for SqliteRepository {
             .await
             .map_err(|e| RepositoryError::Database(e.to_string()))?;
 
-        let mut years = Vec::new();
-        for row in rows {
-            years.push(row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string()))?);
-        }
-        Ok(years)
+        rows.iter()
+            .map(|row| row.try_get("tax_year").map_err(|e| RepositoryError::Database(e.to_string())))
+            .collect()
     }
 
     async fn get_filing_status(&self, id: i32) -> Result<FilingStatus, RepositoryError> {
