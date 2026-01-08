@@ -20,7 +20,7 @@ impl FilingStatusCode {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "S" => Some(Self::Single),
             "MFJ" => Some(Self::MarriedFilingJointly),
