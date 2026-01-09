@@ -1,0 +1,27 @@
+[package]
+name = "tax-data"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tax-data-loader"
+path = "src/bin/loader.rs"
+
+[dependencies]
+tax-core = { path = "../tax-core" }
+tax-db-sqlite = { path = "../tax-db-sqlite" }
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+csv.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+pretty_assertions = "1"
+rust_decimal_macros.workspace = true
+sqlx.workspace = true

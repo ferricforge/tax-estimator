@@ -25,6 +25,7 @@ pub trait TaxRepository: Send + Sync {
 
     // Filing status
     async fn get_filing_status(&self, id: i32) -> Result<FilingStatus, RepositoryError>;
+    async fn get_filing_status_by_code(&self, code: &str) -> Result<FilingStatus, RepositoryError>;
     async fn list_filing_statuses(&self) -> Result<Vec<FilingStatus>, RepositoryError>;
 
     // Standard deductions
@@ -41,9 +42,19 @@ pub trait TaxRepository: Send + Sync {
         filing_status_id: i32,
     ) -> Result<Vec<TaxBracket>, RepositoryError>;
 
+    async fn insert_tax_bracket(&self, bracket: &TaxBracket) -> Result<(), RepositoryError>;
+
+    async fn delete_tax_brackets(
+        &self,
+        tax_year: i32,
+        filing_status_id: i32,
+    ) -> Result<(), RepositoryError>;
+
     // Tax estimates
-    async fn create_estimate(&self, estimate: NewTaxEstimate)
-        -> Result<TaxEstimate, RepositoryError>;
+    async fn create_estimate(
+        &self,
+        estimate: NewTaxEstimate,
+    ) -> Result<TaxEstimate, RepositoryError>;
 
     async fn get_estimate(&self, id: i64) -> Result<TaxEstimate, RepositoryError>;
 
@@ -51,6 +62,8 @@ pub trait TaxRepository: Send + Sync {
 
     async fn delete_estimate(&self, id: i64) -> Result<(), RepositoryError>;
 
-    async fn list_estimates(&self, tax_year: Option<i32>)
-        -> Result<Vec<TaxEstimate>, RepositoryError>;
+    async fn list_estimates(
+        &self,
+        tax_year: Option<i32>,
+    ) -> Result<Vec<TaxEstimate>, RepositoryError>;
 }

@@ -32,7 +32,7 @@ impl FilingStatusCode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilingStatus {
     pub id: i32,
     pub status_code: FilingStatusCode,

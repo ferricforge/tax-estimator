@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["tax-core", "tax-db-sqlite", "tax-ui"]
+members = ["tax-core", "tax-data", "tax-db-sqlite", "tax-ui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,6 +12,8 @@ license = "MIT"
 anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+csv = "1"
 rust_decimal = { version = "1", features = ["serde"] }
 rust_decimal_macros = "1"
 serde = { version = "1", features = ["derive"] }

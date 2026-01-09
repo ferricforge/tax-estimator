@@ -4,7 +4,10 @@ use sqlx::{Row, TypeInfo, ValueRef};
 use tax_core::RepositoryError;
 
 /// Get a decimal value from a row, handling both INTEGER and REAL SQLite types.
-pub fn get_decimal(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Decimal, RepositoryError> {
+pub fn get_decimal(
+    row: &sqlx::sqlite::SqliteRow,
+    column: &str,
+) -> Result<Decimal, RepositoryError> {
     let value_ref = row
         .try_get_raw(column)
         .map_err(|e| RepositoryError::Database(format!("Column '{}' not found: {}", column, e)))?;
@@ -15,10 +18,7 @@ pub fn get_decimal(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Decima
     match type_name {
         "INTEGER" => {
             let val: i64 = row.try_get(column).map_err(|e| {
-                RepositoryError::Database(format!(
-                    "Failed to get INTEGER from '{}': {}",
-                    column, e
-                ))
+                RepositoryError::Database(format!("Failed to get INTEGER from '{}': {}", column, e))
             })?;
             Ok(Decimal::from(val))
         }
@@ -198,8 +198,18 @@ mod tests {
 
         let result = get_decimal(&row, "nonexistent_column");
 
-        assert!(result.is_err());
-        assert!(matches!(result, Err(RepositoryError::Database(msg)) if msg.starts_with("Column 'nonexistent_column' not found:")));
+        let err = result.expect_err("Should return error for nonexistent column");
+        let RepositoryError::Database(msg) = err else {
+            panic!("Expected Database error, got: {:?}", err);
+        };
+        let expected = "Column 'nonexistent_column' not found: ";
+        assert!(
+            msg.len() > expected.len(),
+            "Expected message length > {}, got {}",
+            expected.len(),
+            msg.len()
+        );
+        assert_eq!(&msg[..expected.len()], expected);
     }
 
     #[tokio::test]
@@ -296,8 +306,18 @@ mod tests {
 
         let result = get_optional_decimal(&row, "nonexistent_column");
 
-        assert!(result.is_err());
-        assert!(matches!(result, Err(RepositoryError::Database(msg)) if msg.starts_with("Column 'nonexistent_column' not found:")));
+        let err = result.expect_err("Should return error for nonexistent column");
+        let RepositoryError::Database(msg) = err else {
+            panic!("Expected Database error, got: {:?}", err);
+        };
+        let expected = "Column 'nonexistent_column' not found: ";
+        assert!(
+            msg.len() > expected.len(),
+            "Expected message length > {}, got {}",
+            expected.len(),
+            msg.len()
+        );
+        assert_eq!(&msg[..expected.len()], expected);
     }
 
     #[tokio::test]

@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{Row, sqlite::SqlitePool};
 use tax_core::{
-    FilingStatus, FilingStatusCode, NewTaxEstimate, RepositoryError, StandardDeduction,
-    TaxBracket, TaxEstimate, TaxRepository, TaxYearConfig,
+    FilingStatus, FilingStatusCode, NewTaxEstimate, RepositoryError, StandardDeduction, TaxBracket,
+    TaxEstimate, TaxRepository, TaxYearConfig,
 };
 
 use crate::decimal::{decimal_to_f64, get_decimal, get_optional_decimal};
@@ -41,12 +41,7 @@ impl SqliteRepository {
         let mut entries: Vec<_> = std::fs::read_dir(seeds_dir)
             .with_context(|| format!("Failed to read seeds directory '{}'", seeds_dir.display()))?
             .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .is_some_and(|ext| ext == "sql")
-            })
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
             .collect();
 
         entries.sort_by_key(|entry| entry.file_name());
@@ -172,6 +167,34 @@ impl TaxRepository for SqliteRepository {
         })
     }
 
+    async fn get_filing_status_by_code(&self, code: &str) -> Result<FilingStatus, RepositoryError> {
+        let row = sqlx::query(
+            "SELECT id, status_code, status_name FROM filing_status WHERE status_code = ?",
+        )
+        .bind(code)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?
+        .ok_or(RepositoryError::NotFound)?;
+
+        let status_code_str: String = row
+            .try_get("status_code")
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
+            RepositoryError::Database(format!("Invalid status code: {}", status_code_str))
+        })?;
+
+        Ok(FilingStatus {
+            id: row
+                .try_get("id")
+                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+            status_code,
+            status_name: row
+                .try_get("status_name")
+                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+        })
+    }
+
     async fn list_filing_statuses(&self) -> Result<Vec<FilingStatus>, RepositoryError> {
         let rows =
             sqlx::query("SELECT id, status_code, status_name FROM filing_status ORDER BY id")
@@ -262,6 +285,39 @@ impl TaxRepository for SqliteRepository {
             });
         }
         Ok(brackets)
+    }
+
+    async fn insert_tax_bracket(&self, bracket: &TaxBracket) -> Result<(), RepositoryError> {
+        sqlx::query(
+            "INSERT INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(bracket.tax_year)
+        .bind(bracket.filing_status_id)
+        .bind(decimal_to_f64(bracket.min_income))
+        .bind(bracket.max_income.map(decimal_to_f64))
+        .bind(decimal_to_f64(bracket.tax_rate))
+        .bind(decimal_to_f64(bracket.base_tax))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn delete_tax_brackets(
+        &self,
+        tax_year: i32,
+        filing_status_id: i32,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query("DELETE FROM tax_brackets WHERE tax_year = ? AND filing_status_id = ?")
+            .bind(tax_year)
+            .bind(filing_status_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+
+        Ok(())
     }
 
     async fn create_estimate(
@@ -381,7 +437,8 @@ impl TaxRepository for SqliteRepository {
         &self,
         tax_year: Option<i32>,
     ) -> Result<Vec<TaxEstimate>, RepositoryError> {
-        const BASE_QUERY: &str = "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
+        const BASE_QUERY: &str =
+            "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
                 expected_qbi_deduction, expected_amt, expected_credits,
                 expected_other_taxes, expected_withholding, prior_year_tax,
                 se_income, expected_crp_payments, expected_wages,
@@ -443,8 +500,6 @@ mod tests {
         .await
         .expect("Failed to insert test tax year config");
     }
-
-
 
     async fn setup_clean_filing_status(repo: &SqliteRepository) {
         // Clear all dependent data first, then filing statuses
@@ -611,7 +666,7 @@ mod tests {
 
         let result = repo.get_tax_year_config(1999).await;
 
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -674,7 +729,10 @@ mod tests {
         assert_eq!(single_status.status_name, "Test Single");
 
         let mfj_status = statuses.iter().find(|s| s.id == 20).unwrap();
-        assert_eq!(mfj_status.status_code, FilingStatusCode::MarriedFilingJointly);
+        assert_eq!(
+            mfj_status.status_code,
+            FilingStatusCode::MarriedFilingJointly
+        );
         assert_eq!(mfj_status.status_name, "Test Married Filing Jointly");
     }
 
@@ -707,7 +765,7 @@ mod tests {
 
         let result = repo.get_filing_status(999).await;
 
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -731,7 +789,7 @@ mod tests {
 
         let result = repo.get_standard_deduction(1999, 1).await;
 
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -772,6 +830,129 @@ mod tests {
             .expect("Should return empty vec");
 
         assert!(brackets.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_insert_tax_bracket() {
+        let repo = setup_test_db().await;
+        insert_test_tax_year_config(&repo).await;
+        setup_clean_filing_status(&repo).await;
+
+        let bracket = TaxBracket {
+            tax_year: 9999,
+            filing_status_id: 99,
+            min_income: dec!(0),
+            max_income: Some(dec!(20000)),
+            tax_rate: dec!(0.12),
+            base_tax: dec!(0),
+        };
+
+        repo.insert_tax_bracket(&bracket)
+            .await
+            .expect("Should insert bracket");
+
+        let brackets = repo
+            .get_tax_brackets(9999, 99)
+            .await
+            .expect("Should get brackets");
+
+        assert_eq!(brackets.len(), 1);
+        assert_eq!(brackets[0].min_income, dec!(0));
+        assert_eq!(brackets[0].max_income, Some(dec!(20000)));
+        assert_eq!(brackets[0].tax_rate, dec!(0.12));
+        assert_eq!(brackets[0].base_tax, dec!(0));
+    }
+
+    #[tokio::test]
+    async fn test_insert_tax_bracket_with_null_max() {
+        let repo = setup_test_db().await;
+        insert_test_tax_year_config(&repo).await;
+        setup_clean_filing_status(&repo).await;
+
+        let bracket = TaxBracket {
+            tax_year: 9999,
+            filing_status_id: 99,
+            min_income: dec!(100000),
+            max_income: None,
+            tax_rate: dec!(0.37),
+            base_tax: dec!(25000),
+        };
+
+        repo.insert_tax_bracket(&bracket)
+            .await
+            .expect("Should insert bracket");
+
+        let brackets = repo
+            .get_tax_brackets(9999, 99)
+            .await
+            .expect("Should get brackets");
+
+        assert_eq!(brackets.len(), 1);
+        assert_eq!(brackets[0].max_income, None);
+    }
+
+    #[tokio::test]
+    async fn test_delete_tax_brackets() {
+        let repo = setup_test_db().await;
+        insert_test_tax_brackets(&repo).await;
+
+        let brackets_before = repo
+            .get_tax_brackets(9999, 99)
+            .await
+            .expect("Should get brackets");
+        assert_eq!(brackets_before.len(), 3);
+
+        repo.delete_tax_brackets(9999, 99)
+            .await
+            .expect("Should delete brackets");
+
+        let brackets_after = repo
+            .get_tax_brackets(9999, 99)
+            .await
+            .expect("Should get brackets");
+        assert!(brackets_after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_delete_tax_brackets_nonexistent() {
+        let repo = setup_test_db().await;
+
+        // Should not error when deleting nonexistent brackets
+        repo.delete_tax_brackets(9999, 99)
+            .await
+            .expect("Should succeed even if no brackets exist");
+    }
+
+    #[tokio::test]
+    async fn test_get_filing_status_by_code() {
+        let repo = setup_test_db().await;
+        clear_all_data(&repo).await;
+
+        sqlx::query(
+            "INSERT INTO filing_status (id, status_code, status_name)
+             VALUES (7, 'MFJ', 'Test Married Filing Jointly')",
+        )
+        .execute(repo.pool())
+        .await
+        .expect("Failed to insert test filing status");
+
+        let status = repo
+            .get_filing_status_by_code("MFJ")
+            .await
+            .expect("Should find filing status by code");
+
+        assert_eq!(status.id, 7);
+        assert_eq!(status.status_code, FilingStatusCode::MarriedFilingJointly);
+        assert_eq!(status.status_name, "Test Married Filing Jointly");
+    }
+
+    #[tokio::test]
+    async fn test_get_filing_status_by_code_not_found() {
+        let repo = setup_test_db().await;
+
+        let result = repo.get_filing_status_by_code("INVALID").await;
+
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -817,7 +998,7 @@ mod tests {
 
         let result = repo.get_estimate(99999).await;
 
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -866,7 +1047,7 @@ mod tests {
 
         let result = repo.update_estimate(&created).await;
 
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -886,7 +1067,7 @@ mod tests {
             .expect("Should delete estimate");
 
         let result = repo.get_estimate(id).await;
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -895,7 +1076,7 @@ mod tests {
 
         let result = repo.delete_estimate(99999).await;
 
-        assert!(matches!(result, Err(RepositoryError::NotFound)));
+        assert_eq!(result, Err(RepositoryError::NotFound));
     }
 
     #[tokio::test]
@@ -1018,8 +1199,7 @@ mod tests {
 
         let result = repo.run_seeds(std::path::Path::new("./nonexistent")).await;
 
-        assert!(result.is_err());
-        let err = result.unwrap_err();
+        let err = result.expect_err("Should fail for nonexistent directory");
         assert_eq!(
             err.to_string(),
             "Failed to read seeds directory './nonexistent'"
