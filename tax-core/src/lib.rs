@@ -1,3 +1,4 @@
+pub mod calculations;
 pub mod db;
 pub mod models;
 

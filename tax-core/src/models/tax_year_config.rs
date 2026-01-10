@@ -10,4 +10,5 @@ pub struct TaxYearConfig {
     pub se_tax_deductible_percentage: Decimal,
     pub se_deduction_factor: Decimal,
     pub required_payment_threshold: Decimal,
+    pub min_se_threshold: Decimal,
 }

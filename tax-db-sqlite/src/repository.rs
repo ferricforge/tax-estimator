@@ -104,7 +104,8 @@ impl TaxRepository for SqliteRepository {
     async fn get_tax_year_config(&self, year: i32) -> Result<TaxYearConfig, RepositoryError> {
         let row = sqlx::query(
             "SELECT tax_year, ss_wage_max, ss_tax_rate, medicare_tax_rate,
-                    se_tax_deductible_percentage, se_deduction_factor, required_payment_threshold
+                    se_tax_deductible_percentage, se_deduction_factor,
+                    required_payment_threshold, min_se_threshold
              FROM tax_year_config WHERE tax_year = ?",
         )
         .bind(year)
@@ -123,6 +124,7 @@ impl TaxRepository for SqliteRepository {
             se_tax_deductible_percentage: get_decimal(&row, "se_tax_deductible_percentage")?,
             se_deduction_factor: get_decimal(&row, "se_deduction_factor")?,
             required_payment_threshold: get_decimal(&row, "required_payment_threshold")?,
+            min_se_threshold: get_decimal(&row, "min_se_threshold")?,
         })
     }
 
@@ -493,8 +495,9 @@ mod tests {
         sqlx::query(
             "INSERT INTO tax_year_config (
                 tax_year, ss_wage_max, ss_tax_rate, medicare_tax_rate,
-                se_tax_deductible_percentage, se_deduction_factor, required_payment_threshold
-            ) VALUES (9999, 200000.00, 0.125, 0.030, 0.9300, 0.55, 1500.00)",
+                se_tax_deductible_percentage, se_deduction_factor,
+                required_payment_threshold, min_se_threshold
+            ) VALUES (9999, 200000.00, 0.125, 0.030, 0.9300, 0.55, 1500.00, 400.00)",
         )
         .execute(repo.pool())
         .await
@@ -586,10 +589,11 @@ mod tests {
         sqlx::query(
             "INSERT INTO tax_year_config (
                 tax_year, ss_wage_max, ss_tax_rate, medicare_tax_rate,
-                se_tax_deductible_percentage, se_deduction_factor, required_payment_threshold
+                se_tax_deductible_percentage, se_deduction_factor,
+                required_payment_threshold, min_se_threshold
             ) VALUES
-            (8888, 180000.00, 0.124, 0.029, 0.9235, 0.50, 1000.00),
-            (8887, 175000.00, 0.124, 0.029, 0.9235, 0.50, 1000.00)",
+            (8888, 180000.00, 0.124, 0.029, 0.9235, 0.50, 1000.00, 400.00),
+            (8887, 175000.00, 0.124, 0.029, 0.9235, 0.50, 1000.00, 400.00)",
         )
         .execute(repo.pool())
         .await
@@ -658,6 +662,7 @@ mod tests {
         assert_eq!(config.se_tax_deductible_percentage, dec!(0.9300));
         assert_eq!(config.se_deduction_factor, dec!(0.55));
         assert_eq!(config.required_payment_threshold, dec!(1500.00));
+        assert_eq!(config.min_se_threshold, dec!(400.00));
     }
 
     #[tokio::test]
