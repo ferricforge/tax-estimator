@@ -37,7 +37,10 @@ impl SqliteRepository {
 
     /// Load and execute all SQL seed files from the specified directory.
     /// Files are executed in alphabetical order by filename.
-    pub async fn run_seeds(&self, seeds_dir: &Path) -> Result<()> {
+    pub async fn run_seeds(
+        &self,
+        seeds_dir: &Path,
+    ) -> Result<()> {
         let mut entries: Vec<_> = std::fs::read_dir(seeds_dir)
             .with_context(|| format!("Failed to read seeds directory '{}'", seeds_dir.display()))?
             .filter_map(|entry| entry.ok())
@@ -101,7 +104,10 @@ fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, Rep
 
 #[async_trait]
 impl TaxRepository for SqliteRepository {
-    async fn get_tax_year_config(&self, year: i32) -> Result<TaxYearConfig, RepositoryError> {
+    async fn get_tax_year_config(
+        &self,
+        year: i32,
+    ) -> Result<TaxYearConfig, RepositoryError> {
         let row = sqlx::query(
             "SELECT tax_year, ss_wage_max, ss_tax_rate, medicare_tax_rate,
                     se_tax_deductible_percentage, se_deduction_factor,
@@ -142,7 +148,10 @@ impl TaxRepository for SqliteRepository {
             .collect()
     }
 
-    async fn get_filing_status(&self, id: i32) -> Result<FilingStatus, RepositoryError> {
+    async fn get_filing_status(
+        &self,
+        id: i32,
+    ) -> Result<FilingStatus, RepositoryError> {
         let row =
             sqlx::query("SELECT id, status_code, status_name FROM filing_status WHERE id = ?")
                 .bind(id)
@@ -169,7 +178,10 @@ impl TaxRepository for SqliteRepository {
         })
     }
 
-    async fn get_filing_status_by_code(&self, code: &str) -> Result<FilingStatus, RepositoryError> {
+    async fn get_filing_status_by_code(
+        &self,
+        code: &str,
+    ) -> Result<FilingStatus, RepositoryError> {
         let row = sqlx::query(
             "SELECT id, status_code, status_name FROM filing_status WHERE status_code = ?",
         )
@@ -289,7 +301,10 @@ impl TaxRepository for SqliteRepository {
         Ok(brackets)
     }
 
-    async fn insert_tax_bracket(&self, bracket: &TaxBracket) -> Result<(), RepositoryError> {
+    async fn insert_tax_bracket(
+        &self,
+        bracket: &TaxBracket,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax)
              VALUES (?, ?, ?, ?, ?, ?)",
@@ -360,7 +375,10 @@ impl TaxRepository for SqliteRepository {
         self.get_estimate(id).await
     }
 
-    async fn get_estimate(&self, id: i64) -> Result<TaxEstimate, RepositoryError> {
+    async fn get_estimate(
+        &self,
+        id: i64,
+    ) -> Result<TaxEstimate, RepositoryError> {
         let row = sqlx::query(
             "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
                     expected_qbi_deduction, expected_amt, expected_credits,
@@ -379,7 +397,10 @@ impl TaxRepository for SqliteRepository {
         row_to_tax_estimate(&row)
     }
 
-    async fn update_estimate(&self, estimate: &TaxEstimate) -> Result<(), RepositoryError> {
+    async fn update_estimate(
+        &self,
+        estimate: &TaxEstimate,
+    ) -> Result<(), RepositoryError> {
         let now = Utc::now();
 
         let result = sqlx::query(
@@ -421,7 +442,10 @@ impl TaxRepository for SqliteRepository {
         Ok(())
     }
 
-    async fn delete_estimate(&self, id: i64) -> Result<(), RepositoryError> {
+    async fn delete_estimate(
+        &self,
+        id: i64,
+    ) -> Result<(), RepositoryError> {
         let result = sqlx::query("DELETE FROM tax_estimate WHERE id = ?")
             .bind(id)
             .execute(&self.pool)

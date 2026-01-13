@@ -37,7 +37,7 @@ impl From<csv::Error> for TaxBracketLoaderError {
 /// - Schedule Y-2 → Married Filing Separately (MFS)
 /// - Schedule Z → Head of Household (HOH)
 fn schedule_to_filing_status_codes(
-    schedule: &str,
+    schedule: &str
 ) -> Result<Vec<&'static str>, TaxBracketLoaderError> {
     match schedule {
         "X" => Ok(vec!["S"]),

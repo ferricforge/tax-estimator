@@ -60,6 +60,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::TaxYearConfig;
+use crate::calculations::common::round_half_up;
 
 /// Errors that can occur during SE worksheet calculations.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -513,7 +514,11 @@ impl SeWorksheet {
     /// - Line 1a: Net farm profit or loss from Schedule F
     /// - Line 1b: Conservation Reserve Program payments
     /// - Line 2: Net profit from non-farm self-employment
-    fn combined_se_income(&self, se_income: Decimal, crp_payments: Decimal) -> Decimal {
+    fn combined_se_income(
+        &self,
+        se_income: Decimal,
+        crp_payments: Decimal,
+    ) -> Decimal {
         let combined = se_income + crp_payments;
         if combined < Decimal::ZERO {
             warn!(
@@ -534,7 +539,10 @@ impl SeWorksheet {
     /// # Form Reference
     ///
     /// Line 3: Multiply lines 1a, 1b, and 2 combined by 92.35% (0.9235)
-    fn net_earnings_from_self_employment(&self, combined_income: Decimal) -> Decimal {
+    fn net_earnings_from_self_employment(
+        &self,
+        combined_income: Decimal,
+    ) -> Decimal {
         let net_earnings = combined_income * self.config.net_earnings_factor;
         let rounded = round_half_up(net_earnings);
 
@@ -560,7 +568,10 @@ impl SeWorksheet {
     /// # Form Reference
     ///
     /// Line 4: Multiply line 3 by 2.9% (0.029)
-    fn medicare_tax(&self, net_earnings: Decimal) -> Decimal {
+    fn medicare_tax(
+        &self,
+        net_earnings: Decimal,
+    ) -> Decimal {
         if net_earnings <= Decimal::ZERO {
             warn!(
                 net_earnings = %net_earnings,
@@ -583,7 +594,10 @@ impl SeWorksheet {
     /// - Line 5: Maximum income subject to social security tax
     /// - Line 6: Total wages subject to social security tax
     /// - Line 7: Line 5 minus Line 6 (if zero or less, skip to Line 10)
-    fn remaining_ss_wage_base(&self, wages: Decimal) -> Decimal {
+    fn remaining_ss_wage_base(
+        &self,
+        wages: Decimal,
+    ) -> Decimal {
         let remaining = self.config.ss_wage_max - wages;
 
         if remaining <= Decimal::ZERO {
@@ -606,7 +620,11 @@ impl SeWorksheet {
     /// # Form Reference
     ///
     /// Line 8: Enter the smaller of line 3 or line 7
-    fn ss_taxable_earnings(&self, net_earnings: Decimal, remaining_ss_base: Decimal) -> Decimal {
+    fn ss_taxable_earnings(
+        &self,
+        net_earnings: Decimal,
+        remaining_ss_base: Decimal,
+    ) -> Decimal {
         if net_earnings <= Decimal::ZERO {
             warn!(
                 net_earnings = %net_earnings,
@@ -626,7 +644,10 @@ impl SeWorksheet {
     /// # Form Reference
     ///
     /// Line 9: Multiply line 8 by 12.4% (0.124)
-    fn social_security_tax(&self, ss_taxable_earnings: Decimal) -> Decimal {
+    fn social_security_tax(
+        &self,
+        ss_taxable_earnings: Decimal,
+    ) -> Decimal {
         let tax = ss_taxable_earnings * self.config.ss_tax_rate;
         round_half_up(tax)
     }
@@ -655,18 +676,13 @@ impl SeWorksheet {
     ///
     /// Line 11: Multiply line 10 by 50% (0.50). Enter the result here and
     /// on Schedule 1 (Form 1040), line 15.
-    fn se_tax_deduction(&self, self_employment_tax: Decimal) -> Decimal {
+    fn se_tax_deduction(
+        &self,
+        self_employment_tax: Decimal,
+    ) -> Decimal {
         let deduction = self_employment_tax * self.config.deduction_factor;
         round_half_up(deduction)
     }
-}
-
-/// Rounds a decimal value to exactly two decimal places using half-up rounding.
-///
-/// This follows standard financial rounding conventions where values at exactly
-/// 0.005 are rounded up to 0.01.
-fn round_half_up(value: Decimal) -> Decimal {
-    value.round_dp_with_strategy(2, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
 }
 
 #[cfg(test)]
@@ -1545,44 +1561,5 @@ mod tests {
         assert!(result.below_threshold);
         assert_eq!(result.combined_se_income, dec!(-10000.00));
         assert_eq!(result.self_employment_tax, dec!(0.00));
-    }
-
-    // =========================================================================
-    // round_half_up tests
-    // =========================================================================
-
-    #[test]
-    fn round_half_up_rounds_down_below_midpoint() {
-        let result = round_half_up(dec!(123.454));
-
-        assert_eq!(result, dec!(123.45));
-    }
-
-    #[test]
-    fn round_half_up_rounds_up_at_midpoint() {
-        let result = round_half_up(dec!(123.455));
-
-        assert_eq!(result, dec!(123.46));
-    }
-
-    #[test]
-    fn round_half_up_rounds_up_above_midpoint() {
-        let result = round_half_up(dec!(123.456));
-
-        assert_eq!(result, dec!(123.46));
-    }
-
-    #[test]
-    fn round_half_up_handles_negative_values() {
-        let result = round_half_up(dec!(-123.455));
-
-        assert_eq!(result, dec!(-123.46)); // Away from zero
-    }
-
-    #[test]
-    fn round_half_up_preserves_already_rounded_values() {
-        let result = round_half_up(dec!(123.45));
-
-        assert_eq!(result, dec!(123.45));
     }
 }
