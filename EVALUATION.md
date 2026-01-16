@@ -37,6 +37,9 @@ The configurable multipliers and thresholds align with the original requirement 
 | `se_tax_deductible_percentage` | SE Worksheet line 3 (92.35%) | 0.9235 |
 | `se_deduction_factor` | SE deduction half (50%) | 0.50 |
 | `required_payment_threshold` | 1040-ES line 14c minimum | $1,000 |
+| `min_se_threshold` | Minimum SE income to trigger tax ($400) | $400 |
+
+**Note**: The `min_se_threshold` field was added via migration `20260107000000_add_min_se_threshold.sql` and is actively used in the SE worksheet calculation to determine if SE tax applies.
 
 ## Migration SQL — Generally Sound
 
@@ -114,6 +117,22 @@ No indexes exist beyond primary keys. Queries on `(tax_year, filing_status_id)` 
 
 - **Affected Tables**: `tax_brackets`, `standard_deductions`
 - **Recommendation**: Add indexes for query performance at scale
+- **Example**: `CREATE INDEX idx_tax_brackets_lookup ON tax_brackets(tax_year, filing_status_id);`
+
+#### Input Validation
+
+The model does not enforce business rules at the database level:
+
+- **Negative values**: No CHECK constraints prevent negative amounts where they shouldn't be allowed (e.g., `expected_agi`, `expected_deduction`)
+- **Required field combinations**: No validation that SE-related fields are provided together when `se_income` is present
+- **Recommendation**: Add CHECK constraints or application-level validation to ensure data integrity
+
+#### Timestamp Handling
+
+The `tax_estimate` table uses SQLite's `TIMESTAMP` type with `CURRENT_TIMESTAMP` defaults, but the Rust model uses `chrono::DateTime<Utc>`:
+
+- **Potential issue**: SQLite TIMESTAMP is stored as text/real, which may cause timezone conversion issues
+- **Recommendation**: Consider using INTEGER for Unix timestamps or ensure consistent UTC handling in application code
 
 ## Summary
 
@@ -125,6 +144,9 @@ The core data model is well-aligned with the documented requirements. All user i
 - Clean separation between configuration data and user calculations
 - Flexible year-based configuration allows easy updates for new tax years
 - Repository trait abstraction enables multiple database backends
+- Proper use of `Option<T>` for optional fields in the Rust model
+- Migration system supports schema evolution (e.g., `min_se_threshold` addition)
+- Calculation logic is well-structured with separate worksheet modules
 
 ### For a Minimal Viable Implementation
 
@@ -143,3 +165,12 @@ Consider adding support for:
 2. **Safe harbor 110% rule** (important for high-income users)
 3. **Farm/non-farm income distinction** (nice-to-have for accuracy)
 
+### For Production Readiness
+
+Additional improvements to consider:
+
+1. **Database indexes** on frequently queried columns (`tax_year`, `filing_status_id`)
+2. **Input validation** via CHECK constraints or application-level validation
+3. **Audit trail** for tracking changes to tax estimates (who/when/what changed)
+4. **Soft deletes** for `tax_estimate` records (add `deleted_at` timestamp)
+5. **Data retention policy** support (archive old estimates after N years)
