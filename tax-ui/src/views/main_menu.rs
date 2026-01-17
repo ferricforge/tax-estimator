@@ -5,7 +5,7 @@ use cursive::view::Resizable;
 use cursive::views::{Dialog, DummyView, LinearLayout, SelectView, TextView};
 use cursive::Cursive;
 
-use super::se_worksheet::show_se_worksheet;
+use super::estimate_workflow::show_estimate_workflow;
 use super::status_bar::{build_status_bar, hints, KeyHint};
 use crate::state::AppState;
 
@@ -30,22 +30,19 @@ pub fn show_main_menu(siv: &mut Cursive) {
         .with_user_data(|state: &mut AppState| state.tax_year)
         .unwrap_or(2025);
 
-    let header = LinearLayout::vertical()
-        .child(
-            TextView::new(format!("Tax Year {}", tax_year))
-                .h_align(HAlign::Center)
-                .full_width(),
-        )
-        .child(DummyView.fixed_height(1));
+    let header = TextView::new(format!("Tax Year {}", tax_year))
+        .h_align(HAlign::Center)
+        .full_width();
 
     let status = build_status_bar(&[
         KeyHint::new("↑↓", "Navigate"),
-        KeyHint::new("Enter", "Select"),
+        hints::ENTER,
         hints::CTRL_Q,
     ]);
 
     let layout = LinearLayout::vertical()
         .child(header)
+        .child(DummyView.fixed_height(1))
         .child(menu)
         .child(DummyView.fixed_height(1))
         .child(status);
@@ -67,25 +64,27 @@ fn handle_menu_selection(siv: &mut Cursive, action: &MenuAction) {
 }
 
 /// Start the new estimate workflow.
-/// Currently goes directly to SE Worksheet; future: add workflow selection.
 fn start_new_estimate(siv: &mut Cursive) {
     // Clear any existing estimate data
     siv.with_user_data(|state: &mut AppState| {
-        state.clear_se_data();
+        state.clear_estimate();
     });
 
-    // Start with SE Worksheet
-    show_se_worksheet(siv);
+    // Show the workflow screen
+    show_estimate_workflow(siv);
 }
 
 /// Placeholder for loading saved estimates.
 fn show_load_estimate_placeholder(siv: &mut Cursive) {
     siv.add_layer(
-        Dialog::text("Load saved estimates from database.\n\nComing soon!")
-            .title("Load Estimate")
-            .button("OK", |s| {
-                s.pop_layer();
-            })
-            .h_align(HAlign::Center),
+        Dialog::text(
+            "Load saved estimates from database.\n\n\
+             Future: List saved estimates, select one,\n\
+             then open the estimate workflow to review/edit.",
+        )
+        .title("Load Estimate")
+        .button("OK", |s| {
+            s.pop_layer();
+        }),
     );
 }

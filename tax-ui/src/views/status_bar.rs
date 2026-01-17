@@ -1,6 +1,5 @@
 //! Status bar component for displaying keyboard shortcuts.
 
-use cursive::align::HAlign;
 use cursive::view::Resizable;
 use cursive::views::{LinearLayout, TextView};
 
@@ -22,14 +21,10 @@ pub fn build_status_bar(hints: &[KeyHint]) -> LinearLayout {
         .iter()
         .map(|h| format!("{}: {}", h.key, h.action))
         .collect::<Vec<_>>()
-        .join("  │  ");
+        .join(" │ ");
 
     LinearLayout::horizontal()
-        .child(
-            TextView::new(hint_text)
-                .h_align(HAlign::Center)
-                .full_width(),
-        )
+        .child(TextView::new(hint_text).full_width())
 }
 
 /// Common key hints for form views.
@@ -38,7 +33,7 @@ pub mod hints {
 
     pub const TAB: KeyHint = KeyHint::new("Tab", "Next");
     pub const SHIFT_TAB: KeyHint = KeyHint::new("S-Tab", "Prev");
-    pub const ESC: KeyHint = KeyHint::new("Esc", "Cancel");
-    pub const ENTER: KeyHint = KeyHint::new("Enter", "Save");
+    pub const ESC: KeyHint = KeyHint::new("Esc", "Back");
+    pub const ENTER: KeyHint = KeyHint::new("Enter", "Select");
     pub const CTRL_Q: KeyHint = KeyHint::new("C-q", "Quit");
 }

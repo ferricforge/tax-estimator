@@ -26,6 +26,9 @@ pub struct AppState {
     /// Saved SE worksheet calculation result.
     /// Populated when user saves the SE worksheet.
     pub se_result: Option<SeWorksheetResult>,
+
+    /// Flag indicating the estimated tax worksheet has been completed.
+    pub est_tax_completed: bool,
 }
 
 impl AppState {
@@ -42,11 +45,17 @@ impl AppState {
         self.se_result.is_some()
     }
 
-    /// Clear SE worksheet data.
-    pub fn clear_se_data(&mut self) {
+    /// Check if estimated tax worksheet has been completed.
+    pub fn has_est_tax_data(&self) -> bool {
+        self.est_tax_completed
+    }
+
+    /// Clear all estimate data for starting fresh.
+    pub fn clear_estimate(&mut self) {
         self.se_income = None;
         self.crp_payments = None;
         self.wages = None;
         self.se_result = None;
+        self.est_tax_completed = false;
     }
 }
