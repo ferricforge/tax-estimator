@@ -1,8 +1,13 @@
 //! Main menu view for the tax estimator.
 
 use cursive::align::HAlign;
-use cursive::views::{Dialog, SelectView, TextView, LinearLayout};
+use cursive::view::Resizable;
+use cursive::views::{Dialog, DummyView, LinearLayout, SelectView, TextView};
 use cursive::Cursive;
+
+use super::se_worksheet::show_se_worksheet;
+use super::status_bar::{build_status_bar, hints, KeyHint};
+use crate::state::AppState;
 
 /// Menu actions available from the main menu.
 #[derive(Debug, Clone, Copy)]
@@ -20,10 +25,30 @@ pub fn show_main_menu(siv: &mut Cursive) {
         .item("Exit", MenuAction::Exit)
         .on_submit(handle_menu_selection);
 
+    // Get tax year from state for display
+    let tax_year = siv
+        .with_user_data(|state: &mut AppState| state.tax_year)
+        .unwrap_or(2025);
+
+    let header = LinearLayout::vertical()
+        .child(
+            TextView::new(format!("Tax Year {}", tax_year))
+                .h_align(HAlign::Center)
+                .full_width(),
+        )
+        .child(DummyView.fixed_height(1));
+
+    let status = build_status_bar(&[
+        KeyHint::new("↑↓", "Navigate"),
+        KeyHint::new("Enter", "Select"),
+        hints::CTRL_Q,
+    ]);
+
     let layout = LinearLayout::vertical()
-        .child(TextView::new("Federal Estimated Tax Calculator").h_align(HAlign::Center))
-        .child(TextView::new(""))  // Spacer
-        .child(menu);
+        .child(header)
+        .child(menu)
+        .child(DummyView.fixed_height(1))
+        .child(status);
 
     let dialog = Dialog::around(layout)
         .title("Tax Estimator - Form 1040-ES")
@@ -35,35 +60,32 @@ pub fn show_main_menu(siv: &mut Cursive) {
 /// Handles the user's menu selection.
 fn handle_menu_selection(siv: &mut Cursive, action: &MenuAction) {
     match action {
-        MenuAction::NewEstimate => show_new_estimate_placeholder(siv),
+        MenuAction::NewEstimate => start_new_estimate(siv),
         MenuAction::LoadEstimate => show_load_estimate_placeholder(siv),
         MenuAction::Exit => siv.quit(),
     }
 }
 
-/// Placeholder for the new estimate workflow.
-/// Future: This will navigate to SE Worksheet (if needed) then 1040-ES Worksheet.
-fn show_new_estimate_placeholder(siv: &mut Cursive) {
-    siv.add_layer(
-        Dialog::text(
-            "New Estimate workflow:\n\n\
-             1. Self-Employment Tax (optional)\n\
-             2. Estimated Tax (1040-ES)\n\n\
-             Coming soon!"
-        )
-        .title("New Estimate")
-        .button("OK", |s| { s.pop_layer(); })
-        .h_align(HAlign::Center),
-    );
+/// Start the new estimate workflow.
+/// Currently goes directly to SE Worksheet; future: add workflow selection.
+fn start_new_estimate(siv: &mut Cursive) {
+    // Clear any existing estimate data
+    siv.with_user_data(|state: &mut AppState| {
+        state.clear_se_data();
+    });
+
+    // Start with SE Worksheet
+    show_se_worksheet(siv);
 }
 
 /// Placeholder for loading saved estimates.
-/// Future: This will list saved estimates from the database.
 fn show_load_estimate_placeholder(siv: &mut Cursive) {
     siv.add_layer(
         Dialog::text("Load saved estimates from database.\n\nComing soon!")
             .title("Load Estimate")
-            .button("OK", |s| { s.pop_layer(); })
+            .button("OK", |s| {
+                s.pop_layer();
+            })
             .h_align(HAlign::Center),
     );
 }

@@ -1,10 +1,16 @@
+mod state;
 mod views;
 
+use cursive::event::Key;
 use cursive::Cursive;
+use state::AppState;
 
 fn main() {
     // Initialize Cursive with the crossterm backend
     let mut siv = cursive::crossterm();
+
+    // Initialize application state with current tax year
+    siv.set_user_data(AppState::new(2025));
 
     // Set up global key bindings
     setup_global_callbacks(&mut siv);
@@ -17,12 +23,11 @@ fn main() {
 }
 
 fn setup_global_callbacks(siv: &mut Cursive) {
-    // Allow quitting with 'q' from anywhere (when not in an input field)
-    siv.add_global_callback('q', |s| s.quit());
+    // Allow quitting with Ctrl+Q from anywhere
+    siv.add_global_callback(cursive::event::Event::CtrlChar('q'), |s| s.quit());
 
-    // Esc quits from main menu level
-    siv.add_global_callback(cursive::event::Key::Esc, |s| {
-        // If there's more than one layer, pop it; otherwise quit
+    // Esc pops a layer or quits if at root
+    siv.add_global_callback(Key::Esc, |s| {
         if s.screen().len() > 1 {
             s.pop_layer();
         } else {

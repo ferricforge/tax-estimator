@@ -6,6 +6,8 @@ edition.workspace = true
 [dependencies]
 tax-core = { path = "../tax-core" }
 cursive = { version = "0.21", default-features = false, features = ["crossterm-backend"] }
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
 
 # Kept for future async repository integration
 tokio.workspace = true
