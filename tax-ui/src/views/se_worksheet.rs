@@ -5,7 +5,6 @@
 //! SE tax in real-time.
 
 use cursive::align::HAlign;
-use cursive::event::Key;
 use cursive::view::{Nameable, Resizable};
 use cursive::views::{Dialog, DummyView, EditView, LinearLayout, Panel, TextView};
 use cursive::Cursive;
@@ -50,16 +49,6 @@ pub fn show_se_worksheet(siv: &mut Cursive) {
 
     siv.add_layer(dialog);
 
-    // Add Enter key to save from anywhere in the form
-    siv.add_layer_cb(|s| {
-        s.add_global_callback(Key::Enter, |s| {
-            // Only trigger save if we're in the SE worksheet
-            if s.screen().len() > 1 {
-                save_worksheet(s);
-            }
-        });
-    });
-
     // Trigger initial calculation
     recalculate(siv);
 }
@@ -96,21 +85,25 @@ fn build_input_section(
     )
     .h_align(HAlign::Left);
 
+    // Add on_submit to each field to trigger save when Enter is pressed
     let se_income_field = EditView::new()
         .content(format_input(se_income))
         .on_edit(|s, _, _| recalculate(s))
+        .on_submit(|s, _| save_worksheet(s))
         .with_name(SE_INCOME_FIELD)
         .fixed_width(15);
 
     let crp_field = EditView::new()
         .content(format_input(crp))
         .on_edit(|s, _, _| recalculate(s))
+        .on_submit(|s, _| save_worksheet(s))
         .with_name(CRP_PAYMENTS_FIELD)
         .fixed_width(15);
 
     let wages_field = EditView::new()
         .content(format_input(wages))
         .on_edit(|s, _, _| recalculate(s))
+        .on_submit(|s, _| save_worksheet(s))
         .with_name(WAGES_FIELD)
         .fixed_width(15);
 
