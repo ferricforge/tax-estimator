@@ -166,6 +166,37 @@ impl EstimateForm {
             expected_wages,
         })
     }
+
+    /// Validate only SE fields for SE tax calculation
+    pub fn validate_se_only(&mut self) -> Result<Option<Decimal>, ()> {
+        let mut errors = Vec::new();
+
+        // SE income is required for SE calculation
+        let se_income = if self.se_income.trim().is_empty() {
+            errors.push("Self-Employment Income is required for SE tax calculation".to_string());
+            None
+        } else {
+            match Decimal::from_str(self.se_income.trim()) {
+                Ok(v) => Some(v),
+                Err(_) => {
+                    errors.push("Self-Employment Income must be a valid number".to_string());
+                    None
+                }
+            }
+        };
+
+        // Optional fields - no errors if empty or invalid
+        let _crp_payments = parse_decimal_optional(&self.expected_crp_payments);
+        let _wages = parse_decimal_optional(&self.expected_wages);
+
+        self.errors = errors;
+
+        if !self.errors.is_empty() {
+            return Err(());
+        }
+
+        Ok(se_income)
+    }
 }
 
 /// Calculated results to display
@@ -214,15 +245,39 @@ impl TaxApp {
         self.status_message = None;
     }
 
-    /// Placeholder for actual calculation logic
+    /// Calculate only SE tax
+    pub fn calculate_se_only(&mut self) {
+        match self.form.validate_se_only() {
+            Ok(Some(se_income)) => {
+                // Simple SE tax calculation (actual rate is more complex)
+                // SE tax = net earnings * 92.35% * 15.3%
+                let se_base = se_income * Decimal::from_str("0.9235").unwrap();
+                let se_tax = se_base * Decimal::from_str("0.153").unwrap();
+
+                self.results.se_tax = Some(se_tax);
+
+                self.show_message("SE tax calculated", MessageType::Success);
+            }
+            Ok(None) => {
+                self.show_message("Enter self-employment income to calculate", MessageType::Info);
+            }
+            Err(()) => {
+                self.show_message("Please fix validation errors", MessageType::Error);
+            }
+        }
+    }
+
+    /// Full calculation (existing method stays the same)
     pub fn calculate(&mut self) {
         match self.form.validate() {
             Ok(estimate) => {
-                // TODO: Call your actual tax calculation logic from tax-core
-                // For now, just show placeholder results
+                // Full calculation including SE if present
                 let se_tax = estimate
                     .se_income
-                    .map(|se| se * Decimal::from_str("0.153").unwrap());
+                    .map(|se| {
+                        let se_base = se * Decimal::from_str("0.9235").unwrap();
+                        se_base * Decimal::from_str("0.153").unwrap()
+                    });
 
                 self.results = CalculationResults {
                     se_tax,

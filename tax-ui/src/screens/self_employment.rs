@@ -47,6 +47,17 @@ impl SelfEmploymentScreen {
                 ui.label("Wages affect the Social Security portion of SE tax calculation.");
             });
 
+            // Show SE-specific validation errors
+            if !app.form.errors.is_empty() {
+                ui.add_space(10.0);
+                ui.group(|ui| {
+                    ui.colored_label(egui::Color32::RED, "Validation Errors:");
+                    for error in &app.form.errors {
+                        ui.colored_label(egui::Color32::RED, format!("  • {error}"));
+                    }
+                });
+            }
+
             ui.add_space(20.0);
 
             // SE Tax Preview
@@ -78,10 +89,22 @@ impl SelfEmploymentScreen {
             ui.horizontal(|ui| {
                 if ui.button("← Back to Main").clicked() {
                     app.current_screen = crate::app::Screen::Main;
+                    // Clear SE-specific errors when leaving
+                    app.form.errors.clear();
                 }
 
-                if ui.button("Calculate").clicked() {
-                    app.calculate();
+                // Changed: Use SE-specific calculation
+                if ui.button("Calculate SE Tax").clicked() {
+                    app.calculate_se_only();
+                }
+
+                // Optional: Add a button to copy SE tax to main form
+                if app.results.se_tax.is_some() {
+                    if ui.button("Copy to Main Estimate").clicked() {
+                        // This ensures the SE income is reflected in the main form
+                        app.current_screen = crate::app::Screen::Main;
+                        app.show_message("SE tax copied to main estimate", crate::app::MessageType::Info);
+                    }
                 }
             });
         });
