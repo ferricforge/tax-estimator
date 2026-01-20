@@ -1,6 +1,5 @@
 use crate::app::{get_available_tax_years, FilingStatus, TaxApp};
 use egui::Ui;
-use rust_decimal::Decimal;
 
 pub struct MainEstimateScreen;
 
