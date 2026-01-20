@@ -13,10 +13,16 @@ pub enum Screen {
     LoadEstimate,
 }
 
+/// Returns available tax years for selection
+/// TODO: Replace with database retrieval
+pub fn get_available_tax_years() -> Vec<i32> {
+    vec![2026, 2025, 2024, 2023]
+}
+
 /// Form state for creating/editing an estimate
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct EstimateForm {
-    pub tax_year: String,
+    pub tax_year: i32,
     pub filing_status: FilingStatus,
     pub expected_agi: String,
     pub expected_deduction: String,
@@ -34,6 +40,27 @@ pub struct EstimateForm {
 
     // Validation errors
     pub errors: Vec<String>,
+}
+
+impl Default for EstimateForm {
+    fn default() -> Self {
+        Self {
+            tax_year: 2025,
+            filing_status: FilingStatus::default(),
+            expected_agi: String::new(),
+            expected_deduction: "14600".to_string(),
+            expected_qbi_deduction: String::new(),
+            expected_amt: String::new(),
+            expected_credits: String::new(),
+            expected_other_taxes: String::new(),
+            expected_withholding: String::new(),
+            prior_year_tax: String::new(),
+            se_income: String::new(),
+            expected_crp_payments: String::new(),
+            expected_wages: String::new(),
+            errors: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -79,20 +106,6 @@ impl FilingStatus {
 }
 
 // Standalone parsing functions that collect errors into a Vec
-fn parse_required<T: FromStr>(errors: &mut Vec<String>, field: &str, value: &str) -> Option<T> {
-    if value.trim().is_empty() {
-        errors.push(format!("{field} is required"));
-        return None;
-    }
-    match value.trim().parse() {
-        Ok(v) => Some(v),
-        Err(_) => {
-            errors.push(format!("{field} is invalid"));
-            None
-        }
-    }
-}
-
 fn parse_decimal_required(errors: &mut Vec<String>, field: &str, value: &str) -> Option<Decimal> {
     if value.trim().is_empty() {
         errors.push(format!("{field} is required"));
@@ -117,18 +130,13 @@ fn parse_decimal_optional(value: &str) -> Option<Decimal> {
 
 impl EstimateForm {
     pub fn new() -> Self {
-        Self {
-            tax_year: "2025".to_string(),
-            expected_deduction: "14600".to_string(),
-            ..Default::default()
-        }
+        Self::default()
     }
 
     /// Parse form into NewTaxEstimate, returning errors if invalid
     pub fn validate(&mut self) -> Result<NewTaxEstimate, ()> {
         let mut errors = Vec::new();
 
-        let tax_year = parse_required(&mut errors, "Tax Year", &self.tax_year);
         let expected_agi = parse_decimal_required(&mut errors, "Expected AGI", &self.expected_agi);
         let expected_deduction =
             parse_decimal_required(&mut errors, "Expected Deduction", &self.expected_deduction);
@@ -150,7 +158,7 @@ impl EstimateForm {
         }
 
         Ok(NewTaxEstimate {
-            tax_year: tax_year.unwrap(),
+            tax_year: self.tax_year,
             filing_status_id: self.filing_status.id(),
             expected_agi: expected_agi.unwrap(),
             expected_deduction: expected_deduction.unwrap(),
@@ -202,6 +210,7 @@ impl EstimateForm {
 
 /// Parsed SE inputs for calculation
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields will be used when full SE calculation is implemented
 pub struct SeInputs {
     pub se_income: Decimal,
     pub crp_payments: Option<Decimal>,

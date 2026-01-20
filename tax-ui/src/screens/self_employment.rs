@@ -1,10 +1,17 @@
-use crate::app::{MessageType, TaxApp, Screen};
+use crate::app::{MessageType, Screen, TaxApp};
 use egui::Ui;
 use rust_decimal::Decimal;
 
 pub struct SelfEmploymentScreen;
 
 impl SelfEmploymentScreen {
+    /// Consistent group width matching Main screen
+    const GROUP_WIDTH: f32 = 500.0;
+    /// Label column width for alignment
+    const LABEL_WIDTH: f32 = 200.0;
+    /// Currency input field width
+    const INPUT_WIDTH: f32 = 120.0;
+
     pub fn show(app: &mut TaxApp, ui: &mut Ui) {
         ui.heading("Self-Employment Tax Worksheet");
         ui.separator();
@@ -13,8 +20,7 @@ impl SelfEmploymentScreen {
         ui.add_space(10.0);
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            // Use a fixed width for consistent group sizing
-            let group_width = ui.available_width().min(500.0);
+            let group_width = ui.available_width().min(Self::GROUP_WIDTH);
 
             ui.allocate_ui(egui::vec2(group_width, 0.0), |ui| {
                 ui.group(|ui| {
@@ -32,7 +38,9 @@ impl SelfEmploymentScreen {
                     });
 
                     ui.add_space(5.0);
-                    ui.label("Enter your expected net profit from Schedule C, Schedule F, or K-1.");
+                    ui.label(
+                        "Enter your expected net profit from Schedule C, Schedule F, or K-1.",
+                    );
                 });
             });
 
@@ -102,7 +110,9 @@ impl SelfEmploymentScreen {
                                 ui.end_row();
                             });
                     } else {
-                        ui.label("Enter self-employment income and click Calculate to see results.");
+                        ui.label(
+                            "Enter self-employment income and click Calculate to see results.",
+                        );
                     }
                 });
             });
@@ -147,7 +157,7 @@ impl SelfEmploymentScreen {
     fn grid_currency_row(ui: &mut Ui, label: &str, value: &mut String, required: bool) {
         // Column 1: Label (fixed width for alignment)
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.set_min_width(200.0);
+            ui.set_min_width(Self::LABEL_WIDTH);
             if required {
                 ui.label(egui::RichText::new(label).strong());
             } else {
@@ -161,7 +171,7 @@ impl SelfEmploymentScreen {
         // Column 3: Input field (fixed width)
         ui.add(
             egui::TextEdit::singleline(value)
-                .desired_width(120.0)
+                .desired_width(Self::INPUT_WIDTH)
                 .hint_text("0.00"),
         );
 

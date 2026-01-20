@@ -1,6 +1,5 @@
 mod app;
 mod screens;
-mod widgets;
 
 use app::TaxApp;
 use eframe::NativeOptions;

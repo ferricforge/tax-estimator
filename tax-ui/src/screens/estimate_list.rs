@@ -82,7 +82,7 @@ impl EstimateListScreen {
 }
 
 fn load_estimate_into_form(app: &mut TaxApp, estimate: &TaxEstimate) {
-    app.form.tax_year = estimate.tax_year.to_string();
+    app.form.tax_year = estimate.tax_year;
     app.form.expected_agi = estimate.expected_agi.to_string();
     app.form.expected_deduction = estimate.expected_deduction.to_string();
     app.form.expected_qbi_deduction = estimate
