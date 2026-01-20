@@ -78,6 +78,43 @@ impl FilingStatus {
     }
 }
 
+// Standalone parsing functions that collect errors into a Vec
+fn parse_required<T: FromStr>(errors: &mut Vec<String>, field: &str, value: &str) -> Option<T> {
+    if value.trim().is_empty() {
+        errors.push(format!("{field} is required"));
+        return None;
+    }
+    match value.trim().parse() {
+        Ok(v) => Some(v),
+        Err(_) => {
+            errors.push(format!("{field} is invalid"));
+            None
+        }
+    }
+}
+
+fn parse_decimal_required(errors: &mut Vec<String>, field: &str, value: &str) -> Option<Decimal> {
+    if value.trim().is_empty() {
+        errors.push(format!("{field} is required"));
+        return None;
+    }
+    match Decimal::from_str(value.trim()) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            errors.push(format!("{field} must be a valid number"));
+            None
+        }
+    }
+}
+
+fn parse_decimal_optional(value: &str) -> Option<Decimal> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Decimal::from_str(trimmed).ok()
+}
+
 impl EstimateForm {
     pub fn new() -> Self {
         Self {
@@ -89,22 +126,25 @@ impl EstimateForm {
 
     /// Parse form into NewTaxEstimate, returning errors if invalid
     pub fn validate(&mut self) -> Result<NewTaxEstimate, ()> {
-        self.errors.clear();
+        let mut errors = Vec::new();
 
-        let tax_year = self.parse_required("Tax Year", &self.tax_year);
-        let expected_agi = self.parse_decimal_required("Expected AGI", &self.expected_agi);
+        let tax_year = parse_required(&mut errors, "Tax Year", &self.tax_year);
+        let expected_agi = parse_decimal_required(&mut errors, "Expected AGI", &self.expected_agi);
         let expected_deduction =
-            self.parse_decimal_required("Expected Deduction", &self.expected_deduction);
+            parse_decimal_required(&mut errors, "Expected Deduction", &self.expected_deduction);
 
-        let expected_qbi_deduction = self.parse_decimal_optional(&self.expected_qbi_deduction);
-        let expected_amt = self.parse_decimal_optional(&self.expected_amt);
-        let expected_credits = self.parse_decimal_optional(&self.expected_credits);
-        let expected_other_taxes = self.parse_decimal_optional(&self.expected_other_taxes);
-        let expected_withholding = self.parse_decimal_optional(&self.expected_withholding);
-        let prior_year_tax = self.parse_decimal_optional(&self.prior_year_tax);
-        let se_income = self.parse_decimal_optional(&self.se_income);
-        let expected_crp_payments = self.parse_decimal_optional(&self.expected_crp_payments);
-        let expected_wages = self.parse_decimal_optional(&self.expected_wages);
+        let expected_qbi_deduction = parse_decimal_optional(&self.expected_qbi_deduction);
+        let expected_amt = parse_decimal_optional(&self.expected_amt);
+        let expected_credits = parse_decimal_optional(&self.expected_credits);
+        let expected_other_taxes = parse_decimal_optional(&self.expected_other_taxes);
+        let expected_withholding = parse_decimal_optional(&self.expected_withholding);
+        let prior_year_tax = parse_decimal_optional(&self.prior_year_tax);
+        let se_income = parse_decimal_optional(&self.se_income);
+        let expected_crp_payments = parse_decimal_optional(&self.expected_crp_payments);
+        let expected_wages = parse_decimal_optional(&self.expected_wages);
+
+        // Assign collected errors to self
+        self.errors = errors;
 
         if !self.errors.is_empty() {
             return Err(());
@@ -125,45 +165,6 @@ impl EstimateForm {
             expected_crp_payments,
             expected_wages,
         })
-    }
-
-    fn parse_required<T: FromStr>(&mut self, field: &str, value: &str) -> Option<T> {
-        if value.trim().is_empty() {
-            self.errors.push(format!("{field} is required"));
-            return None;
-        }
-        match value.trim().parse() {
-            Ok(v) => Some(v),
-            Err(_) => {
-                self.errors.push(format!("{field} is invalid"));
-                None
-            }
-        }
-    }
-
-    fn parse_decimal_required(&mut self, field: &str, value: &str) -> Option<Decimal> {
-        if value.trim().is_empty() {
-            self.errors.push(format!("{field} is required"));
-            return None;
-        }
-        match Decimal::from_str(value.trim()) {
-            Ok(v) => Some(v),
-            Err(_) => {
-                self.errors.push(format!("{field} must be a valid number"));
-                None
-            }
-        }
-    }
-
-    fn parse_decimal_optional(&mut self, value: &str) -> Option<Decimal> {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        match Decimal::from_str(trimmed) {
-            Ok(v) => Some(v),
-            Err(_) => None, // Silently ignore invalid optional fields
-        }
     }
 }
 
@@ -219,7 +220,9 @@ impl TaxApp {
             Ok(estimate) => {
                 // TODO: Call your actual tax calculation logic from tax-core
                 // For now, just show placeholder results
-                let se_tax = estimate.se_income.map(|se| se * Decimal::from_str("0.153").unwrap());
+                let se_tax = estimate
+                    .se_income
+                    .map(|se| se * Decimal::from_str("0.153").unwrap());
 
                 self.results = CalculationResults {
                     se_tax,

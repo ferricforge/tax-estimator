@@ -1,5 +1,7 @@
 use crate::app::{MessageType, TaxApp};
 use egui::Ui;
+use rust_decimal::Decimal;
+use tax_core::models::TaxEstimate;
 
 pub struct EstimateListScreen;
 
@@ -65,7 +67,10 @@ impl EstimateListScreen {
                                 }
                                 if ui.small_button("🗑").clicked() {
                                     // TODO: Implement delete
-                                    app.show_message("Delete not yet implemented", MessageType::Info);
+                                    app.show_message(
+                                        "Delete not yet implemented",
+                                        MessageType::Info,
+                                    );
                                 }
                             });
                             ui.end_row();
@@ -76,7 +81,7 @@ impl EstimateListScreen {
     }
 }
 
-fn load_estimate_into_form(app: &mut TaxApp, estimate: &tax_core::models::TaxEstimate) {
+fn load_estimate_into_form(app: &mut TaxApp, estimate: &TaxEstimate) {
     app.form.tax_year = estimate.tax_year.to_string();
     app.form.expected_agi = estimate.expected_agi.to_string();
     app.form.expected_deduction = estimate.expected_deduction.to_string();
@@ -125,53 +130,53 @@ fn load_estimate_into_form(app: &mut TaxApp, estimate: &tax_core::models::TaxEst
     app.results.required_payment = estimate.calculated_required_payment;
     app.results.quarterly_payment = estimate
         .calculated_required_payment
-        .map(|p| p / rust_decimal::Decimal::from(4));
+        .map(|p| p / Decimal::from(4));
 }
 
-fn create_demo_estimates() -> Vec<tax_core::models::TaxEstimate> {
+fn create_demo_estimates() -> Vec<TaxEstimate> {
     use chrono::Utc;
-    use rust_decimal_macros::dec;
+    use std::str::FromStr;
 
     vec![
-        tax_core::models::TaxEstimate {
+        TaxEstimate {
             id: 1,
             tax_year: 2025,
             filing_status_id: 1,
-            expected_agi: dec!(75000),
-            expected_deduction: dec!(14600),
+            expected_agi: Decimal::from_str("75000").unwrap(),
+            expected_deduction: Decimal::from_str("14600").unwrap(),
             expected_qbi_deduction: None,
             expected_amt: None,
             expected_credits: None,
             expected_other_taxes: None,
-            expected_withholding: Some(dec!(8000)),
-            prior_year_tax: Some(dec!(9500)),
+            expected_withholding: Some(Decimal::from_str("8000").unwrap()),
+            prior_year_tax: Some(Decimal::from_str("9500").unwrap()),
             se_income: None,
             expected_crp_payments: None,
             expected_wages: None,
             calculated_se_tax: None,
-            calculated_total_tax: Some(dec!(9800)),
-            calculated_required_payment: Some(dec!(1800)),
+            calculated_total_tax: Some(Decimal::from_str("9800").unwrap()),
+            calculated_required_payment: Some(Decimal::from_str("1800").unwrap()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         },
-        tax_core::models::TaxEstimate {
+        TaxEstimate {
             id: 2,
             tax_year: 2025,
             filing_status_id: 2,
-            expected_agi: dec!(150000),
-            expected_deduction: dec!(29200),
-            expected_qbi_deduction: Some(dec!(5000)),
+            expected_agi: Decimal::from_str("150000").unwrap(),
+            expected_deduction: Decimal::from_str("29200").unwrap(),
+            expected_qbi_deduction: Some(Decimal::from_str("5000").unwrap()),
             expected_amt: None,
-            expected_credits: Some(dec!(2000)),
+            expected_credits: Some(Decimal::from_str("2000").unwrap()),
             expected_other_taxes: None,
-            expected_withholding: Some(dec!(20000)),
-            prior_year_tax: Some(dec!(22000)),
-            se_income: Some(dec!(50000)),
+            expected_withholding: Some(Decimal::from_str("20000").unwrap()),
+            prior_year_tax: Some(Decimal::from_str("22000").unwrap()),
+            se_income: Some(Decimal::from_str("50000").unwrap()),
             expected_crp_payments: None,
-            expected_wages: Some(dec!(100000)),
-            calculated_se_tax: Some(dec!(7065)),
-            calculated_total_tax: Some(dec!(25000)),
-            calculated_required_payment: Some(dec!(5000)),
+            expected_wages: Some(Decimal::from_str("100000").unwrap()),
+            calculated_se_tax: Some(Decimal::from_str("7065").unwrap()),
+            calculated_total_tax: Some(Decimal::from_str("25000").unwrap()),
+            calculated_required_payment: Some(Decimal::from_str("5000").unwrap()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         },
