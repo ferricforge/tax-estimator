@@ -119,7 +119,7 @@ impl EstimateForm {
     pub fn new() -> Self {
         Self {
             tax_year: "2025".to_string(),
-            expected_deduction: "14600".to_string(), // 2024 standard deduction single
+            expected_deduction: "14600".to_string(),
             ..Default::default()
         }
     }
@@ -143,7 +143,6 @@ impl EstimateForm {
         let expected_crp_payments = parse_decimal_optional(&self.expected_crp_payments);
         let expected_wages = parse_decimal_optional(&self.expected_wages);
 
-        // Assign collected errors to self
         self.errors = errors;
 
         if !self.errors.is_empty() {
@@ -168,12 +167,11 @@ impl EstimateForm {
     }
 
     /// Validate only SE fields for SE tax calculation
-    pub fn validate_se_only(&mut self) -> Result<Option<Decimal>, ()> {
+    pub fn validate_se_only(&mut self) -> Result<SeInputs, ()> {
         let mut errors = Vec::new();
 
-        // SE income is required for SE calculation
         let se_income = if self.se_income.trim().is_empty() {
-            errors.push("Self-Employment Income is required for SE tax calculation".to_string());
+            errors.push("Self-Employment Income is required".to_string());
             None
         } else {
             match Decimal::from_str(self.se_income.trim()) {
@@ -185,9 +183,8 @@ impl EstimateForm {
             }
         };
 
-        // Optional fields - no errors if empty or invalid
-        let _crp_payments = parse_decimal_optional(&self.expected_crp_payments);
-        let _wages = parse_decimal_optional(&self.expected_wages);
+        let crp_payments = parse_decimal_optional(&self.expected_crp_payments);
+        let wages = parse_decimal_optional(&self.expected_wages);
 
         self.errors = errors;
 
@@ -195,8 +192,20 @@ impl EstimateForm {
             return Err(());
         }
 
-        Ok(se_income)
+        Ok(SeInputs {
+            se_income: se_income.unwrap(),
+            crp_payments,
+            wages,
+        })
     }
+}
+
+/// Parsed SE inputs for calculation
+#[derive(Debug, Clone)]
+pub struct SeInputs {
+    pub se_income: Decimal,
+    pub crp_payments: Option<Decimal>,
+    pub wages: Option<Decimal>,
 }
 
 /// Calculated results to display
@@ -248,18 +257,13 @@ impl TaxApp {
     /// Calculate only SE tax
     pub fn calculate_se_only(&mut self) {
         match self.form.validate_se_only() {
-            Ok(Some(se_income)) => {
-                // Simple SE tax calculation (actual rate is more complex)
+            Ok(inputs) => {
                 // SE tax = net earnings * 92.35% * 15.3%
-                let se_base = se_income * Decimal::from_str("0.9235").unwrap();
+                let se_base = inputs.se_income * Decimal::from_str("0.9235").unwrap();
                 let se_tax = se_base * Decimal::from_str("0.153").unwrap();
 
                 self.results.se_tax = Some(se_tax);
-
                 self.show_message("SE tax calculated", MessageType::Success);
-            }
-            Ok(None) => {
-                self.show_message("Enter self-employment income to calculate", MessageType::Info);
             }
             Err(()) => {
                 self.show_message("Please fix validation errors", MessageType::Error);
@@ -267,23 +271,20 @@ impl TaxApp {
         }
     }
 
-    /// Full calculation (existing method stays the same)
+    /// Full calculation
     pub fn calculate(&mut self) {
         match self.form.validate() {
             Ok(estimate) => {
-                // Full calculation including SE if present
-                let se_tax = estimate
-                    .se_income
-                    .map(|se| {
-                        let se_base = se * Decimal::from_str("0.9235").unwrap();
-                        se_base * Decimal::from_str("0.153").unwrap()
-                    });
+                let se_tax = estimate.se_income.map(|se| {
+                    let se_base = se * Decimal::from_str("0.9235").unwrap();
+                    se_base * Decimal::from_str("0.153").unwrap()
+                });
 
                 self.results = CalculationResults {
                     se_tax,
-                    total_tax: Some(Decimal::from(10000)), // Placeholder
-                    required_payment: Some(Decimal::from(8000)), // Placeholder
-                    quarterly_payment: Some(Decimal::from(2000)), // Placeholder
+                    total_tax: Some(Decimal::from(10000)),
+                    required_payment: Some(Decimal::from(8000)),
+                    quarterly_payment: Some(Decimal::from(2000)),
                 };
 
                 self.show_message("Calculation complete", MessageType::Success);
@@ -297,7 +298,6 @@ impl TaxApp {
 
 impl eframe::App for TaxApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        // Top menu bar
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -319,7 +319,6 @@ impl eframe::App for TaxApp {
             });
         });
 
-        // Navigation sidebar
         egui::SidePanel::left("nav_panel")
             .resizable(false)
             .default_width(150.0)
@@ -357,7 +356,6 @@ impl eframe::App for TaxApp {
                 }
             });
 
-        // Status bar at bottom
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if let Some((msg, msg_type)) = &self.status_message {
@@ -375,7 +373,6 @@ impl eframe::App for TaxApp {
             });
         });
 
-        // Main content area
         egui::CentralPanel::default().show(ctx, |ui| match self.current_screen {
             Screen::Main => MainEstimateScreen::show(self, ui),
             Screen::SelfEmployment => SelfEmploymentScreen::show(self, ui),
