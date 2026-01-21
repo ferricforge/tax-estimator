@@ -2,7 +2,7 @@ use crate::screens::{EstimateListScreen, MainEstimateScreen, SelfEmploymentScree
 use egui::Context;
 use rust_decimal::Decimal;
 use std::str::FromStr;
-use tax_core::calculations::{SeWorksheet, SeWorksheetConfig};
+use tax_core::calculations::{SeWorksheet, SeWorksheetConfig, SeWorksheetResult};
 use tax_core::models::{NewTaxEstimate, TaxEstimate};
 
 /// Which screen is currently active
@@ -269,7 +269,6 @@ pub struct CalculationResults {
     pub quarterly_payment: Option<Decimal>,
 }
 
-
 /// Main application state
 pub struct TaxApp {
     pub current_screen: Screen,
@@ -307,30 +306,63 @@ impl TaxApp {
         self.status_message = None;
     }
 
-    /// Calculate only SE tax using tax-core SeWorksheet
+    /// Perform SE tax calculation with given inputs
+    /// Returns Ok(Some(result)) if calculation succeeded,
+    /// Ok(None) if no SE income provided,
+    /// Err(message) if calculation failed
+    fn perform_se_calculation(
+        tax_year: i32,
+        se_income: Option<Decimal>,
+        crp_payments: Option<Decimal>,
+        wages: Option<Decimal>,
+    ) -> Result<Option<SeWorksheetResult>, String> {
+        let Some(se_income) = se_income else {
+            return Ok(None);
+        };
+
+        if se_income.is_zero() {
+            return Ok(None);
+        }
+
+        let config = get_se_config(tax_year);
+        let worksheet = SeWorksheet::new(config);
+
+        worksheet
+            .calculate(
+                se_income,
+                crp_payments.unwrap_or(Decimal::ZERO),
+                wages.unwrap_or(Decimal::ZERO),
+            )
+            .map(Some)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Calculate only SE tax
     pub fn calculate_se_only(&mut self) {
         match self.form.validate_se_only() {
             Ok(inputs) => {
-                let config = get_se_config(self.form.tax_year);
-                let worksheet = SeWorksheet::new(config);
-
-                let crp_payments = inputs.crp_payments.unwrap_or(Decimal::ZERO);
-                let wages = inputs.wages.unwrap_or(Decimal::ZERO);
-
-                match worksheet.calculate(inputs.se_income, crp_payments, wages) {
-                    Ok(result) => {
+                match Self::perform_se_calculation(
+                    self.form.tax_year,
+                    Some(inputs.se_income),
+                    inputs.crp_payments,
+                    inputs.wages,
+                ) {
+                    Ok(Some(result)) => {
                         self.results.se_tax = Some(result.self_employment_tax);
                         self.results.se_tax_deduction = Some(result.se_tax_deduction);
                         self.show_message(
-                            format!(
-                                "SE tax calculated: ${:.2}",
-                                result.self_employment_tax
-                            ),
+                            format!("SE tax calculated: ${:.2}", result.self_employment_tax),
                             MessageType::Success,
                         );
                     }
-                    Err(e) => {
-                        self.show_message(format!("SE calculation error: {e}"), MessageType::Error);
+                    Ok(None) => {
+                        self.show_message(
+                            "Enter a non-zero SE income to calculate",
+                            MessageType::Info,
+                        );
+                    }
+                    Err(msg) => {
+                        self.show_message(format!("SE calculation error: {msg}"), MessageType::Error);
                     }
                 }
             }
@@ -340,32 +372,28 @@ impl TaxApp {
         }
     }
 
-    /// Full calculation
+    /// Full estimate calculation
     pub fn calculate(&mut self) {
         match self.form.validate() {
             Ok(estimate) => {
-                // Calculate SE tax if SE income is present
-                let (se_tax, se_tax_deduction) = if let Some(se_income) = estimate.se_income {
-                    let config = get_se_config(self.form.tax_year);
-                    let worksheet = SeWorksheet::new(config);
-
-                    let crp_payments = estimate.expected_crp_payments.unwrap_or(Decimal::ZERO);
-                    let wages = estimate.expected_wages.unwrap_or(Decimal::ZERO);
-
-                    match worksheet.calculate(se_income, crp_payments, wages) {
-                        Ok(result) => {
-                            (Some(result.self_employment_tax), Some(result.se_tax_deduction))
-                        }
-                        Err(e) => {
-                            self.show_message(
-                                format!("SE calculation error: {e}"),
-                                MessageType::Error,
-                            );
-                            return;
-                        }
+                // Calculate SE tax only if SE income was provided
+                let (se_tax, se_tax_deduction) = match Self::perform_se_calculation(
+                    self.form.tax_year,
+                    estimate.se_income,
+                    estimate.expected_crp_payments,
+                    estimate.expected_wages,
+                ) {
+                    Ok(Some(result)) => {
+                        (Some(result.self_employment_tax), Some(result.se_tax_deduction))
                     }
-                } else {
-                    (None, None)
+                    Ok(None) => (None, None),
+                    Err(msg) => {
+                        self.show_message(
+                            format!("SE calculation error: {msg}"),
+                            MessageType::Error,
+                        );
+                        return;
+                    }
                 };
 
                 // TODO: Call EstimatedTaxWorksheet for full calculation

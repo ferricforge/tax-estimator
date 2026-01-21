@@ -1,6 +1,5 @@
 use crate::app::{MessageType, Screen, TaxApp};
 use egui::Ui;
-use rust_decimal::Decimal;
 
 pub struct SelfEmploymentScreen;
 
@@ -99,7 +98,9 @@ impl SelfEmploymentScreen {
                     ui.heading("SE Tax Results");
                     ui.add_space(5.0);
 
-                    if let Some(se_tax) = app.results.se_tax {
+                    if let (Some(se_tax), Some(deduction)) =
+                        (app.results.se_tax, app.results.se_tax_deduction)
+                    {
                         egui::Grid::new("se_results")
                             .num_columns(2)
                             .spacing([40.0, 8.0])
@@ -108,11 +109,9 @@ impl SelfEmploymentScreen {
                                 ui.strong(format!("${:.2}", se_tax));
                                 ui.end_row();
 
-                                if let Some(deduction) = app.results.se_tax_deduction {
-                                    ui.label("SE Tax Deduction (Schedule 1, Line 15):");
-                                    ui.label(format!("${:.2}", deduction));
-                                    ui.end_row();
-                                }
+                                ui.label("SE Tax Deduction (Schedule 1, Line 15):");
+                                ui.label(format!("${:.2}", deduction));
+                                ui.end_row();
                             });
 
                         ui.add_space(10.0);
@@ -168,7 +167,6 @@ impl SelfEmploymentScreen {
 
     /// Add a row to a currency grid with consistent layout
     fn grid_currency_row(ui: &mut Ui, label: &str, value: &mut String, required: bool) {
-        // Column 1: Label (fixed width for alignment)
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.set_min_width(Self::LABEL_WIDTH);
             if required {
@@ -178,10 +176,8 @@ impl SelfEmploymentScreen {
             }
         });
 
-        // Column 2: Dollar sign
         ui.label("$");
 
-        // Column 3: Input field (fixed width)
         ui.add(
             egui::TextEdit::singleline(value)
                 .desired_width(Self::INPUT_WIDTH)
