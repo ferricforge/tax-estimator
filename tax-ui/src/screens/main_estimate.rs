@@ -105,6 +105,19 @@ impl MainEstimateScreen {
                             false,
                         );
                     });
+
+                    // Show SE tax deduction hint if calculated
+                    if let Some(se_deduction) = app.results.se_tax_deduction {
+                        ui.add_space(5.0);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.label("💡");
+                            ui.label(format!(
+                                "SE tax deduction available: ${:.2} (reduces AGI)",
+                                se_deduction
+                            ));
+                        });
+                    }
                 });
             });
 
@@ -220,6 +233,12 @@ impl MainEstimateScreen {
                                 if let Some(se_tax) = app.results.se_tax {
                                     ui.label("Self-Employment Tax:");
                                     ui.label(format!("${:.2}", se_tax));
+                                    ui.end_row();
+                                }
+
+                                if let Some(se_deduction) = app.results.se_tax_deduction {
+                                    ui.label("SE Tax Deduction:");
+                                    ui.label(format!("${:.2}", se_deduction));
                                     ui.end_row();
                                 }
 

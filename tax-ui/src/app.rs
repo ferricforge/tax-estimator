@@ -2,6 +2,7 @@ use crate::screens::{EstimateListScreen, MainEstimateScreen, SelfEmploymentScree
 use egui::Context;
 use rust_decimal::Decimal;
 use std::str::FromStr;
+use tax_core::calculations::{SeWorksheet, SeWorksheetConfig};
 use tax_core::models::{NewTaxEstimate, TaxEstimate};
 
 /// Which screen is currently active
@@ -208,6 +209,47 @@ impl EstimateForm {
     }
 }
 
+/// Returns SE worksheet configuration for a given tax year
+/// TODO: Replace with database retrieval
+pub fn get_se_config(tax_year: i32) -> SeWorksheetConfig {
+    match tax_year {
+        2026 => SeWorksheetConfig {
+            // Projected values - update when IRS announces
+            ss_wage_max: Decimal::from_str("180000.00").unwrap(),
+            ss_tax_rate: Decimal::from_str("0.124").unwrap(),
+            medicare_tax_rate: Decimal::from_str("0.029").unwrap(),
+            net_earnings_factor: Decimal::from_str("0.9235").unwrap(),
+            deduction_factor: Decimal::from_str("0.50").unwrap(),
+            min_se_threshold: Decimal::from_str("400.00").unwrap(),
+        },
+        2025 => SeWorksheetConfig {
+            ss_wage_max: Decimal::from_str("176100.00").unwrap(),
+            ss_tax_rate: Decimal::from_str("0.124").unwrap(),
+            medicare_tax_rate: Decimal::from_str("0.029").unwrap(),
+            net_earnings_factor: Decimal::from_str("0.9235").unwrap(),
+            deduction_factor: Decimal::from_str("0.50").unwrap(),
+            min_se_threshold: Decimal::from_str("400.00").unwrap(),
+        },
+        2024 => SeWorksheetConfig {
+            ss_wage_max: Decimal::from_str("168600.00").unwrap(),
+            ss_tax_rate: Decimal::from_str("0.124").unwrap(),
+            medicare_tax_rate: Decimal::from_str("0.029").unwrap(),
+            net_earnings_factor: Decimal::from_str("0.9235").unwrap(),
+            deduction_factor: Decimal::from_str("0.50").unwrap(),
+            min_se_threshold: Decimal::from_str("400.00").unwrap(),
+        },
+        // 2023 and earlier / default
+        _ => SeWorksheetConfig {
+            ss_wage_max: Decimal::from_str("160200.00").unwrap(),
+            ss_tax_rate: Decimal::from_str("0.124").unwrap(),
+            medicare_tax_rate: Decimal::from_str("0.029").unwrap(),
+            net_earnings_factor: Decimal::from_str("0.9235").unwrap(),
+            deduction_factor: Decimal::from_str("0.50").unwrap(),
+            min_se_threshold: Decimal::from_str("400.00").unwrap(),
+        },
+    }
+}
+
 /// Parsed SE inputs for calculation
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Fields will be used when full SE calculation is implemented
@@ -221,10 +263,12 @@ pub struct SeInputs {
 #[derive(Debug, Clone, Default)]
 pub struct CalculationResults {
     pub se_tax: Option<Decimal>,
+    pub se_tax_deduction: Option<Decimal>,
     pub total_tax: Option<Decimal>,
     pub required_payment: Option<Decimal>,
     pub quarterly_payment: Option<Decimal>,
 }
+
 
 /// Main application state
 pub struct TaxApp {
@@ -263,16 +307,32 @@ impl TaxApp {
         self.status_message = None;
     }
 
-    /// Calculate only SE tax
+    /// Calculate only SE tax using tax-core SeWorksheet
     pub fn calculate_se_only(&mut self) {
         match self.form.validate_se_only() {
             Ok(inputs) => {
-                // SE tax = net earnings * 92.35% * 15.3%
-                let se_base = inputs.se_income * Decimal::from_str("0.9235").unwrap();
-                let se_tax = se_base * Decimal::from_str("0.153").unwrap();
+                let config = get_se_config(self.form.tax_year);
+                let worksheet = SeWorksheet::new(config);
 
-                self.results.se_tax = Some(se_tax);
-                self.show_message("SE tax calculated", MessageType::Success);
+                let crp_payments = inputs.crp_payments.unwrap_or(Decimal::ZERO);
+                let wages = inputs.wages.unwrap_or(Decimal::ZERO);
+
+                match worksheet.calculate(inputs.se_income, crp_payments, wages) {
+                    Ok(result) => {
+                        self.results.se_tax = Some(result.self_employment_tax);
+                        self.results.se_tax_deduction = Some(result.se_tax_deduction);
+                        self.show_message(
+                            format!(
+                                "SE tax calculated: ${:.2}",
+                                result.self_employment_tax
+                            ),
+                            MessageType::Success,
+                        );
+                    }
+                    Err(e) => {
+                        self.show_message(format!("SE calculation error: {e}"), MessageType::Error);
+                    }
+                }
             }
             Err(()) => {
                 self.show_message("Please fix validation errors", MessageType::Error);
@@ -284,13 +344,35 @@ impl TaxApp {
     pub fn calculate(&mut self) {
         match self.form.validate() {
             Ok(estimate) => {
-                let se_tax = estimate.se_income.map(|se| {
-                    let se_base = se * Decimal::from_str("0.9235").unwrap();
-                    se_base * Decimal::from_str("0.153").unwrap()
-                });
+                // Calculate SE tax if SE income is present
+                let (se_tax, se_tax_deduction) = if let Some(se_income) = estimate.se_income {
+                    let config = get_se_config(self.form.tax_year);
+                    let worksheet = SeWorksheet::new(config);
 
+                    let crp_payments = estimate.expected_crp_payments.unwrap_or(Decimal::ZERO);
+                    let wages = estimate.expected_wages.unwrap_or(Decimal::ZERO);
+
+                    match worksheet.calculate(se_income, crp_payments, wages) {
+                        Ok(result) => {
+                            (Some(result.self_employment_tax), Some(result.se_tax_deduction))
+                        }
+                        Err(e) => {
+                            self.show_message(
+                                format!("SE calculation error: {e}"),
+                                MessageType::Error,
+                            );
+                            return;
+                        }
+                    }
+                } else {
+                    (None, None)
+                };
+
+                // TODO: Call EstimatedTaxWorksheet for full calculation
+                // For now, use placeholder values
                 self.results = CalculationResults {
                     se_tax,
+                    se_tax_deduction,
                     total_tax: Some(Decimal::from(10000)),
                     required_payment: Some(Decimal::from(8000)),
                     quarterly_payment: Some(Decimal::from(2000)),

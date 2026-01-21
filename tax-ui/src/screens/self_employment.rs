@@ -22,6 +22,10 @@ impl SelfEmploymentScreen {
         egui::ScrollArea::vertical().show(ui, |ui| {
             let group_width = ui.available_width().min(Self::GROUP_WIDTH);
 
+            // Show selected tax year for context
+            ui.label(format!("Tax Year: {}", app.form.tax_year));
+            ui.add_space(10.0);
+
             ui.allocate_ui(egui::vec2(group_width, 0.0), |ui| {
                 ui.group(|ui| {
                     ui.set_min_width(group_width - 20.0);
@@ -104,11 +108,20 @@ impl SelfEmploymentScreen {
                                 ui.strong(format!("${:.2}", se_tax));
                                 ui.end_row();
 
-                                let deductible = se_tax / Decimal::TWO;
-                                ui.label("Deductible Portion (50%):");
-                                ui.label(format!("${:.2}", deductible));
-                                ui.end_row();
+                                if let Some(deduction) = app.results.se_tax_deduction {
+                                    ui.label("SE Tax Deduction (Schedule 1, Line 15):");
+                                    ui.label(format!("${:.2}", deduction));
+                                    ui.end_row();
+                                }
                             });
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(5.0);
+                        ui.label(
+                            "The SE tax deduction reduces your AGI. Make sure to account for it \
+                             when entering Expected AGI on the main estimate.",
+                        );
                     } else {
                         ui.label(
                             "Enter self-employment income and click Calculate to see results.",
