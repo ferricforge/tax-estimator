@@ -4,9 +4,22 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tax-core = { path = "../tax-core" }
-tax-db-sqlite  = { path = "../tax-db-sqlite" }
-tokio.workspace = true
+anyhow.workspace            = true
+clap.workspace              = true
+rust_decimal.workspace      = true
+tax-core                    = { path = "../tax-core" }
+tax-db-sqlite               = { path = "../tax-db-sqlite" }
+tokio.workspace             = true
+tracing.workspace           = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true
+pretty_assertions.workspace = true
+
+[lib]
+name = "tax_ui"
+path = "src/lib.rs"
 
 [[bin]]
 name = "tax-ui"

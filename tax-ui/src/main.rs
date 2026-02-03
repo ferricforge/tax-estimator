@@ -1,55 +1,69 @@
-use std::env;
+use clap::Parser;
+use tracing::{debug, info};
+use tracing_subscriber::EnvFilter;
 
-use tax_core::db::{DbConfig, RepositoryRegistry};
-use tax_db_sqlite::SqliteRepositoryFactory;
+use tax_core::db::DbConfig;
+use tax_ui::app;
 
-/// Assemble a [`RepositoryRegistry`] with every known backend.
-/// Adding a new backend in the future is a single `register` call here.
-fn build_registry() -> RepositoryRegistry {
-    let mut registry = RepositoryRegistry::new();
-    registry.register(Box::new(SqliteRepositoryFactory));
-    registry
-}
+// ─── CLI definition ──────────────────────────────────────────────────────────
 
-/// Derive a [`DbConfig`] from positional CLI arguments with sensible
-/// defaults for local development.
+/// Estimated tax calculator for IRS Form 1040-ES.
 ///
-/// Usage:
-///   tax-ui                          # sqlite, taxes.db
-///   tax-ui sqlite taxes.db          # explicit, same effect
-///   tax-ui sqlite :memory:          # ephemeral in-memory DB
-fn config_from_args() -> DbConfig {
-    let args: Vec<String> = env::args().collect();
-    DbConfig {
-        backend: args
-            .get(1)
-            .cloned()
-            .unwrap_or_else(|| "sqlite".to_string()),
-        connection_string: args
-            .get(2)
-            .cloned()
-            .unwrap_or_else(|| "taxes.db".to_string()),
-    }
+/// Connects to the configured database, loads reference data for the
+/// requested tax year, and prints it.
+#[derive(Debug, Parser)]
+struct Cli {
+    /// Database backend to use.
+    #[arg(long, default_value = "sqlite")]
+    backend: String,
+
+    /// Database connection string.
+    /// For SQLite this is a file path (e.g. `taxes.db`) or `:memory:`.
+    #[arg(long, default_value = "taxes.db")]
+    db: String,
+
+    /// Tax year to retrieve and display.
+    #[arg(long, default_value = "2025")]
+    year: i32,
 }
+
+// ─── tracing ─────────────────────────────────────────────────────────────────
+
+/// Initialise the tracing subscriber.
+///
+/// * Honours `RUST_LOG` when set.
+/// * Falls back to `info` so normal runs are quiet.
+/// * Strips timestamps and target names to keep CLI output clean.
+fn init_tracing() {
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::from("info"));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .without_time()
+        .with_target(false)
+        .init();
+}
+
+// ─── entry point ─────────────────────────────────────────────────────────────
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = config_from_args();
-    eprintln!(
-        "backend={}, connection={}",
-        config.backend, config.connection_string
-    );
+async fn main() -> anyhow::Result<()> {
+    init_tracing();
 
-    let registry = build_registry();
-    let repo = registry.create(&config).await?;
+    let cli = Cli::parse();
 
-    // ── smoke check: list the tax years currently in the database ────
-    let years = repo.list_tax_years().await?;
-    if years.is_empty() {
-        eprintln!("Warning: no tax-year data found — run the seeder first.");
-    } else {
-        println!("Available tax years: {:?}", years);
-    }
+    let db_config = DbConfig {
+        backend: cli.backend,
+        connection_string: cli.db,
+    };
+
+    debug!("connecting to {} backend", db_config.backend);
+    let registry = app::build_registry();
+    let repo = registry.create(&db_config).await?;
+
+    let data = app::load_tax_year_data(&*repo, cli.year).await?;
+    info!("{}", data);
 
     Ok(())
 }
