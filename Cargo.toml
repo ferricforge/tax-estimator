@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["tax-core", "tax-data", "tax-db-sqlite", "tax-ui"]
+default-members = ["tax-ui"]
 
 [workspace.package]
 version = "0.1.0"

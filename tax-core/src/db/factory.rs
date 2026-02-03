@@ -125,9 +125,10 @@ mod tests {
 
     use super::{DbConfig, RepositoryError, RepositoryFactory, RepositoryRegistry, TaxRepository};
 
-    // ── stub repository ──────────────────────────────────────────────────
-    // Every method is `unimplemented!()` — the tests never call them;
-    // they only verify that the registry routes to the correct factory.
+    // ── test scaffolding ─────────────────────────────────────────────────
+    // Every method panics unconditionally.  Nothing in these tests actually
+    // calls through to the repository; they only exercise registry routing.
+
     struct StubRepository;
 
     #[async_trait]
@@ -209,10 +210,8 @@ mod tests {
         }
     }
 
-    // ── stub factory ─────────────────────────────────────────────────────
-    /// A factory whose `create` flips an `AtomicBool` and returns a
-    /// [`StubRepository`].  The flag lets tests prove that `create` was
-    /// actually called.
+    /// Records whether `create` was called.  The `AtomicBool` is the
+    /// only way tests can observe side-effects of dispatch.
     struct StubFactory {
         name: &'static str,
         called: Arc<AtomicBool>,
@@ -232,8 +231,8 @@ mod tests {
         }
     }
 
-    /// A factory that always returns a `Connection` error — used to verify
-    /// that the registry surfaces errors from the underlying factory.
+    /// Always returns a `Connection` error — used to verify that
+    /// errors from the underlying factory are surfaced unchanged.
     struct FailingFactory;
 
     #[async_trait]
@@ -251,8 +250,6 @@ mod tests {
         }
     }
 
-    /// Build a `StubFactory` and return it alongside the flag so tests can
-    /// assert whether `create` was reached.
     fn stub_factory(name: &'static str) -> (Box<dyn RepositoryFactory>, Arc<AtomicBool>) {
         let flag = Arc::new(AtomicBool::new(false));
         (
@@ -264,7 +261,21 @@ mod tests {
         )
     }
 
+    /// `Box<dyn TaxRepository>` implements neither `Debug` nor `PartialEq`,
+    /// so the standard `Result` helpers (`unwrap_err`, `assert_eq!`) are
+    /// unavailable on the full `Result` type.  Pull the error out manually
+    /// before any formatting or comparison happens.
+    fn expect_error(
+        result: Result<Box<dyn TaxRepository>, RepositoryError>,
+    ) -> RepositoryError {
+        match result {
+            Err(e) => e,
+            Ok(_) => panic!("expected Err, got Ok"),
+        }
+    }
+
     // ── DbConfig ─────────────────────────────────────────────────────────
+
     #[test]
     fn dbconfig_default_is_sqlite_memory() {
         let cfg = DbConfig::default();
@@ -273,6 +284,7 @@ mod tests {
     }
 
     // ── registry construction ────────────────────────────────────────────
+
     #[test]
     fn new_registry_has_no_backends() {
         assert!(RepositoryRegistry::new().available_backends().is_empty());
@@ -280,12 +292,15 @@ mod tests {
 
     #[test]
     fn default_registry_is_empty() {
+        // Default is part of the public API contract; test it explicitly
+        // even though the impl delegates to new().
         assert!(RepositoryRegistry::default()
             .available_backends()
             .is_empty());
     }
 
     // ── registration ─────────────────────────────────────────────────────
+
     #[test]
     fn register_single_backend() {
         let mut reg = RepositoryRegistry::new();
@@ -297,7 +312,7 @@ mod tests {
     #[test]
     fn available_backends_is_sorted() {
         let mut reg = RepositoryRegistry::new();
-        // Register in reverse alphabetical order on purpose.
+        // Register in deliberately reverse-alphabetical order.
         let (f1, _) = stub_factory("sqlite");
         let (f2, _) = stub_factory("postgres");
         reg.register(f1);
@@ -306,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_registration_replaces_previous() {
+    fn duplicate_registration_replaces() {
         let mut reg = RepositoryRegistry::new();
         let (old, _) = stub_factory("sqlite");
         let (new, _) = stub_factory("sqlite");
@@ -316,45 +331,43 @@ mod tests {
         assert_eq!(reg.available_backends(), vec!["sqlite"]);
     }
 
-    // ── successful dispatch ──────────────────────────────────────────────
+    // ── dispatch ─────────────────────────────────────────────────────────
+
+    /// With two backends registered, dispatching to "sqlite" must invoke
+    /// the sqlite factory and must NOT invoke the postgres factory.
+    ///
+    /// This replaces two previous tests: one that only checked the
+    /// positive flag, and one that *claimed* to check the negative flag
+    /// but never actually read it.
     #[tokio::test]
-    async fn create_calls_matching_factory() {
+    async fn create_dispatches_to_matching_factory_only() {
         let mut reg = RepositoryRegistry::new();
-        let (factory, called) = stub_factory("sqlite");
-        reg.register(factory);
+        let (sqlite_f, sqlite_called) = stub_factory("sqlite");
+        let (postgres_f, postgres_called) = stub_factory("postgres");
+        reg.register(sqlite_f);
+        reg.register(postgres_f);
 
         let config = DbConfig {
             backend: "sqlite".to_string(),
             connection_string: ":memory:".to_string(),
         };
 
-        let result = reg.create(&config).await;
+        assert!(reg.create(&config).await.is_ok());
 
-        assert!(result.is_ok(), "expected Ok, got {:#?}", result.err());
         assert!(
-            called.load(Ordering::SeqCst),
-            "factory create was not invoked"
+            sqlite_called.load(Ordering::SeqCst),
+            "sqlite factory must be called"
+        );
+        assert!(
+            !postgres_called.load(Ordering::SeqCst),
+            "postgres factory must NOT be called"
         );
     }
 
-    #[tokio::test]
-    async fn create_does_not_call_non_matching_factory() {
-        let mut reg = RepositoryRegistry::new();
-        let (sqlite_factory, sqlite_called) = stub_factory("sqlite");
-        let (postgres_factory, _postgres_called) = stub_factory("postgres");
-        reg.register(sqlite_factory);
-        reg.register(postgres_factory);
-
-        let config = DbConfig {
-            backend: "sqlite".to_string(),
-            connection_string: ":memory:".to_string(),
-        };
-
-        reg.create(&config).await.unwrap();
-        assert!(sqlite_called.load(Ordering::SeqCst));
-    }
-
     // ── unknown backend ──────────────────────────────────────────────────
+
+    /// Empty registry: any backend name produces a Configuration error
+    /// that names the requested backend.
     #[tokio::test]
     async fn unknown_backend_returns_configuration_error() {
         let reg = RepositoryRegistry::new();
@@ -362,14 +375,23 @@ mod tests {
             backend: "nope".to_string(),
             connection_string: "x".to_string(),
         };
-        assert!(matches!(
-            reg.create(&config).await,
-            Err(RepositoryError::Configuration(_))
-        ));
+
+        match expect_error(reg.create(&config).await) {
+            RepositoryError::Configuration(msg) => {
+                assert!(
+                    msg.contains("nope"),
+                    "message should name the requested backend"
+                );
+            }
+            other => panic!("expected Configuration, got {other:#?}"),
+        }
     }
 
+    /// Populated registry: the Configuration error also lists the
+    /// backends that *are* available.  Different scenario from the test
+    /// above (empty registry produces `available: []`; this one does not).
     #[tokio::test]
-    async fn configuration_error_names_requested_and_available_backends() {
+    async fn configuration_error_lists_available_backends() {
         let mut reg = RepositoryRegistry::new();
         let (f, _) = stub_factory("sqlite");
         reg.register(f);
@@ -379,24 +401,25 @@ mod tests {
             connection_string: "x".to_string(),
         };
 
-        match reg.create(&config).await {
-            Err(RepositoryError::Configuration(msg)) => {
+        match expect_error(reg.create(&config).await) {
+            RepositoryError::Configuration(msg) => {
                 assert!(
                     msg.contains("postgres"),
-                    "error should name the requested backend"
+                    "message should name the requested backend"
                 );
                 assert!(
                     msg.contains("sqlite"),
-                    "error should list available backends"
+                    "message should list available backends"
                 );
             }
-            other => panic!("expected Configuration error, got {other:#?}"),
+            other => panic!("expected Configuration, got {other:#?}"),
         }
     }
 
     // ── factory errors propagate ─────────────────────────────────────────
+
     #[tokio::test]
-    async fn create_propagates_factory_error() {
+    async fn factory_error_propagates() {
         let mut reg = RepositoryRegistry::new();
         reg.register(Box::new(FailingFactory));
 
@@ -405,11 +428,11 @@ mod tests {
             connection_string: "x".to_string(),
         };
 
+        // expect_error extracts the RepositoryError first; both sides of
+        // assert_eq! are now plain RepositoryError, which is Debug + PartialEq.
         assert_eq!(
-            reg.create(&config).await,
-            Err(RepositoryError::Connection(
-                "intentional failure".to_string()
-            ))
+            expect_error(reg.create(&config).await),
+            RepositoryError::Connection("intentional failure".to_string()),
         );
     }
 }
