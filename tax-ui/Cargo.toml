@@ -5,4 +5,9 @@ edition.workspace = true
 
 [dependencies]
 tax-core = { path = "../tax-core" }
+tax-db-sqlite  = { path = "../tax-db-sqlite" }
 tokio.workspace = true
+
+[[bin]]
+name = "tax-ui"
+path = "src/main.rs"

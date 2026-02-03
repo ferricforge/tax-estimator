@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, sqlite::SqlitePool};
+use sqlx::{Row, sqlite::{SqliteConnectOptions, SqlitePool}};
 use tax_core::{
     FilingStatus, FilingStatusCode, NewTaxEstimate, RepositoryError, StandardDeduction, TaxBracket,
     TaxEstimate, TaxRepository, TaxYearConfig,
@@ -17,9 +17,16 @@ pub struct SqliteRepository {
 
 impl SqliteRepository {
     pub async fn new(database_url: &str) -> Result<Self> {
-        let pool = SqlitePool::connect(database_url)
+        // Define connection options, including creating the file if missing
+        let options = SqliteConnectOptions::new()
+            .filename(database_url)
+            .create_if_missing(true); // Explicitly sets the option
+
+        // Connect to the database using the specified options
+        let pool = SqlitePool::connect_with(options)
             .await
             .with_context(|| format!("Failed to connect to database: {}", database_url))?;
+
         Ok(Self { pool })
     }
 

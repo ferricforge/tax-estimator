@@ -15,6 +15,11 @@ pub enum RepositoryError {
 
     #[error("Connection error: {0}")]
     Connection(String),
+
+    /// Raised by the registry when no factory is registered for the
+    /// requested backend name, or when required configuration is missing.
+    #[error("Configuration error: {0}")]
+    Configuration(String),
 }
 
 #[async_trait]
