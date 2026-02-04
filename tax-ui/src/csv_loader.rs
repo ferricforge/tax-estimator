@@ -46,7 +46,6 @@
 //! 2025,S,75000.00,14600.00,,,,,10000.00,12000.00,25000.00,,60000.00
 //! 2025,MFJ,200000.00,29200.00,5000.00,,,500.00,35000.00,38000.00,,,180000.00
 //! ```
-
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use tax_core::models::{FilingStatusCode, NewTaxEstimate};
@@ -111,6 +110,37 @@ pub enum CsvLoadError {
 // Core loader
 // ---------------------------------------------------------------------------
 
+/// Convert a single CSV row into a NewTaxEstimate.
+///
+/// row_number is 1-based (for error messages).
+fn convert_row(
+    row: CsvRow,
+    row_number: usize,
+) -> Result<NewTaxEstimate, CsvLoadError> {
+    let code = FilingStatusCode::parse(&row.filing_status).ok_or_else(|| {
+        CsvLoadError::InvalidFilingStatus {
+            status: row.filing_status,
+            row: row_number,
+        }
+    })?;
+
+    Ok(NewTaxEstimate {
+        tax_year: row.tax_year,
+        filing_status_id: filing_status_to_id(code),
+        expected_agi: row.expected_agi,
+        expected_deduction: row.expected_deduction,
+        expected_qbi_deduction: row.expected_qbi_deduction,
+        expected_amt: row.expected_amt,
+        expected_credits: row.expected_credits,
+        expected_other_taxes: row.expected_other_taxes,
+        expected_withholding: row.expected_withholding,
+        prior_year_tax: row.prior_year_tax,
+        se_income: row.se_income,
+        expected_crp_payments: row.expected_crp_payments,
+        expected_wages: row.expected_wages,
+    })
+}
+
 /// Parse CSV text (the full file contents as a &str) and return a vector of
 /// NewTaxEstimate.  Rows are returned in file order.
 ///
@@ -125,41 +155,17 @@ pub fn load_from_str(input: &str) -> Result<Vec<NewTaxEstimate>, CsvLoadError> {
         .has_headers(true)
         .trim(csv::Trim::All) // tolerate whitespace around values
         .flexible(false) // strict column count
-        .create_deserializer(input.as_bytes());
+        .from_reader(input.as_bytes());
 
-    let mut results = Vec::new();
-
-    // csv row indices: the header counts as record 0 in the error messages
-    // we present, so data rows start at 1.
-    for (idx, record) in reader.deserialize::<CsvRow>().enumerate() {
-        let row: CsvRow = record?;
-        let row_number = idx + 1; // 1-based for user-facing messages
-
-        let code = FilingStatusCode::parse(&row.filing_status).ok_or(
-            CsvLoadError::InvalidFilingStatus {
-                status: row.filing_status.clone(),
-                row: row_number,
-            },
-        )?;
-
-        results.push(NewTaxEstimate {
-            tax_year: row.tax_year,
-            filing_status_id: filing_status_to_id(code),
-            expected_agi: row.expected_agi,
-            expected_deduction: row.expected_deduction,
-            expected_qbi_deduction: row.expected_qbi_deduction,
-            expected_amt: row.expected_amt,
-            expected_credits: row.expected_credits,
-            expected_other_taxes: row.expected_other_taxes,
-            expected_withholding: row.expected_withholding,
-            prior_year_tax: row.prior_year_tax,
-            se_income: row.se_income,
-            expected_crp_payments: row.expected_crp_payments,
-            expected_wages: row.expected_wages,
-        });
-    }
-
-    Ok(results)
+    reader
+        .deserialize::<CsvRow>()
+        .enumerate()
+        .map(|(idx, result)| {
+            let row = result?;
+            let row_number = idx + 1; // 1-based for user-facing messages
+            convert_row(row, row_number)
+        })
+        .collect()
 }
 
 /// Convenience wrapper: read a file from disk and delegate to [load_from_str].
@@ -306,41 +312,24 @@ tax_year,filing_status,expected_agi,expected_deduction,se_income
     }
 
     // -----------------------------------------------------------------------
-    // 4. Each filing-status code individually (round-trip through the mapper)
+    // 4. Parameterized filing-status tests
     // -----------------------------------------------------------------------
     #[test]
-    fn test_filing_status_single() {
-        let csv = "tax_year,filing_status,expected_agi,expected_deduction\n2025,S,1.00,1.00\n";
-        let e = load_from_str(csv).unwrap();
-        assert_eq!(e[0].filing_status_id, 1);
-    }
+    fn test_filing_status_codes_map_to_correct_ids() {
+        let test_cases = [("S", 1), ("MFJ", 2), ("MFS", 3), ("HOH", 4), ("QSS", 5)];
 
-    #[test]
-    fn test_filing_status_mfj() {
-        let csv = "tax_year,filing_status,expected_agi,expected_deduction\n2025,MFJ,1.00,1.00\n";
-        let e = load_from_str(csv).unwrap();
-        assert_eq!(e[0].filing_status_id, 2);
-    }
+        for (code, expected_id) in test_cases {
+            let csv = format!(
+                "tax_year,filing_status,expected_agi,expected_deduction\n2025,{code},1.00,1.00\n"
+            );
+            let estimates = load_from_str(&csv)
+                .unwrap_or_else(|e| panic!("failed to parse CSV for code '{code}': {e}"));
 
-    #[test]
-    fn test_filing_status_mfs() {
-        let csv = "tax_year,filing_status,expected_agi,expected_deduction\n2025,MFS,1.00,1.00\n";
-        let e = load_from_str(csv).unwrap();
-        assert_eq!(e[0].filing_status_id, 3);
-    }
-
-    #[test]
-    fn test_filing_status_hoh() {
-        let csv = "tax_year,filing_status,expected_agi,expected_deduction\n2025,HOH,1.00,1.00\n";
-        let e = load_from_str(csv).unwrap();
-        assert_eq!(e[0].filing_status_id, 4);
-    }
-
-    #[test]
-    fn test_filing_status_qss() {
-        let csv = "tax_year,filing_status,expected_agi,expected_deduction\n2025,QSS,1.00,1.00\n";
-        let e = load_from_str(csv).unwrap();
-        assert_eq!(e[0].filing_status_id, 5);
+            assert_eq!(
+                estimates[0].filing_status_id, expected_id,
+                "filing status '{code}' should map to id {expected_id}"
+            );
+        }
     }
 
     // -----------------------------------------------------------------------
