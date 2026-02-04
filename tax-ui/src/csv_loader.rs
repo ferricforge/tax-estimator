@@ -189,6 +189,7 @@ pub fn load_from_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use rust_decimal_macros::dec;
 
     // -----------------------------------------------------------------------

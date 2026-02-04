@@ -6,6 +6,7 @@
 //!
 use std::path::PathBuf;
 
+use pretty_assertions::assert_eq;
 use rust_decimal_macros::dec;
 use tax_ui::csv_loader;
 
