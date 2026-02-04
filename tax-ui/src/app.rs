@@ -84,13 +84,18 @@ pub async fn load_tax_year_data(
 // was originally constructed.
 
 /// `$1234.50`
+///
+/// `round_dp` does not pad trailing zeros — a Decimal with scale 0
+/// passes through unchanged.  The `:.2` precision specifier on
+/// rust_decimal's Display impl is what guarantees exactly two fractional
+/// digits in all cases.
 fn currency(d: &Decimal) -> String {
-    format!("${}", d.round_dp(2))
+    format!("${:.2}", d)
 }
 
 /// `6.20%`  —  the stored value is a fraction (0.062), not a percentage.
 fn percent(d: &Decimal) -> String {
-    format!("{}%", (d * Decimal::from(100)).round_dp(2))
+    format!("{:.2}%", d * Decimal::from(100))
 }
 
 // ─── Display ─────────────────────────────────────────────────────────────────
