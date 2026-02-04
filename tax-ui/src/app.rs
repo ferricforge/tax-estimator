@@ -90,12 +90,12 @@ pub async fn load_tax_year_data(
 /// rust_decimal's Display impl is what guarantees exactly two fractional
 /// digits in all cases.
 fn currency(d: &Decimal) -> String {
-    format!("${:.2}", d)
+    format!("${:.2}", d.round_dp(2))
 }
 
 /// `6.20%`  —  the stored value is a fraction (0.062), not a percentage.
 fn percent(d: &Decimal) -> String {
-    format!("{:.2}%", d * Decimal::from(100))
+    format!("{:.2}%", (d * Decimal::from(100)).round_dp(2))
 }
 
 // ─── Display ─────────────────────────────────────────────────────────────────
