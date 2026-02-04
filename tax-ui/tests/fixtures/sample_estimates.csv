@@ -1,0 +1,4 @@
+tax_year,filing_status,expected_agi,expected_deduction,expected_qbi_deduction,expected_amt,expected_credits,expected_other_taxes,expected_withholding,prior_year_tax,se_income,expected_crp_payments,expected_wages
+2025,S,75000.00,14600.00,,,,,10000.00,12000.00,25000.00,,60000.00
+2025,MFJ,200000.00,29200.00,5000.00,,,500.00,35000.00,38000.00,,,180000.00
+2025,HOH,58000.00,21900.00,,,,,,11000.00,,,55000.00

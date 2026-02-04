@@ -5,10 +5,13 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace            = true
+csv = "2"
+serde = { version = "1", features = ["derive"] }
 clap.workspace              = true
 rust_decimal.workspace      = true
 tax-core                    = { path = "../tax-core" }
 tax-db-sqlite               = { path = "../tax-db-sqlite" }
+thiserror.workspace         = true
 tokio.workspace             = true
 tracing.workspace           = true
 tracing-subscriber.workspace = true
