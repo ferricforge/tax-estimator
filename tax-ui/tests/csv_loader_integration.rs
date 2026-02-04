@@ -1,27 +1,26 @@
 //! Integration tests that exercise the loader against an on-disk fixture file.
 //!
-//! These complement the unit tests inside csv_loader.rs (which all use
+//! These complement the unit tests inside `csv_loader.rs` (which all use
 //! inline string literals) by verifying that the full read-from-disk path
 //! works end-to-end.
-
-use std::path::Path;
+//!
+use std::path::PathBuf;
 
 use rust_decimal_macros::dec;
 use tax_ui::csv_loader;
 
 /// Path to the sample CSV shipped with the test fixtures.
-fn fixture_path() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("sample_estimates.csv")
-        .leak() // fine — this is test-only, runs once
+fn fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("tests")
+    .join("fixtures")
+    .join("sample_estimates.csv")
 }
 
 #[test]
 fn test_load_fixture_file_succeeds() {
-    let estimates =
-        csv_loader::load_from_file(fixture_path()).expect("fixture file should load without error");
+    let estimates = csv_loader::load_from_file(&fixture_path())
+    .expect("fixture file should load without error");
 
     // The fixture has exactly 3 rows.
     assert_eq!(estimates.len(), 3);
@@ -29,7 +28,7 @@ fn test_load_fixture_file_succeeds() {
 
 #[test]
 fn test_load_fixture_first_row_single() {
-    let estimates = csv_loader::load_from_file(fixture_path()).unwrap();
+    let estimates = csv_loader::load_from_file(&fixture_path()).unwrap();
     let e = &estimates[0];
 
     assert_eq!(e.tax_year, 2025);
@@ -53,7 +52,7 @@ fn test_load_fixture_first_row_single() {
 
 #[test]
 fn test_load_fixture_second_row_mfj() {
-    let estimates = csv_loader::load_from_file(fixture_path()).unwrap();
+    let estimates = csv_loader::load_from_file(&fixture_path()).unwrap();
     let e = &estimates[1];
 
     assert_eq!(e.filing_status_id, 2); // MFJ
@@ -65,7 +64,7 @@ fn test_load_fixture_second_row_mfj() {
 
 #[test]
 fn test_load_fixture_third_row_hoh() {
-    let estimates = csv_loader::load_from_file(fixture_path()).unwrap();
+    let estimates = csv_loader::load_from_file(&fixture_path()).unwrap();
     let e = &estimates[2];
 
     assert_eq!(e.filing_status_id, 4); // HOH
@@ -79,7 +78,7 @@ fn test_load_fixture_third_row_hoh() {
 
 #[test]
 fn test_load_nonexistent_file_returns_err() {
-    let bad_path = Path::new("/this/path/does/not/exist.csv");
-    let result = csv_loader::load_from_file(bad_path);
+    let bad_path = PathBuf::from("/this/path/does/not/exist.csv");
+    let result = csv_loader::load_from_file(&bad_path);
     assert!(result.is_err());
 }
