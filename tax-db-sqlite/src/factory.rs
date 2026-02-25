@@ -47,7 +47,7 @@ impl RepositoryFactory for SqliteRepositoryFactory {
         repo.run_migrations()
             .await
             .map_err(RepositoryError::Database)?;
-        repo.run_migrations()
+        repo.run_seeds(Path::new("./seeds"))
             .await
             .map_err(RepositoryError::Database)?;
         Ok(Box::new(repo))

@@ -245,7 +245,7 @@ mod tests {
             _config: &DbConfig,
         ) -> Result<Box<dyn TaxRepository>, RepositoryError> {
             Err(RepositoryError::Connection(
-                "intentional failure".to_string(),
+                anyhow::anyhow!("intentional failure".to_string()),
             ))
         }
     }
@@ -430,9 +430,15 @@ mod tests {
 
         // expect_error extracts the RepositoryError first; both sides of
         // assert_eq! are now plain RepositoryError, which is Debug + PartialEq.
-        assert_eq!(
-            expect_error(reg.create(&config).await),
-            RepositoryError::Connection("intentional failure".to_string()),
-        );
+        let err = expect_error(reg.create(&config).await);
+        match err {
+            RepositoryError::Connection(inner) => {
+                assert!(
+                    inner.to_string().contains("intentional failure"),
+                    "unexpected error message: {inner}"
+                );
+            }
+            other => panic!("expected RepositoryError::Connection, got {other:?}"),
+        }
     }
 }
