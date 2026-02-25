@@ -43,13 +43,13 @@ impl RepositoryFactory for SqliteRepositoryFactory {
     ) -> Result<Box<dyn TaxRepository>, RepositoryError> {
         let repo = SqliteRepository::new(&config.connection_string)
             .await
-            .map_err(|e| RepositoryError::Connection(format!("{e}")))?;
+            .map_err(RepositoryError::Connection)?;
         repo.run_migrations()
             .await
-            .map_err(|e| RepositoryError::Database(format!("{e:#}")))?;
-        repo.run_seeds(Path::new("./seeds"))
+            .map_err(RepositoryError::Database)?;
+        repo.run_migrations()
             .await
-            .map_err(|e| RepositoryError::Database(format!("{e:#}")))?;
+            .map_err(RepositoryError::Database)?;
         Ok(Box::new(repo))
     }
 }

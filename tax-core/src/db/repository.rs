@@ -5,16 +5,16 @@ use crate::models::{
     FilingStatus, NewTaxEstimate, StandardDeduction, TaxBracket, TaxEstimate, TaxYearConfig,
 };
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum RepositoryError {
     #[error("Record not found")]
     NotFound,
 
-    #[error("Database error: {0}")]
-    Database(String),
+    #[error("Database error")]
+    Database(#[source] anyhow::Error),
 
-    #[error("Connection error: {0}")]
-    Connection(String),
+    #[error("Connection error")]
+    Connection(#[source] anyhow::Error),
 
     /// Raised by the registry when no factory is registered for the
     /// requested backend name, or when required configuration is missing.
