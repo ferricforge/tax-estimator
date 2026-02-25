@@ -79,13 +79,13 @@ fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, Rep
     Ok(TaxEstimate {
         id: row
             .try_get("id")
-            .map_err(|e| RepositoryError::Database(e.to_string()))?,
+            .map_err(|e| RepositoryError::Database(e.into()))?,
         tax_year: row
             .try_get("tax_year")
-            .map_err(|e| RepositoryError::Database(e.to_string()))?,
+            .map_err(|e| RepositoryError::Database(e.into()))?,
         filing_status_id: row
             .try_get("filing_status_id")
-            .map_err(|e| RepositoryError::Database(e.to_string()))?,
+            .map_err(|e| RepositoryError::Database(e.into()))?,
         expected_agi: get_decimal(row, "expected_agi")?,
         expected_deduction: get_decimal(row, "expected_deduction")?,
         expected_qbi_deduction: get_optional_decimal(row, "expected_qbi_deduction")?,
@@ -102,10 +102,10 @@ fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, Rep
         calculated_required_payment: get_optional_decimal(row, "calculated_required_payment")?,
         created_at: row
             .try_get::<DateTime<Utc>, _>("created_at")
-            .map_err(|e| RepositoryError::Database(format!("Failed to get created_at: {}", e)))?,
+            .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Failed to get created_at: {}", e)))?,
         updated_at: row
             .try_get::<DateTime<Utc>, _>("updated_at")
-            .map_err(|e| RepositoryError::Database(format!("Failed to get updated_at: {}", e)))?,
+            .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Failed to get updated_at: {}", e)))?,
     })
 }
 
@@ -124,13 +124,13 @@ impl TaxRepository for SqliteRepository {
         .bind(year)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?
+        .map_err(|e| RepositoryError::Database(e.into()))?
         .ok_or(RepositoryError::NotFound)?;
 
         Ok(TaxYearConfig {
             tax_year: row
                 .try_get("tax_year")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
             ss_wage_max: get_decimal(&row, "ss_wage_max")?,
             ss_tax_rate: get_decimal(&row, "ss_tax_rate")?,
             medicare_tax_rate: get_decimal(&row, "medicare_tax_rate")?,
@@ -145,12 +145,12 @@ impl TaxRepository for SqliteRepository {
         let rows = sqlx::query("SELECT tax_year FROM tax_year_config ORDER BY tax_year DESC")
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            .map_err(|e| RepositoryError::Database(e.into()))?;
 
         rows.iter()
             .map(|row| {
                 row.try_get("tax_year")
-                    .map_err(|e| RepositoryError::Database(e.to_string()))
+                    .map_err(|e| RepositoryError::Database(e.into()))
             })
             .collect()
     }
@@ -164,24 +164,24 @@ impl TaxRepository for SqliteRepository {
                 .bind(id)
                 .fetch_optional(&self.pool)
                 .await
-                .map_err(|e| RepositoryError::Database(e.to_string()))?
+                .map_err(|e| RepositoryError::Database(e.into()))?
                 .ok_or(RepositoryError::NotFound)?;
 
         let status_code_str: String = row
             .try_get("status_code")
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            .map_err(|e| RepositoryError::Database(e.into()))?;
         let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-            RepositoryError::Database(format!("Invalid status code: {}", status_code_str))
+            RepositoryError::Database(anyhow::anyhow!("Invalid status code: {}", status_code_str))
         })?;
 
         Ok(FilingStatus {
             id: row
                 .try_get("id")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
             status_code,
             status_name: row
                 .try_get("status_name")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
         })
     }
 
@@ -195,24 +195,24 @@ impl TaxRepository for SqliteRepository {
         .bind(code)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?
+        .map_err(|e| RepositoryError::Database(e.into()))?
         .ok_or(RepositoryError::NotFound)?;
 
         let status_code_str: String = row
             .try_get("status_code")
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            .map_err(|e| RepositoryError::Database(e.into()))?;
         let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-            RepositoryError::Database(format!("Invalid status code: {}", status_code_str))
+            RepositoryError::Database(anyhow::anyhow!("Invalid status code: {}", status_code_str))
         })?;
 
         Ok(FilingStatus {
             id: row
                 .try_get("id")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
             status_code,
             status_name: row
                 .try_get("status_name")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
         })
     }
 
@@ -221,25 +221,25 @@ impl TaxRepository for SqliteRepository {
             sqlx::query("SELECT id, status_code, status_name FROM filing_status ORDER BY id")
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e| RepositoryError::Database(e.to_string()))?;
+                .map_err(|e| RepositoryError::Database(e.into()))?;
 
         let mut statuses = Vec::new();
         for row in rows {
             let status_code_str: String = row
                 .try_get("status_code")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?;
+                .map_err(|e| RepositoryError::Database(e.into()))?;
             let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-                RepositoryError::Database(format!("Invalid status code: {}", status_code_str))
+                RepositoryError::Database(anyhow::anyhow!("Invalid status code: {}", status_code_str))
             })?;
 
             statuses.push(FilingStatus {
                 id: row
                     .try_get("id")
-                    .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                    .map_err(|e| RepositoryError::Database(e.into()))?,
                 status_code,
                 status_name: row
                     .try_get("status_name")
-                    .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                    .map_err(|e| RepositoryError::Database(e.into()))?,
             });
         }
         Ok(statuses)
@@ -259,16 +259,16 @@ impl TaxRepository for SqliteRepository {
         .bind(filing_status_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?
+        .map_err(|e| RepositoryError::Database(e.into()))?
         .ok_or(RepositoryError::NotFound)?;
 
         Ok(StandardDeduction {
             tax_year: row
                 .try_get("tax_year")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
             filing_status_id: row
                 .try_get("filing_status_id")
-                .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                .map_err(|e| RepositoryError::Database(e.into()))?,
             amount: get_decimal(&row, "amount")?,
         })
     }
@@ -288,17 +288,17 @@ impl TaxRepository for SqliteRepository {
         .bind(filing_status_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        .map_err(|e| RepositoryError::Database(e.into()))?;
 
         let mut brackets = Vec::new();
         for row in rows {
             brackets.push(TaxBracket {
                 tax_year: row
                     .try_get("tax_year")
-                    .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                    .map_err(|e| RepositoryError::Database(e.into()))?,
                 filing_status_id: row
                     .try_get("filing_status_id")
-                    .map_err(|e| RepositoryError::Database(e.to_string()))?,
+                    .map_err(|e| RepositoryError::Database(e.into()))?,
                 min_income: get_decimal(&row, "min_income")?,
                 max_income: get_optional_decimal(&row, "max_income")?,
                 tax_rate: get_decimal(&row, "tax_rate")?,
@@ -324,7 +324,7 @@ impl TaxRepository for SqliteRepository {
         .bind(decimal_to_f64(bracket.base_tax))
         .execute(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        .map_err(|e| RepositoryError::Database(e.into()))?;
 
         Ok(())
     }
@@ -339,7 +339,7 @@ impl TaxRepository for SqliteRepository {
             .bind(filing_status_id)
             .execute(&self.pool)
             .await
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            .map_err(|e| RepositoryError::Database(e.into()))?;
 
         Ok(())
     }
@@ -376,7 +376,7 @@ impl TaxRepository for SqliteRepository {
         .bind(now)
         .execute(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        .map_err(|e| RepositoryError::Database(e.into()))?;
 
         let id = result.last_insert_rowid();
         self.get_estimate(id).await
@@ -398,7 +398,7 @@ impl TaxRepository for SqliteRepository {
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?
+        .map_err(|e| RepositoryError::Database(e.into()))?
         .ok_or(RepositoryError::NotFound)?;
 
         row_to_tax_estimate(&row)
@@ -440,7 +440,7 @@ impl TaxRepository for SqliteRepository {
         .bind(estimate.id)
         .execute(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        .map_err(|e| RepositoryError::Database(e.into()))?;
 
         if result.rows_affected() == 0 {
             return Err(RepositoryError::NotFound);
@@ -457,7 +457,7 @@ impl TaxRepository for SqliteRepository {
             .bind(id)
             .execute(&self.pool)
             .await
-            .map_err(|e| RepositoryError::Database(e.to_string()))?;
+            .map_err(|e| RepositoryError::Database(e.into()))?;
 
         if result.rows_affected() == 0 {
             return Err(RepositoryError::NotFound);
@@ -495,7 +495,7 @@ impl TaxRepository for SqliteRepository {
                     .await
             }
         }
-        .map_err(|e| RepositoryError::Database(e.to_string()))?;
+        .map_err(|e| RepositoryError::Database(e.into()))?;
 
         rows.iter().map(row_to_tax_estimate).collect()
     }

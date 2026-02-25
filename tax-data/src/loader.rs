@@ -6,7 +6,7 @@ use tax_core::{RepositoryError, TaxBracket, TaxRepository};
 use thiserror::Error;
 
 /// Errors that can occur when loading tax bracket data.
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum TaxBracketLoaderError {
     #[error("CSV parse error: {0}")]
     CsvParse(String),
@@ -172,10 +172,8 @@ impl TaxBracketLoader {
                     };
 
                     repo.insert_tax_bracket(&bracket).await.map_err(|e| {
-                        // Check if this is a foreign key constraint error, which likely means
-                        // the tax_year_config for this year doesn't exist
-                        if let RepositoryError::Database(ref msg) = e {
-                            if msg.contains("FOREIGN KEY constraint failed") {
+                        if let RepositoryError::Database(ref inner) = e {
+                            if inner.to_string().contains("FOREIGN KEY constraint failed") {
                                 return TaxBracketLoaderError::TaxYearNotFound(record.tax_year);
                             }
                         }
@@ -442,11 +440,11 @@ mod tests {
     fn test_schedule_to_filing_status_codes_invalid() {
         let result = schedule_to_filing_status_codes("INVALID");
 
-        assert_eq!(
-            result,
-            Err(TaxBracketLoaderError::InvalidSchedule(
-                "INVALID".to_string()
-            ))
-        );
+        match result {
+            Err(TaxBracketLoaderError::InvalidSchedule(ref schedule)) => {
+                assert_eq!(schedule, "INVALID");
+            }
+            other => panic!("expected InvalidSchedule, got {other:?}"),
+        }
     }
 }

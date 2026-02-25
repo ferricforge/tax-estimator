@@ -10,7 +10,7 @@ pub fn get_decimal(
 ) -> Result<Decimal, RepositoryError> {
     let value_ref = row
         .try_get_raw(column)
-        .map_err(|e| RepositoryError::Database(format!("Column '{}' not found: {}", column, e)))?;
+        .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Column '{}' not found: {}", column, e)))?;
 
     let type_info = value_ref.type_info();
     let type_name = type_info.name();
@@ -18,20 +18,20 @@ pub fn get_decimal(
     match type_name {
         "INTEGER" => {
             let val: i64 = row.try_get(column).map_err(|e| {
-                RepositoryError::Database(format!("Failed to get INTEGER from '{}': {}", column, e))
+                RepositoryError::Database(anyhow::anyhow!("Failed to get INTEGER from '{}': {}", column, e))
             })?;
             Ok(Decimal::from(val))
         }
         "REAL" => {
             let val: f64 = row.try_get(column).map_err(|e| {
-                RepositoryError::Database(format!("Failed to get REAL from '{}': {}", column, e))
+                RepositoryError::Database(anyhow::anyhow!("Failed to get REAL from '{}': {}", column, e))
             })?;
             Decimal::try_from(val).map_err(|e| {
-                RepositoryError::Database(format!("Failed to convert {} to Decimal: {}", val, e))
+                RepositoryError::Database(anyhow::anyhow!("Failed to convert {} to Decimal: {}", val, e))
             })
         }
         "NULL" => Ok(Decimal::ZERO),
-        _ => Err(RepositoryError::Database(format!(
+        _ => Err(RepositoryError::Database(anyhow::anyhow!(
             "Unexpected type '{}' for column '{}'",
             type_name, column
         ))),
@@ -45,7 +45,7 @@ pub fn get_optional_decimal(
 ) -> Result<Option<Decimal>, RepositoryError> {
     let value_ref = row
         .try_get_raw(column)
-        .map_err(|e| RepositoryError::Database(format!("Column '{}' not found: {}", column, e)))?;
+        .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Column '{}' not found: {}", column, e)))?;
 
     if value_ref.is_null() {
         return Ok(None);
