@@ -46,10 +46,10 @@ impl RepositoryFactory for SqliteRepositoryFactory {
             .map_err(|e| RepositoryError::Connection(format!("{e}")))?;
         repo.run_migrations()
             .await
-            .map_err(|e| RepositoryError::Database(format!("{e}")))?;
+            .map_err(|e| RepositoryError::Database(format!("{e:#}")))?;
         repo.run_seeds(Path::new("./seeds"))
             .await
-            .map_err(|e| RepositoryError::Database(format!("{e}")))?;
+            .map_err(|e| RepositoryError::Database(format!("{e:#}")))?;
         Ok(Box::new(repo))
     }
 }
