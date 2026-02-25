@@ -91,6 +91,15 @@ mod tests {
         pool
     }
 
+    /// Unwrap a `RepositoryError::Database` and return its message string.
+    /// Panics (failing the test) for any other variant.
+    fn database_msg(err: RepositoryError) -> String {
+        match err {
+            RepositoryError::Database(inner) => inner.to_string(),
+            other => panic!("Expected RepositoryError::Database, got: {other:?}"),
+        }
+    }
+
     // get_decimal tests
 
     #[tokio::test]
@@ -106,9 +115,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "int_value");
+        let result = get_decimal(&row, "int_value").expect("Should get decimal from INTEGER");
 
-        assert_eq!(result, Ok(dec!(12345)));
+        assert_eq!(result, dec!(12345));
     }
 
     #[tokio::test]
@@ -124,9 +133,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "int_value");
+        let result = get_decimal(&row, "int_value").expect("Should get decimal from negative INTEGER");
 
-        assert_eq!(result, Ok(dec!(-99999)));
+        assert_eq!(result, dec!(-99999));
     }
 
     #[tokio::test]
@@ -142,9 +151,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "real_value");
+        let result = get_decimal(&row, "real_value").expect("Should get decimal from REAL");
 
-        assert_eq!(result, Ok(dec!(123.45)));
+        assert_eq!(result, dec!(123.45));
     }
 
     #[tokio::test]
@@ -160,9 +169,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "real_value");
+        let result = get_decimal(&row, "real_value").expect("Should get decimal from negative REAL");
 
-        assert_eq!(result, Ok(dec!(-456.78)));
+        assert_eq!(result, dec!(-456.78));
     }
 
     #[tokio::test]
@@ -178,9 +187,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "null_value");
+        let result = get_decimal(&row, "null_value").expect("Should get zero from NULL");
 
-        assert_eq!(result, Ok(Decimal::ZERO));
+        assert_eq!(result, Decimal::ZERO);
     }
 
     #[tokio::test]
@@ -199,9 +208,7 @@ mod tests {
         let result = get_decimal(&row, "nonexistent_column");
 
         let err = result.expect_err("Should return error for nonexistent column");
-        let RepositoryError::Database(msg) = err else {
-            panic!("Expected Database error, got: {:?}", err);
-        };
+        let msg = database_msg(err);
         let expected = "Column 'nonexistent_column' not found: ";
         assert!(
             msg.len() > expected.len(),
@@ -227,12 +234,9 @@ mod tests {
 
         let result = get_decimal(&row, "text_value");
 
-        assert_eq!(
-            result,
-            Err(RepositoryError::Database(
-                "Unexpected type 'TEXT' for column 'text_value'".to_string()
-            ))
-        );
+        let err = result.expect_err("Should return error for unexpected type");
+        let msg = database_msg(err);
+        assert_eq!(msg, "Unexpected type 'TEXT' for column 'text_value'");
     }
 
     // get_optional_decimal tests
@@ -250,9 +254,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_optional_decimal(&row, "int_value");
+        let result = get_optional_decimal(&row, "int_value").expect("Should get Some from INTEGER");
 
-        assert_eq!(result, Ok(Some(dec!(54321))));
+        assert_eq!(result, Some(dec!(54321)));
     }
 
     #[tokio::test]
@@ -268,9 +272,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_optional_decimal(&row, "real_value");
+        let result = get_optional_decimal(&row, "real_value").expect("Should get Some from REAL");
 
-        assert_eq!(result, Ok(Some(dec!(999.99))));
+        assert_eq!(result, Some(dec!(999.99)));
     }
 
     #[tokio::test]
@@ -286,9 +290,9 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_optional_decimal(&row, "null_value");
+        let result = get_optional_decimal(&row, "null_value").expect("Should get None from NULL");
 
-        assert_eq!(result, Ok(None));
+        assert_eq!(result, None);
     }
 
     #[tokio::test]
@@ -307,9 +311,7 @@ mod tests {
         let result = get_optional_decimal(&row, "nonexistent_column");
 
         let err = result.expect_err("Should return error for nonexistent column");
-        let RepositoryError::Database(msg) = err else {
-            panic!("Expected Database error, got: {:?}", err);
-        };
+        let msg = database_msg(err);
         let expected = "Column 'nonexistent_column' not found: ";
         assert!(
             msg.len() > expected.len(),
@@ -335,12 +337,9 @@ mod tests {
 
         let result = get_optional_decimal(&row, "text_value");
 
-        assert_eq!(
-            result,
-            Err(RepositoryError::Database(
-                "Unexpected type 'TEXT' for column 'text_value'".to_string()
-            ))
-        );
+        let err = result.expect_err("Should return error for unexpected type");
+        let msg = database_msg(err);
+        assert_eq!(msg, "Unexpected type 'TEXT' for column 'text_value'");
     }
 
     // decimal_to_f64 tests
