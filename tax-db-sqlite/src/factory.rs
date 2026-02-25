@@ -1,7 +1,9 @@
+use std::path::Path;
+
 use async_trait::async_trait;
 
-use tax_core::db::{DbConfig, RepositoryFactory};
 use tax_core::db::repository::{RepositoryError, TaxRepository};
+use tax_core::db::{DbConfig, RepositoryFactory};
 
 use crate::repository::SqliteRepository;
 
@@ -35,11 +37,19 @@ impl RepositoryFactory for SqliteRepositoryFactory {
     /// NOTE: if your `SqliteRepository::new` expects a sqlx-style URL
     /// (`sqlite:path?mode=rwc`) rather than a bare path, adjust the
     /// mapping below accordingly.
-    async fn create(&self, config: &DbConfig) -> Result<Box<dyn TaxRepository>, RepositoryError> {
+    async fn create(
+        &self,
+        config: &DbConfig,
+    ) -> Result<Box<dyn TaxRepository>, RepositoryError> {
         let repo = SqliteRepository::new(&config.connection_string)
             .await
             .map_err(|e| RepositoryError::Connection(format!("{e}")))?;
-
+        repo.run_migrations()
+            .await
+            .map_err(|e| RepositoryError::Database(format!("{e}")))?;
+        repo.run_seeds(Path::new("./seeds"))
+            .await
+            .map_err(|e| RepositoryError::Database(format!("{e}")))?;
         Ok(Box::new(repo))
     }
 }
