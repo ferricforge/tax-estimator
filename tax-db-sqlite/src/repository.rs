@@ -702,7 +702,7 @@ mod tests {
 
         let result = repo.get_tax_year_config(1999).await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -801,7 +801,7 @@ mod tests {
 
         let result = repo.get_filing_status(999).await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -825,7 +825,7 @@ mod tests {
 
         let result = repo.get_standard_deduction(1999, 1).await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -988,7 +988,7 @@ mod tests {
 
         let result = repo.get_filing_status_by_code("INVALID").await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -1034,7 +1034,7 @@ mod tests {
 
         let result = repo.get_estimate(99999).await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -1083,7 +1083,7 @@ mod tests {
 
         let result = repo.update_estimate(&created).await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -1103,7 +1103,7 @@ mod tests {
             .expect("Should delete estimate");
 
         let result = repo.get_estimate(id).await;
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
@@ -1112,7 +1112,7 @@ mod tests {
 
         let result = repo.delete_estimate(99999).await;
 
-        assert_eq!(result, Err(RepositoryError::NotFound));
+        assert!(matches!(result, Err(RepositoryError::NotFound)));
     }
 
     #[tokio::test]
