@@ -292,12 +292,12 @@ async fn test_load_invalid_schedule() {
 
     let result = TaxBracketLoader::load(&repo, &records).await;
 
-    assert_eq!(
-        result,
-        Err(TaxBracketLoaderError::InvalidSchedule(
-            "INVALID".to_string()
-        ))
-    );
+    match result {
+        Err(TaxBracketLoaderError::InvalidSchedule(ref schedule)) => {
+            assert_eq!(schedule, "INVALID");
+        }
+        other => panic!("expected InvalidSchedule, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -342,7 +342,10 @@ async fn test_load_fails_without_tax_year_config() {
 
     let result = TaxBracketLoader::load(&repo, &records).await;
 
-    assert_eq!(result, Err(TaxBracketLoaderError::TaxYearNotFound(2025)));
+    match result {
+        Err(TaxBracketLoaderError::TaxYearNotFound(year)) => assert_eq!(year, 2025),
+        other => panic!("expected TaxYearNotFound, got {other:?}"),
+    }
 }
 
 #[tokio::test]
