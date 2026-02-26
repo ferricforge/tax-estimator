@@ -104,7 +104,10 @@ fn percent(d: &Decimal) -> String {
 // FilingStatusData and TaxYearData are ours, so Display is fine on both.
 
 impl fmt::Display for FilingStatusData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         writeln!(
             f,
             "{} ({})",
@@ -138,7 +141,10 @@ impl fmt::Display for FilingStatusData {
 }
 
 impl fmt::Display for TaxYearData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         // ── TaxYearConfig fields (foreign type, inlined) ──────────────
         let c = &self.config;
         writeln!(f, "Tax Year Configuration ({})", c.tax_year)?;

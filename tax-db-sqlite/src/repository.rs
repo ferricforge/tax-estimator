@@ -3,7 +3,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, sqlite::{SqliteConnectOptions, SqlitePool}};
+use sqlx::{
+    Row,
+    sqlite::{SqliteConnectOptions, SqlitePool},
+};
 use tax_core::{
     FilingStatus, FilingStatusCode, NewTaxEstimate, RepositoryError, StandardDeduction, TaxBracket,
     TaxEstimate, TaxRepository, TaxYearConfig,
@@ -22,10 +25,17 @@ impl SqliteRepository {
             .filename(database_url)
             .create_if_missing(true); // Explicitly sets the option
 
-        // Connect to the database using the specified options
-        let pool = SqlitePool::connect_with(options)
-            .await
-            .with_context(|| format!("Failed to connect to database: {}", database_url))?;
+        // For :memory:, each connection gets its own DB; use a single connection so
+        // migrations and seeds run against the same in-memory database.
+        let pool = if database_url == ":memory:" {
+            sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await
+        } else {
+            SqlitePool::connect_with(options).await
+        }
+        .with_context(|| format!("Failed to connect to database: {}", database_url))?;
 
         Ok(Self { pool })
     }
@@ -100,12 +110,12 @@ fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, Rep
         calculated_se_tax: get_optional_decimal(row, "calculated_se_tax")?,
         calculated_total_tax: get_optional_decimal(row, "calculated_total_tax")?,
         calculated_required_payment: get_optional_decimal(row, "calculated_required_payment")?,
-        created_at: row
-            .try_get::<DateTime<Utc>, _>("created_at")
-            .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Failed to get created_at: {}", e)))?,
-        updated_at: row
-            .try_get::<DateTime<Utc>, _>("updated_at")
-            .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Failed to get updated_at: {}", e)))?,
+        created_at: row.try_get::<DateTime<Utc>, _>("created_at").map_err(|e| {
+            RepositoryError::Database(anyhow::anyhow!("Failed to get created_at: {}", e))
+        })?,
+        updated_at: row.try_get::<DateTime<Utc>, _>("updated_at").map_err(|e| {
+            RepositoryError::Database(anyhow::anyhow!("Failed to get updated_at: {}", e))
+        })?,
     })
 }
 
@@ -229,7 +239,10 @@ impl TaxRepository for SqliteRepository {
                 .try_get("status_code")
                 .map_err(|e| RepositoryError::Database(e.into()))?;
             let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-                RepositoryError::Database(anyhow::anyhow!("Invalid status code: {}", status_code_str))
+                RepositoryError::Database(anyhow::anyhow!(
+                    "Invalid status code: {}",
+                    status_code_str
+                ))
             })?;
 
             statuses.push(FilingStatus {

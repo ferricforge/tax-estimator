@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 
@@ -6,6 +6,26 @@ use tax_core::db::repository::{RepositoryError, TaxRepository};
 use tax_core::db::{DbConfig, RepositoryFactory};
 
 use crate::repository::SqliteRepository;
+
+/// Resolve the seeds directory at runtime so it works in both development and
+/// packaged distribution.
+///
+/// Resolution order:
+/// 1. **`TAX_DB_SQLITE_SEEDS_DIR`** — if set, use this path (override for
+///    packagers or custom layouts).
+/// 2. **`./seeds`** — if the directory exists in the current working directory.
+/// 3. **Crate manifest dir** — `$CARGO_MANIFEST_DIR/seeds` as last resort
+///    (dev/tests when run from the build tree).
+fn seeds_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("TAX_DB_SQLITE_SEEDS_DIR") {
+        return PathBuf::from(dir);
+    }
+    let cwd_seeds = PathBuf::from("./seeds");
+    if cwd_seeds.is_dir() {
+        return cwd_seeds;
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("seeds")
+}
 
 /// [`RepositoryFactory`] for SQLite.
 ///
@@ -34,6 +54,10 @@ impl RepositoryFactory for SqliteRepositoryFactory {
     ///   does not exist.
     /// * `":memory:"` — an ephemeral in-memory database (useful for tests).
     ///
+    /// Seed SQL files are loaded from a directory resolved at runtime (see
+    /// [`seeds_dir`]). For packaged distribution, set `TAX_DB_SQLITE_SEEDS_DIR`
+    /// or run with a `seeds` directory in the current working directory.
+    ///
     /// NOTE: if your `SqliteRepository::new` expects a sqlx-style URL
     /// (`sqlite:path?mode=rwc`) rather than a bare path, adjust the
     /// mapping below accordingly.
@@ -47,7 +71,7 @@ impl RepositoryFactory for SqliteRepositoryFactory {
         repo.run_migrations()
             .await
             .map_err(RepositoryError::Database)?;
-        repo.run_seeds(Path::new("./seeds"))
+        repo.run_seeds(&seeds_dir())
             .await
             .map_err(RepositoryError::Database)?;
         Ok(Box::new(repo))

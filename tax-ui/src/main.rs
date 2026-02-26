@@ -35,8 +35,7 @@ struct Cli {
 /// * Falls back to `info` so normal runs are quiet.
 /// * Strips timestamps and target names to keep CLI output clean.
 fn init_tracing() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::from("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::from("info"));
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)

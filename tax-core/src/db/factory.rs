@@ -41,7 +41,10 @@ pub trait RepositoryFactory: Send + Sync {
     /// Open (or create) a connection and return a ready-to-use repository.
     /// Implementations are free to run migrations or warm connection pools
     /// inside this method.
-    async fn create(&self, config: &DbConfig) -> Result<Box<dyn TaxRepository>, RepositoryError>;
+    async fn create(
+        &self,
+        config: &DbConfig,
+    ) -> Result<Box<dyn TaxRepository>, RepositoryError>;
 }
 
 /// Registry of [`RepositoryFactory`] instances, keyed by backend name.
@@ -66,7 +69,10 @@ impl RepositoryRegistry {
     ///
     /// If a factory with the same [`RepositoryFactory::backend_name`] is
     /// already present it is silently replaced.
-    pub fn register(&mut self, factory: Box<dyn RepositoryFactory>) {
+    pub fn register(
+        &mut self,
+        factory: Box<dyn RepositoryFactory>,
+    ) {
         self.factories.insert(factory.backend_name(), factory);
     }
 
@@ -88,16 +94,13 @@ impl RepositoryRegistry {
         &self,
         config: &DbConfig,
     ) -> Result<Box<dyn TaxRepository>, RepositoryError> {
-        let factory = self
-            .factories
-            .get(config.backend.as_str())
-            .ok_or_else(|| {
-                RepositoryError::Configuration(format!(
-                    "unknown backend '{}'; available: {:?}",
-                    config.backend,
-                    self.available_backends()
-                ))
-            })?;
+        let factory = self.factories.get(config.backend.as_str()).ok_or_else(|| {
+            RepositoryError::Configuration(format!(
+                "unknown backend '{}'; available: {:?}",
+                config.backend,
+                self.available_backends()
+            ))
+        })?;
 
         factory.create(config).await
     }
@@ -114,8 +117,8 @@ impl Default for RepositoryRegistry {
 // ─────────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use async_trait::async_trait;
 
@@ -190,7 +193,10 @@ mod tests {
         ) -> Result<TaxEstimate, RepositoryError> {
             unimplemented!()
         }
-        async fn get_estimate(&self, _id: i64) -> Result<TaxEstimate, RepositoryError> {
+        async fn get_estimate(
+            &self,
+            _id: i64,
+        ) -> Result<TaxEstimate, RepositoryError> {
             unimplemented!()
         }
         async fn update_estimate(
@@ -199,7 +205,10 @@ mod tests {
         ) -> Result<(), RepositoryError> {
             unimplemented!()
         }
-        async fn delete_estimate(&self, _id: i64) -> Result<(), RepositoryError> {
+        async fn delete_estimate(
+            &self,
+            _id: i64,
+        ) -> Result<(), RepositoryError> {
             unimplemented!()
         }
         async fn list_estimates(
@@ -244,9 +253,9 @@ mod tests {
             &self,
             _config: &DbConfig,
         ) -> Result<Box<dyn TaxRepository>, RepositoryError> {
-            Err(RepositoryError::Connection(
-                anyhow::anyhow!("intentional failure".to_string()),
-            ))
+            Err(RepositoryError::Connection(anyhow::anyhow!(
+                "intentional failure".to_string()
+            )))
         }
     }
 
@@ -265,9 +274,7 @@ mod tests {
     /// so the standard `Result` helpers (`unwrap_err`, `assert_eq!`) are
     /// unavailable on the full `Result` type.  Pull the error out manually
     /// before any formatting or comparison happens.
-    fn expect_error(
-        result: Result<Box<dyn TaxRepository>, RepositoryError>,
-    ) -> RepositoryError {
+    fn expect_error(result: Result<Box<dyn TaxRepository>, RepositoryError>) -> RepositoryError {
         match result {
             Err(e) => e,
             Ok(_) => panic!("expected Err, got Ok"),
@@ -294,9 +301,11 @@ mod tests {
     fn default_registry_is_empty() {
         // Default is part of the public API contract; test it explicitly
         // even though the impl delegates to new().
-        assert!(RepositoryRegistry::default()
-            .available_backends()
-            .is_empty());
+        assert!(
+            RepositoryRegistry::default()
+                .available_backends()
+                .is_empty()
+        );
     }
 
     // ── registration ─────────────────────────────────────────────────────

@@ -8,9 +8,9 @@ pub fn get_decimal(
     row: &sqlx::sqlite::SqliteRow,
     column: &str,
 ) -> Result<Decimal, RepositoryError> {
-    let value_ref = row
-        .try_get_raw(column)
-        .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Column '{}' not found: {}", column, e)))?;
+    let value_ref = row.try_get_raw(column).map_err(|e| {
+        RepositoryError::Database(anyhow::anyhow!("Column '{}' not found: {}", column, e))
+    })?;
 
     let type_info = value_ref.type_info();
     let type_name = type_info.name();
@@ -18,22 +18,35 @@ pub fn get_decimal(
     match type_name {
         "INTEGER" => {
             let val: i64 = row.try_get(column).map_err(|e| {
-                RepositoryError::Database(anyhow::anyhow!("Failed to get INTEGER from '{}': {}", column, e))
+                RepositoryError::Database(anyhow::anyhow!(
+                    "Failed to get INTEGER from '{}': {}",
+                    column,
+                    e
+                ))
             })?;
             Ok(Decimal::from(val))
         }
         "REAL" => {
             let val: f64 = row.try_get(column).map_err(|e| {
-                RepositoryError::Database(anyhow::anyhow!("Failed to get REAL from '{}': {}", column, e))
+                RepositoryError::Database(anyhow::anyhow!(
+                    "Failed to get REAL from '{}': {}",
+                    column,
+                    e
+                ))
             })?;
             Decimal::try_from(val).map_err(|e| {
-                RepositoryError::Database(anyhow::anyhow!("Failed to convert {} to Decimal: {}", val, e))
+                RepositoryError::Database(anyhow::anyhow!(
+                    "Failed to convert {} to Decimal: {}",
+                    val,
+                    e
+                ))
             })
         }
         "NULL" => Ok(Decimal::ZERO),
         _ => Err(RepositoryError::Database(anyhow::anyhow!(
             "Unexpected type '{}' for column '{}'",
-            type_name, column
+            type_name,
+            column
         ))),
     }
 }
@@ -43,9 +56,9 @@ pub fn get_optional_decimal(
     row: &sqlx::sqlite::SqliteRow,
     column: &str,
 ) -> Result<Option<Decimal>, RepositoryError> {
-    let value_ref = row
-        .try_get_raw(column)
-        .map_err(|e| RepositoryError::Database(anyhow::anyhow!("Column '{}' not found: {}", column, e)))?;
+    let value_ref = row.try_get_raw(column).map_err(|e| {
+        RepositoryError::Database(anyhow::anyhow!("Column '{}' not found: {}", column, e))
+    })?;
 
     if value_ref.is_null() {
         return Ok(None);
@@ -133,7 +146,8 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "int_value").expect("Should get decimal from negative INTEGER");
+        let result =
+            get_decimal(&row, "int_value").expect("Should get decimal from negative INTEGER");
 
         assert_eq!(result, dec!(-99999));
     }
@@ -169,7 +183,8 @@ mod tests {
             .await
             .expect("Failed to fetch row");
 
-        let result = get_decimal(&row, "real_value").expect("Should get decimal from negative REAL");
+        let result =
+            get_decimal(&row, "real_value").expect("Should get decimal from negative REAL");
 
         assert_eq!(result, dec!(-456.78));
     }

@@ -13,15 +13,15 @@ use tax_ui::csv_loader;
 /// Path to the sample CSV shipped with the test fixtures.
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("tests")
-    .join("fixtures")
-    .join("sample_estimates.csv")
+        .join("tests")
+        .join("fixtures")
+        .join("sample_estimates.csv")
 }
 
 #[test]
 fn test_load_fixture_file_succeeds() {
     let estimates = csv_loader::load_from_file(&fixture_path())
-    .expect("fixture file should load without error");
+        .expect("fixture file should load without error");
 
     // The fixture has exactly 3 rows.
     assert_eq!(estimates.len(), 3);
