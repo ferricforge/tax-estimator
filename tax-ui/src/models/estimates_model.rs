@@ -1,6 +1,7 @@
 use std::fmt;
 
 use rust_decimal::Decimal;
+use tax_core::FilingStatusCode;
 
 use crate::utils::opt_decimal_display;
 
@@ -8,7 +9,7 @@ use crate::utils::opt_decimal_display;
 #[derive(Clone, Debug, Default)]
 pub struct EstimatedIncomeModel {
     // User-provided values (1040-ES Worksheet inputs)
-    pub filing_status_id: Option<String>,
+    pub filing_status_id: FilingStatusCode,
     pub expected_agi: Decimal,
     pub expected_deduction: Decimal,
     pub expected_qbi_deduction: Option<Decimal>,
@@ -47,11 +48,7 @@ impl fmt::Display for EstimatedIncomeModel {
         &self,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        writeln!(
-            f,
-            "Filing status:     {}",
-            self.filing_status_id.as_deref().unwrap_or("—")
-        )?;
+        writeln!(f, "Filing status:     {}", self.filing_status_id.to_long_str())?;
         writeln!(f, "Expected AGI:       {}", self.expected_agi)?;
         writeln!(f, "Expected deduction: {}", self.expected_deduction)?;
         writeln!(

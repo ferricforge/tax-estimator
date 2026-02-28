@@ -8,11 +8,12 @@ use gpui_component::{
     select::{Select, SelectState},
     v_flex,
 };
+use tax_core::FilingStatusCode;
 
 use crate::{
     components::make_button,
     models::EstimatedIncomeModel,
-    utils::{ParseDecimalError, parse_decimal, parse_optional_decimal},
+    utils::{parse_decimal, parse_optional_decimal},
 };
 
 #[derive(Clone, Debug)]
@@ -54,19 +55,30 @@ impl EstimatedIncomeForm {
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
 
-        let expected_agi = make_input_state("Expected adjusted gross income", window, cx);
-        let expected_deduction =
-            make_input_state("Expected standard or itemized deduction", window, cx);
-        let expected_qbi_deduction = make_input_state("Expected QBI deduction", window, cx);
-        let expected_amt = make_input_state("Expected alternative minimum tax", window, cx);
-        let expected_credits = make_input_state("Expected tax credits", window, cx);
-        let expected_other_taxes = make_input_state("Expected other taxes", window, cx);
-        let expected_withholding = make_input_state("Expected income tax withheld", window, cx);
-        let prior_year_tax = make_input_state("Prior year tax liability", window, cx);
+        let expected_agi =
+            make_input_state_with_decimal_mask("Expected adjusted gross income", window, cx);
+        let expected_deduction = make_input_state_with_decimal_mask(
+            "Expected standard or itemized deduction",
+            window,
+            cx,
+        );
+        let expected_qbi_deduction =
+            make_input_state_with_decimal_mask("Expected QBI deduction", window, cx);
+        let expected_amt =
+            make_input_state_with_decimal_mask("Expected alternative minimum tax", window, cx);
+        let expected_credits =
+            make_input_state_with_decimal_mask("Expected tax credits", window, cx);
+        let expected_other_taxes =
+            make_input_state_with_decimal_mask("Expected other taxes", window, cx);
+        let expected_withholding =
+            make_input_state_with_decimal_mask("Expected income tax withheld", window, cx);
+        let prior_year_tax =
+            make_input_state_with_decimal_mask("Prior year tax liability", window, cx);
 
-        let se_income = make_input_state("Self-employment income", window, cx);
-        let expected_crp_payments = make_input_state("Expected CRP payments", window, cx);
-        let expected_wages = make_input_state("Expected wages", window, cx);
+        let se_income = make_input_state_with_decimal_mask("Self-employment income", window, cx);
+        let expected_crp_payments =
+            make_input_state_with_decimal_mask("Expected CRP payments", window, cx);
+        let expected_wages = make_input_state_with_decimal_mask("Expected wages", window, cx);
 
         Self {
             filing_status,
@@ -88,12 +100,14 @@ impl EstimatedIncomeForm {
     pub fn to_model(
         &self,
         cx: &App,
-    ) -> Result<EstimatedIncomeModel, ParseDecimalError> {
-        let filing_status_id: Option<String> = self
+    ) -> Result<EstimatedIncomeModel, anyhow::Error> {
+        let filing_status_id: FilingStatusCode = self
             .filing_status
             .read(cx)
             .selected_value()
-            .map(ToString::to_string);
+            .ok_or_else(|| anyhow::anyhow!("No filing status selected"))?
+            .as_ref()
+            .try_into()?;
 
         Ok(EstimatedIncomeModel {
             filing_status_id,
@@ -128,38 +142,53 @@ impl Render for EstimatedIncomeForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        v_flex()
-            .gap_2()
+        div()
             .size_full()
             .child(make_labeled_row("Enter expected values for the year:"))
-            .child(make_select_row(
-                "Filing Status:",
-                Select::new(&self.filing_status).w_full().render(window, cx),
-            ))
-            .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
-            .child(make_input_row(
-                &self.expected_deduction,
-                "Exp. deduction: $",
-            ))
-            .child(make_input_row(
-                &self.expected_qbi_deduction,
-                "QBI deduction: $",
-            ))
-            .child(make_input_row(&self.expected_amt, "AMT: $"))
-            .child(make_input_row(&self.expected_credits, "Credits: $"))
-            .child(make_input_row(&self.expected_other_taxes, "Other taxes: $"))
-            .child(make_input_row(&self.expected_withholding, "Withholding: $"))
-            .child(make_input_row(&self.prior_year_tax, "Prior year tax: $"))
-            .child(make_input_row(&self.se_income, "SE income: $"))
-            .child(make_input_row(
-                &self.expected_crp_payments,
-                "CRP payments: $",
-            ))
-            .child(make_input_row(&self.expected_wages, "Wages: $"))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .size_full()
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .size_full()
+                            .child(make_select_row(
+                                "Filing Status:",
+                                Select::new(&self.filing_status).w_full().render(window, cx),
+                            ))
+                            .child(make_input_row(&self.se_income, "SE income: $"))
+                            .child(make_input_row(
+                                &self.expected_crp_payments,
+                                "CRP payments: $",
+                            ))
+                            .child(make_input_row(&self.expected_wages, "Wages: $"))
+                            .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
+                            .child(make_input_row(
+                                &self.expected_deduction,
+                                "Exp. deduction: $",
+                            ))
+                            .child(make_input_row(
+                                &self.expected_qbi_deduction,
+                                "QBI deduction: $",
+                            ))
+                            .child(make_input_row(&self.expected_amt, "AMT: $"))
+                            .child(make_input_row(&self.expected_credits, "Credits: $"))
+                            .child(make_input_row(&self.expected_other_taxes, "Other taxes: $"))
+                            .child(make_input_row(&self.expected_withholding, "Withholding: $"))
+                            .child(make_input_row(&self.prior_year_tax, "Prior year tax: $")),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .size_full()
+                            .child("This is a child on the right"),
+                    ),
+            )
     }
 }
 
-fn make_input_state(
+fn make_input_state_with_decimal_mask(
     label: impl Into<SharedString>,
     window: &mut Window,
     cx: &mut Context<EstimatedIncomeForm>,

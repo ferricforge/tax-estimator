@@ -82,7 +82,7 @@ pub fn build_main_content(
                             };
                             match form_model.validate_for_submit() {
                                 Ok(()) => {
-                                    info!(%form_model, "Form validated");
+                                    info!(%form_model, "Form validated\n");
                                     // Next step: pass validated model to the processing crate.
                                 }
                                 Err(errors) => {
