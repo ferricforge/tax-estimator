@@ -5,6 +5,7 @@ pub mod gui;
 pub mod logging;
 pub mod models;
 pub mod themes;
+pub mod utils;
 
 use gpui::{App, actions};
 pub use gui::setup_app;

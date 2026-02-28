@@ -10,7 +10,7 @@ use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::{Quit, themes::apply_macos_system_theme};
 use crate::{
-    components::{FileSelectionForm, make_button},
+    components::{EstimatedIncomeForm, make_button},
     quit,
 };
 
@@ -53,8 +53,9 @@ pub fn build_main_content(
     window: &mut Window,
     app_cx: &mut App,
 ) -> impl Fn() -> AnyElement + 'static {
-    let form = app_cx
-        .new(|form_cx: &mut Context<FileSelectionForm>| FileSelectionForm::new(window, form_cx));
+    let form = app_cx.new(|form_cx: &mut Context<EstimatedIncomeForm>| {
+        EstimatedIncomeForm::new(window, form_cx)
+    });
 
     move || {
         v_flex()
@@ -72,7 +73,13 @@ pub fn build_main_content(
                     .child({
                         let form_handle = form.clone();
                         make_button("ok-go", "Convert Files", move |_, _, cx: &mut App| {
-                            let form_model = form_handle.read(cx).to_model(cx);
+                            let form_model = match form_handle.read(cx).to_model(cx) {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    warn!(%e, "Invalid decimal in form");
+                                    return;
+                                }
+                            };
                             match form_model.validate_for_submit() {
                                 Ok(()) => {
                                     info!(%form_model, "Form validated");

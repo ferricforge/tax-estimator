@@ -8,7 +8,7 @@ use gpui::{Pixels, Size, px};
 use gpui_component::Sizable;
 use gpui_component::button::{Button, ButtonVariants};
 
-pub use estimate_form::FileSelectionForm;
+pub use estimate_form::EstimatedIncomeForm;
 pub use window::AppWindow;
 
 #[derive(Debug, Clone, Copy)]
@@ -23,7 +23,7 @@ impl Default for WindowPreferences {
         Self {
             size: Size {
                 width: px(800.0),
-                height: px(600.0),
+                height: px(800.0),
             },
         }
     }

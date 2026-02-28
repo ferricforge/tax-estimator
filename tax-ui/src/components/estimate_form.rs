@@ -1,151 +1,183 @@
-use std::path::PathBuf;
-
 use gpui::{
     App, AppContext, ClickEvent, Context, Div, Entity, IntoElement, ParentElement, Render,
-    SharedString, Styled, TextAlign, Window, div, px,
+    RenderOnce, SharedString, Styled, TextAlign, Window, div, px,
 };
 use gpui_component::{
-    checkbox::Checkbox,
-    h_flex,
-    input::{Input, InputState},
+    IndexPath, h_flex,
+    input::{Input, InputState, MaskPattern},
+    select::{Select, SelectState},
     v_flex,
 };
-use tracing::debug;
 
 use crate::{
-    components::{
-        dialogs::{get_file_path, get_folder_path, owned_filters},
-        make_button,
-    },
-    logging::log_task_error,
-    models::FileFormModel,
+    components::make_button,
+    models::EstimatedIncomeModel,
+    utils::{ParseDecimalError, parse_decimal, parse_optional_decimal},
 };
 
-pub struct FileSelectionForm {
-    source_file: Entity<InputState>,
-    database_file: Entity<InputState>,
-    log_directory: Entity<InputState>,
-    log_stdout: bool,
+#[derive(Clone, Debug)]
+pub struct EstimatedIncomeForm {
+    // User-provided values (1040-ES Worksheet inputs)
+    filing_status: Entity<SelectState<Vec<SharedString>>>,
+    expected_agi: Entity<InputState>,
+    expected_deduction: Entity<InputState>,
+    expected_qbi_deduction: Entity<InputState>,
+    expected_amt: Entity<InputState>,
+    expected_credits: Entity<InputState>,
+    expected_other_taxes: Entity<InputState>,
+    expected_withholding: Entity<InputState>,
+    prior_year_tax: Entity<InputState>,
+
+    // User-provided values (SE Worksheet inputs)
+    se_income: Entity<InputState>,
+    expected_crp_payments: Entity<InputState>,
+    expected_wages: Entity<InputState>,
 }
 
-impl FileSelectionForm {
+impl EstimatedIncomeForm {
     pub fn new(
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let source_file = make_input_state("Source file path...", window, cx);
-        let database_file = make_input_state("Database file path...", window, cx);
-        let log_file = make_input_state("Log folder path...", window, cx);
+        let statuses = vec![
+            SharedString::from("Single"),
+            SharedString::from("Married Filing Jointly"),
+            SharedString::from("Married Filing Separately"),
+            SharedString::from("Head of Household"),
+            SharedString::from("Qualifying Surviving Spouse"),
+        ];
+
+        let initial_index = statuses
+            .iter()
+            .position(|s| s.as_ref() == "Single")
+            .map(|i| IndexPath::default().row(i));
+
+        let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
+
+        let expected_agi = make_input_state("Expected adjusted gross income", window, cx);
+        let expected_deduction =
+            make_input_state("Expected standard or itemized deduction", window, cx);
+        let expected_qbi_deduction = make_input_state("Expected QBI deduction", window, cx);
+        let expected_amt = make_input_state("Expected alternative minimum tax", window, cx);
+        let expected_credits = make_input_state("Expected tax credits", window, cx);
+        let expected_other_taxes = make_input_state("Expected other taxes", window, cx);
+        let expected_withholding = make_input_state("Expected income tax withheld", window, cx);
+        let prior_year_tax = make_input_state("Prior year tax liability", window, cx);
+
+        let se_income = make_input_state("Self-employment income", window, cx);
+        let expected_crp_payments = make_input_state("Expected CRP payments", window, cx);
+        let expected_wages = make_input_state("Expected wages", window, cx);
 
         Self {
-            source_file,
-            database_file,
-            log_directory: log_file,
-            log_stdout: false,
+            filing_status,
+            expected_agi,
+            expected_deduction,
+            expected_qbi_deduction,
+            expected_amt,
+            expected_credits,
+            expected_other_taxes,
+            expected_withholding,
+            prior_year_tax,
+            se_income,
+            expected_crp_payments,
+            expected_wages,
         }
     }
 
-    /// Collects the current form values into a [`FileFormModel`].
+    /// Collects the current form values into an [`EstimatedIncomeModel`].
     pub fn to_model(
         &self,
         cx: &App,
-    ) -> FileFormModel {
-        FileFormModel {
-            source_file: PathBuf::from(self.source_file.read(cx).value().as_str().trim()),
-            database_file: PathBuf::from(self.database_file.read(cx).value().as_str().trim()),
-            log_directory: PathBuf::from(self.log_directory.read(cx).value().as_str().trim()),
-            log_stdout: self.log_stdout,
-        }
-    }
+    ) -> Result<EstimatedIncomeModel, ParseDecimalError> {
+        let filing_status_id: Option<String> = self
+            .filing_status
+            .read(cx)
+            .selected_value()
+            .map(ToString::to_string);
 
-    /// Returns the source file input state.
-    pub fn source_file(&self) -> &Entity<InputState> {
-        &self.source_file
-    }
-
-    /// Returns the database file input state.
-    pub fn database_file(&self) -> &Entity<InputState> {
-        &self.database_file
-    }
-
-    /// Returns the log director input state
-    pub fn log_folder(&self) -> &Entity<InputState> {
-        &self.log_directory
-    }
-
-    /// Returns whether output should be logged to stdout.
-    pub fn log_stdout(&self) -> bool {
-        self.log_stdout
+        Ok(EstimatedIncomeModel {
+            filing_status_id,
+            expected_agi: parse_decimal(self.expected_agi.read(cx).value().as_str())?,
+            expected_deduction: parse_decimal(self.expected_deduction.read(cx).value().as_str())?,
+            expected_qbi_deduction: parse_optional_decimal(
+                self.expected_qbi_deduction.read(cx).value().as_str(),
+            ),
+            expected_amt: parse_optional_decimal(self.expected_amt.read(cx).value().as_str()),
+            expected_credits: parse_optional_decimal(
+                self.expected_credits.read(cx).value().as_str(),
+            ),
+            expected_other_taxes: parse_optional_decimal(
+                self.expected_other_taxes.read(cx).value().as_str(),
+            ),
+            expected_withholding: parse_optional_decimal(
+                self.expected_withholding.read(cx).value().as_str(),
+            ),
+            prior_year_tax: parse_optional_decimal(self.prior_year_tax.read(cx).value().as_str()),
+            se_income: parse_optional_decimal(self.se_income.read(cx).value().as_str()),
+            expected_crp_payments: parse_optional_decimal(
+                self.expected_crp_payments.read(cx).value().as_str(),
+            ),
+            expected_wages: parse_optional_decimal(self.expected_wages.read(cx).value().as_str()),
+        })
     }
 }
 
-impl Render for FileSelectionForm {
+impl Render for EstimatedIncomeForm {
     fn render(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         v_flex()
             .gap_2()
             .size_full()
+            .child(make_labeled_row("Enter expected values for the year:"))
+            .child(make_select_row(
+                "Filing Status:",
+                Select::new(&self.filing_status).w_full().render(window, cx),
+            ))
+            .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
             .child(make_input_row(
-                &self.source_file,
-                "Source File:",
-                "source-select",
-                "Select File",
-                file_select_handler(
-                    &self.source_file,
-                    "~/Desktop",
-                    &[
-                        ("Excel", &["xlsx", "xlsm"] as &[_]),
-                        ("CSV", &["csv"] as &[_]),
-                    ],
-                    false,
-                ),
+                &self.expected_deduction,
+                "Exp. deduction: $",
             ))
             .child(make_input_row(
-                &self.database_file,
-                "Database:",
-                "db-select",
-                "Select Database",
-                file_select_handler(
-                    &self.database_file,
-                    "~/Desktop",
-                    &[("SQLite", &["db", "db3", "sqlite"] as &[_])],
-                    false,
-                ),
+                &self.expected_qbi_deduction,
+                "QBI deduction: $",
             ))
+            .child(make_input_row(&self.expected_amt, "AMT: $"))
+            .child(make_input_row(&self.expected_credits, "Credits: $"))
+            .child(make_input_row(&self.expected_other_taxes, "Other taxes: $"))
+            .child(make_input_row(&self.expected_withholding, "Withholding: $"))
+            .child(make_input_row(&self.prior_year_tax, "Prior year tax: $"))
+            .child(make_input_row(&self.se_income, "SE income: $"))
             .child(make_input_row(
-                &self.log_directory,
-                "Log Folder:",
-                "log-select",
-                "Select Log Folder",
-                file_select_handler(&self.log_directory, "~/Desktop", &[], true),
+                &self.expected_crp_payments,
+                "CRP payments: $",
             ))
-            .child(
-                v_flex().gap_4().p_5().child(
-                    Checkbox::new("log-checkbox")
-                        .label("Log to stdout")
-                        .border_2()
-                        .checked(self.log_stdout)
-                        .on_click(cx.listener(|view, checked, _, cx| {
-                            view.log_stdout = *checked;
-                            cx.notify();
-                        })),
-                ),
-            )
+            .child(make_input_row(&self.expected_wages, "Wages: $"))
     }
 }
 
 fn make_input_state(
     label: impl Into<SharedString>,
     window: &mut Window,
-    cx: &mut Context<FileSelectionForm>,
+    cx: &mut Context<EstimatedIncomeForm>,
 ) -> Entity<InputState> {
-    cx.new(|closure_cx| InputState::new(window, closure_cx).placeholder(label.into()))
+    let pattern: MaskPattern = MaskPattern::Number {
+        separator: Some(','),
+        fraction: Some(4),
+    };
+
+    cx.new(|closure_cx| {
+        InputState::new(window, closure_cx)
+            .mask_pattern(pattern)
+            .placeholder(label.into())
+    })
 }
 
-fn make_input_row(
+#[allow(unused)]
+fn make_input_row_with_button(
     state: &Entity<InputState>,
     input_label: impl Into<SharedString>,
     button_id: impl Into<SharedString>,
@@ -155,6 +187,22 @@ fn make_input_row(
     make_labeled_row(input_label)
         .child(Input::new(state).flex_grow())
         .child(make_button(button_id, button_label, button_callback))
+}
+
+fn make_input_row(
+    state: &Entity<InputState>,
+    input_label: impl Into<SharedString>,
+) -> Div {
+    make_labeled_row(input_label).child(Input::new(state).flex_grow())
+}
+
+/// Creates a labeled row containing a text label and an already-rendered
+/// [`Select`] dropdown, styled consistently with [`make_input_row`].
+fn make_select_row(
+    label: impl Into<SharedString>,
+    select_element: impl IntoElement,
+) -> Div {
+    make_labeled_row(label).child(select_element)
 }
 
 /// Creates the common outer container and label used by both input and select
@@ -168,59 +216,8 @@ fn make_labeled_row(label: impl Into<SharedString>) -> Div {
         .border_1()
         .child(
             div()
-                .min_w(px(100.))
+                .min_w(px(150.))
                 .text_align(TextAlign::Right)
                 .child(label.into()),
         )
-}
-
-/// Creates a click handler that opens an async file dialog and populates the
-/// given input field with the selected path.
-///
-/// The outer closure captures owned copies of `input`, `directory`, and
-/// `filters`. Each click then clones these into an async task that runs
-/// the file dialog off the main thread and writes back via `async_window`.
-fn file_select_handler(
-    input: &Entity<InputState>,
-    directory: &str,
-    filters: &[(&str, &[&str])],
-    select_dir: bool,
-) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
-    let input = input.clone();
-    let directory = directory.to_string();
-    let filters = owned_filters(filters);
-
-    move |_, window, cx| {
-        let input = input.clone();
-        let filters = filters.clone();
-        let directory = directory.clone();
-        let select_dir = select_dir;
-        let mut async_window = window.to_async(cx);
-        cx.spawn(async move |_async_cx| {
-            let result: anyhow::Result<()> = async {
-                let path = if select_dir {
-                    get_folder_path(directory).await
-                } else {
-                    get_file_path(directory, filters).await
-                };
-                if let Some(path) = path {
-                    let path_str = path.display().to_string();
-                    async_window.update(|window, cx| {
-                        input.update(cx, |state, cx| {
-                            state.set_value(path_str, window, cx);
-                        });
-                    })?;
-                } else {
-                    debug!("No file/folder selected");
-                }
-
-                Ok(())
-            }
-            .await;
-
-            log_task_error("file_select_handler", result);
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
-    }
 }

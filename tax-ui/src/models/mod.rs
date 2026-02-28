@@ -1,3 +1,3 @@
-pub mod file_form;
+pub mod estimates_model;
 
-pub use file_form::FileFormModel;
+pub use estimates_model::EstimatedIncomeModel;
