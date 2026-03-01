@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+const SINGLE: i32 = 1;
+const MFJ: i32 = 2;
+const MFS: i32 = 3;
+const HOH: i32 = 4;
+const QSS: i32 = 5;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilingStatusCode {
     #[default]
@@ -42,6 +48,21 @@ impl FilingStatusCode {
             _ => None,
         }
     }
+
+    /// ---------------------------------------------------------------------------
+    /// Filing-status code → seed ID mapping
+    /// ---------------------------------------------------------------------------
+    /// This mirrors the IDs established by 01_filing_status.sql.  If the seed
+    /// data ever changes the mapping lives in exactly one place.
+    pub fn filing_status_to_id(code: FilingStatusCode) -> i32 {
+        match code {
+            FilingStatusCode::Single => SINGLE,
+            FilingStatusCode::MarriedFilingJointly => MFJ,
+            FilingStatusCode::MarriedFilingSeparately => MFS,
+            FilingStatusCode::HeadOfHousehold => HOH,
+            FilingStatusCode::QualifyingSurvivingSpouse => QSS,
+        }
+    }
 }
 
 impl TryFrom<&str> for FilingStatusCode {
@@ -64,4 +85,50 @@ pub struct FilingStatus {
     pub id: i32,
     pub status_code: FilingStatusCode,
     pub status_name: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_filing_status_to_id_single() {
+        assert_eq!(
+            FilingStatusCode::filing_status_to_id(FilingStatusCode::Single),
+            SINGLE
+        );
+    }
+
+    #[test]
+    fn test_filing_status_to_id_married_joint() {
+        assert_eq!(
+            FilingStatusCode::filing_status_to_id(FilingStatusCode::MarriedFilingJointly),
+            MFJ
+        );
+    }
+
+    #[test]
+    fn test_filing_status_to_id_married_separate() {
+        assert_eq!(
+            FilingStatusCode::filing_status_to_id(FilingStatusCode::MarriedFilingSeparately),
+            MFS
+        );
+    }
+
+    #[test]
+    fn test_filing_status_to_id_head_of_household() {
+        assert_eq!(
+            FilingStatusCode::filing_status_to_id(FilingStatusCode::HeadOfHousehold),
+            HOH
+        );
+    }
+
+    #[test]
+    fn test_filing_status_to_id_qualifying() {
+        assert_eq!(
+            FilingStatusCode::filing_status_to_id(FilingStatusCode::QualifyingSurvivingSpouse),
+            QSS
+        );
+    }
 }

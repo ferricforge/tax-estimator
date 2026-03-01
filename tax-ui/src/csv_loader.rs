@@ -51,22 +51,6 @@ use serde::Deserialize;
 use tax_core::models::{FilingStatusCode, NewTaxEstimate};
 
 // ---------------------------------------------------------------------------
-// Filing-status code → seed ID mapping
-// ---------------------------------------------------------------------------
-// This mirrors the IDs established by 01_filing_status.sql.  If the seed
-// data ever changes the mapping lives in exactly one place.
-
-fn filing_status_to_id(code: FilingStatusCode) -> i32 {
-    match code {
-        FilingStatusCode::Single => 1,
-        FilingStatusCode::MarriedFilingJointly => 2,
-        FilingStatusCode::MarriedFilingSeparately => 3,
-        FilingStatusCode::HeadOfHousehold => 4,
-        FilingStatusCode::QualifyingSurvivingSpouse => 5,
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Serde-compatible row that mirrors the CSV layout exactly
 // ---------------------------------------------------------------------------
 
@@ -126,7 +110,7 @@ fn convert_row(
 
     Ok(NewTaxEstimate {
         tax_year: row.tax_year,
-        filing_status_id: filing_status_to_id(code),
+        filing_status_id: FilingStatusCode::filing_status_to_id(code),
         expected_agi: row.expected_agi,
         expected_deduction: row.expected_deduction,
         expected_qbi_deduction: row.expected_qbi_deduction,

@@ -10,8 +10,7 @@ use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::{Quit, themes::apply_macos_system_theme};
 use crate::{
-    components::{EstimatedIncomeForm, make_button},
-    quit,
+    components::{EstimatedIncomeForm, make_button}, models::EstimatedIncomeModel, quit
 };
 
 pub fn setup_app(app_cx: &mut App) {
@@ -84,6 +83,7 @@ pub fn build_main_content(
                                 Ok(()) => {
                                     info!(%form_model, "Form validated\n");
                                     // Next step: pass validated model to the processing crate.
+                                    make_estimate(&form_model);
                                 }
                                 Err(errors) => {
                                     warn!("Cannot submit form due to validation errors");
@@ -97,4 +97,9 @@ pub fn build_main_content(
             )
             .into_any_element()
     }
+}
+
+fn make_estimate(model: &EstimatedIncomeModel) {
+    let new_est = model.to_new_tax_estimate();
+    info!(%new_est, "New Estimate");
 }

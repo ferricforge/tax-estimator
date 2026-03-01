@@ -1,13 +1,15 @@
 use std::fmt;
 
 use rust_decimal::Decimal;
-use tax_core::FilingStatusCode;
+use tax_core::{FilingStatusCode, NewTaxEstimate};
 
 use crate::utils::opt_decimal_display;
 
 /// Represents the collected values from the file selection form.
 #[derive(Clone, Debug, Default)]
 pub struct EstimatedIncomeModel {
+    pub tax_year: i32,
+
     // User-provided values (1040-ES Worksheet inputs)
     pub filing_status_id: FilingStatusCode,
     pub expected_agi: Decimal,
@@ -41,6 +43,24 @@ impl EstimatedIncomeModel {
             Err(_errors)
         }
     }
+
+    pub fn to_new_tax_estimate(&self) -> NewTaxEstimate {
+        NewTaxEstimate {
+            tax_year: self.tax_year,
+            filing_status_id: FilingStatusCode::filing_status_to_id(self.filing_status_id),
+            expected_agi: self.expected_agi,
+            expected_deduction: self.expected_deduction,
+            expected_qbi_deduction: self.expected_qbi_deduction,
+            expected_amt: self.expected_amt,
+            expected_credits: self.expected_credits,
+            expected_other_taxes: self.expected_other_taxes,
+            expected_withholding: self.expected_withholding,
+            prior_year_tax: self.prior_year_tax,
+            se_income: self.se_income,
+            expected_crp_payments: self.expected_crp_payments,
+            expected_wages: self.expected_wages,
+        }
+    }
 }
 
 impl fmt::Display for EstimatedIncomeModel {
@@ -48,7 +68,12 @@ impl fmt::Display for EstimatedIncomeModel {
         &self,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        writeln!(f, "Filing status:     {}", self.filing_status_id.to_long_str())?;
+        writeln!(f, "Tax Year:           {}", self.tax_year)?;
+        writeln!(
+            f,
+            "Filing status:     {}",
+            self.filing_status_id.to_long_str()
+        )?;
         writeln!(f, "Expected AGI:       {}", self.expected_agi)?;
         writeln!(f, "Expected deduction: {}", self.expected_deduction)?;
         writeln!(

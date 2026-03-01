@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -48,4 +50,10 @@ pub struct NewTaxEstimate {
     pub se_income: Option<Decimal>,
     pub expected_crp_payments: Option<Decimal>,
     pub expected_wages: Option<Decimal>,
+}
+
+impl Display for NewTaxEstimate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#?}", self)
+    }
 }

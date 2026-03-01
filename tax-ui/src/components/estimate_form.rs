@@ -8,6 +8,7 @@ use gpui_component::{
     select::{Select, SelectState},
     v_flex,
 };
+use regex::Regex;
 use tax_core::FilingStatusCode;
 
 use crate::{
@@ -18,6 +19,8 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct EstimatedIncomeForm {
+    tax_year: Entity<InputState>,
+
     // User-provided values (1040-ES Worksheet inputs)
     filing_status: Entity<SelectState<Vec<SharedString>>>,
     expected_agi: Entity<InputState>,
@@ -53,34 +56,33 @@ impl EstimatedIncomeForm {
             .position(|s| s.as_ref() == "Single")
             .map(|i| IndexPath::default().row(i));
 
+        let tax_year = make_input_state_integer_mask("Tax Year", window, cx);
+        tax_year.update(cx, |input_state, cx| {
+            input_state.set_pattern(Regex::new(r"^\d{0,4}$").unwrap(), window, cx);
+        });
+
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
 
-        let expected_agi =
-            make_input_state_with_decimal_mask("Expected adjusted gross income", window, cx);
-        let expected_deduction = make_input_state_with_decimal_mask(
-            "Expected standard or itemized deduction",
-            window,
-            cx,
-        );
+        let expected_agi = make_input_state_with_decimal_mask("Exp AGI", 2, window, cx);
+        let expected_deduction = make_input_state_with_decimal_mask("Exp deduction", 2, window, cx);
         let expected_qbi_deduction =
-            make_input_state_with_decimal_mask("Expected QBI deduction", window, cx);
-        let expected_amt =
-            make_input_state_with_decimal_mask("Expected alternative minimum tax", window, cx);
-        let expected_credits =
-            make_input_state_with_decimal_mask("Expected tax credits", window, cx);
+            make_input_state_with_decimal_mask("Exp QBI deduction", 2, window, cx);
+        let expected_amt = make_input_state_with_decimal_mask("Exp AMT", 2, window, cx);
+        let expected_credits = make_input_state_with_decimal_mask("Exp tax credits", 2, window, cx);
         let expected_other_taxes =
-            make_input_state_with_decimal_mask("Expected other taxes", window, cx);
+            make_input_state_with_decimal_mask("Exp other taxes", 2, window, cx);
         let expected_withholding =
-            make_input_state_with_decimal_mask("Expected income tax withheld", window, cx);
+            make_input_state_with_decimal_mask("Exp inc tax withheld", 2, window, cx);
         let prior_year_tax =
-            make_input_state_with_decimal_mask("Prior year tax liability", window, cx);
+            make_input_state_with_decimal_mask("Prior year tax liability", 2, window, cx);
 
-        let se_income = make_input_state_with_decimal_mask("Self-employment income", window, cx);
+        let se_income = make_input_state_with_decimal_mask("Self-emp income", 2, window, cx);
         let expected_crp_payments =
-            make_input_state_with_decimal_mask("Expected CRP payments", window, cx);
-        let expected_wages = make_input_state_with_decimal_mask("Expected wages", window, cx);
+            make_input_state_with_decimal_mask("Exp CRP payments", 2, window, cx);
+        let expected_wages = make_input_state_with_decimal_mask("Exp wages", 2, window, cx);
 
         Self {
+            tax_year,
             filing_status,
             expected_agi,
             expected_deduction,
@@ -110,6 +112,7 @@ impl EstimatedIncomeForm {
             .try_into()?;
 
         Ok(EstimatedIncomeModel {
+            tax_year: self.tax_year.read(cx).value().parse::<i32>()?,
             filing_status_id,
             expected_agi: parse_decimal(self.expected_agi.read(cx).value().as_str())?,
             expected_deduction: parse_decimal(self.expected_deduction.read(cx).value().as_str())?,
@@ -153,6 +156,12 @@ impl Render for EstimatedIncomeForm {
                         v_flex()
                             .gap_2()
                             .size_full()
+                            .child(make_input_row(&self.tax_year, "Tax Year")),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .size_full()
                             .child(make_select_row(
                                 "Filing Status:",
                                 Select::new(&self.filing_status).w_full().render(window, cx),
@@ -177,12 +186,6 @@ impl Render for EstimatedIncomeForm {
                             .child(make_input_row(&self.expected_other_taxes, "Other taxes: $"))
                             .child(make_input_row(&self.expected_withholding, "Withholding: $"))
                             .child(make_input_row(&self.prior_year_tax, "Prior year tax: $")),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .size_full()
-                            .child("This is a child on the right"),
                     ),
             )
     }
@@ -190,18 +193,40 @@ impl Render for EstimatedIncomeForm {
 
 fn make_input_state_with_decimal_mask(
     label: impl Into<SharedString>,
+    decimals: usize,
     window: &mut Window,
     cx: &mut Context<EstimatedIncomeForm>,
 ) -> Entity<InputState> {
     let pattern: MaskPattern = MaskPattern::Number {
-        separator: Some(','),
-        fraction: Some(4),
+        separator: Some('_'),
+        fraction: Some(decimals),
     };
 
     cx.new(|closure_cx| {
         InputState::new(window, closure_cx)
+            //.text_align(TextAlign::Right)
             .mask_pattern(pattern)
             .placeholder(label.into())
+            .multi_line(false)
+    })
+}
+
+fn make_input_state_integer_mask(
+    label: impl Into<SharedString>,
+    window: &mut Window,
+    cx: &mut Context<EstimatedIncomeForm>,
+) -> Entity<InputState> {
+    let pattern: MaskPattern = MaskPattern::Number {
+        separator: None,
+        fraction: Some(0),
+    };
+
+    cx.new(|closure_cx| {
+        InputState::new(window, closure_cx)
+            //.text_align(TextAlign::Right)
+            .mask_pattern(pattern)
+            .placeholder(label.into())
+            .multi_line(false)
     })
 }
 
