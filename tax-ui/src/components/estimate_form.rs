@@ -1,5 +1,5 @@
 use gpui::{
-    App, AppContext, ClickEvent, Context, Div, Entity, IntoElement, ParentElement, Render,
+    App, AppContext, ClickEvent, Context, Div, Entity, Hsla, IntoElement, ParentElement, Render,
     RenderOnce, SharedString, Styled, TextAlign, Window, div, px,
 };
 use gpui_component::{
@@ -9,7 +9,6 @@ use gpui_component::{
     v_flex,
 };
 use regex::Regex;
-use tax_core::FilingStatusCode;
 
 use crate::{
     components::make_button,
@@ -63,6 +62,13 @@ impl EstimatedIncomeForm {
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
 
+        // SE Worksheet values
+        let se_income = make_input_state_with_decimal_mask("Self-emp income", 2, window, cx);
+        let expected_crp_payments =
+            make_input_state_with_decimal_mask("Exp CRP payments", 2, window, cx);
+        let expected_wages = make_input_state_with_decimal_mask("Exp wages", 2, window, cx);
+
+        // 1040-ES Worksheet
         let expected_agi = make_input_state_with_decimal_mask("Exp AGI", 2, window, cx);
         let expected_deduction = make_input_state_with_decimal_mask("Exp deduction", 2, window, cx);
         let expected_qbi_deduction =
@@ -75,11 +81,6 @@ impl EstimatedIncomeForm {
             make_input_state_with_decimal_mask("Exp inc tax withheld", 2, window, cx);
         let prior_year_tax =
             make_input_state_with_decimal_mask("Prior year tax liability", 2, window, cx);
-
-        let se_income = make_input_state_with_decimal_mask("Self-emp income", 2, window, cx);
-        let expected_crp_payments =
-            make_input_state_with_decimal_mask("Exp CRP payments", 2, window, cx);
-        let expected_wages = make_input_state_with_decimal_mask("Exp wages", 2, window, cx);
 
         Self {
             tax_year,
@@ -99,23 +100,70 @@ impl EstimatedIncomeForm {
     }
 
     /// Collects the current form values into an [`EstimatedIncomeModel`].
+    ///
+    /// Runs parse/required-field checks then business-rule validation. Returns all
+    /// errors (parse or validation) so the user can see every problem at once.
     pub fn to_model(
         &self,
         cx: &App,
-    ) -> Result<EstimatedIncomeModel, anyhow::Error> {
-        let filing_status_id: FilingStatusCode = self
-            .filing_status
-            .read(cx)
-            .selected_value()
-            .ok_or_else(|| anyhow::anyhow!("No filing status selected"))?
-            .as_ref()
-            .try_into()?;
+    ) -> Result<EstimatedIncomeModel, Vec<String>> {
+        let mut errors = Vec::new();
 
-        Ok(EstimatedIncomeModel {
-            tax_year: self.tax_year.read(cx).value().parse::<i32>()?,
-            filing_status_id,
-            expected_agi: parse_decimal(self.expected_agi.read(cx).value().as_str())?,
-            expected_deduction: parse_decimal(self.expected_deduction.read(cx).value().as_str())?,
+        let filing_status_id = match self.filing_status.read(cx).selected_value() {
+            None => {
+                errors.push("No filing status selected".to_string());
+                None
+            }
+            Some(s) => match s.as_ref().try_into() {
+                Ok(id) => Some(id),
+                Err(e) => {
+                    errors.push(format!("Filing status: {e}"));
+                    None
+                }
+            },
+        };
+
+        let tax_year_value = self.tax_year.read(cx).value();
+        let tax_year_s = tax_year_value.trim();
+        let tax_year = if tax_year_s.is_empty() {
+            errors.push("Tax year is required".to_string());
+            None
+        } else {
+            match tax_year_s.parse::<i32>() {
+                Ok(y) => Some(y),
+                Err(e) => {
+                    errors.push(format!("Tax year must be a number (e.g. 2025): {e}"));
+                    None
+                }
+            }
+        };
+
+        let expected_agi = match parse_decimal(self.expected_agi.read(cx).value().as_str()) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                errors.push(format!("Expected AGI: {e}"));
+                None
+            }
+        };
+
+        let expected_deduction =
+            match parse_decimal(self.expected_deduction.read(cx).value().as_str()) {
+                Ok(d) => Some(d),
+                Err(e) => {
+                    errors.push(format!("Expected deduction: {e}"));
+                    None
+                }
+            };
+
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
+        let model = EstimatedIncomeModel {
+            tax_year: tax_year.unwrap(),
+            filing_status_id: filing_status_id.unwrap(),
+            expected_agi: expected_agi.unwrap(),
+            expected_deduction: expected_deduction.unwrap(),
             expected_qbi_deduction: parse_optional_decimal(
                 self.expected_qbi_deduction.read(cx).value().as_str(),
             ),
@@ -135,7 +183,12 @@ impl EstimatedIncomeForm {
                 self.expected_crp_payments.read(cx).value().as_str(),
             ),
             expected_wages: parse_optional_decimal(self.expected_wages.read(cx).value().as_str()),
-        })
+        };
+
+        if let Err(validation_errors) = model.validate_for_submit() {
+            return Err(validation_errors);
+        }
+        Ok(model)
     }
 }
 
@@ -166,12 +219,14 @@ impl Render for EstimatedIncomeForm {
                                 "Filing Status:",
                                 Select::new(&self.filing_status).w_full().render(window, cx),
                             ))
+                            .child(make_header_row("SE Worksheet Inputs:"))
                             .child(make_input_row(&self.se_income, "SE income: $"))
                             .child(make_input_row(
                                 &self.expected_crp_payments,
                                 "CRP payments: $",
                             ))
                             .child(make_input_row(&self.expected_wages, "Wages: $"))
+                            .child(make_header_row("1040-ES Worksheet Inputs:"))
                             .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
                             .child(make_input_row(
                                 &self.expected_deduction,
@@ -273,5 +328,36 @@ fn make_labeled_row(label: impl Into<SharedString>) -> Div {
                 .min_w(px(150.))
                 .text_align(TextAlign::Right)
                 .child(label.into()),
+        )
+}
+
+/// Creates the common outer container and label used by both input and select
+/// rows, ensuring consistent alignment, spacing, and border styling.
+fn make_header_row(header: impl Into<SharedString>) -> Div {
+    h_flex()
+        .items_center()
+        .gap_5()
+        .p(px(2.))
+        .rounded_md()
+        .child(
+            div()
+                .size_full()
+                .border_1()
+                .gap_1()
+                .p_1()
+                .border_color(Hsla {
+                    h: (336 / 360) as f32,
+                    s: 0.75,
+                    l: 0.5,
+                    a: 1.0,
+                })
+                .text_color(Hsla {
+                    h: (336 / 360) as f32,
+                    s: 0.75,
+                    l: 0.5,
+                    a: 1.0,
+                })
+                .text_center()
+                .child(header.into()),
         )
 }

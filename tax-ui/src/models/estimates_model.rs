@@ -27,20 +27,56 @@ pub struct EstimatedIncomeModel {
     pub expected_wages: Option<Decimal>,
 }
 
+/// Tax year range accepted for estimates (inclusive).
+const TAX_YEAR_MIN: i32 = 2000;
+const TAX_YEAR_MAX: i32 = 2030;
+
 impl EstimatedIncomeModel {
-    /// Validates that the model has all required values for submission.
+    /// Validates business rules before submission.
     ///
     /// Rules:
-    /// - source file is required
-    /// - database file is required
-    /// - selected sheet is required only for Excel source files
+    /// - Tax year must be in the supported range (e.g. 2000..=2030).
+    /// - Expected AGI and expected deduction must be non-negative.
+    /// - Any optional decimal field that is present must be non-negative.
     pub fn validate_for_submit(&self) -> Result<(), Vec<String>> {
-        let mut _errors = Vec::new();
+        let mut errors = Vec::new();
 
-        if _errors.is_empty() {
+        if self.tax_year < TAX_YEAR_MIN || self.tax_year > TAX_YEAR_MAX {
+            errors.push(format!(
+                "Tax year must be between {} and {}",
+                TAX_YEAR_MIN, TAX_YEAR_MAX
+            ));
+        }
+
+        if self.expected_agi < Decimal::ZERO {
+            errors.push("Expected AGI cannot be negative".to_string());
+        }
+        if self.expected_deduction < Decimal::ZERO {
+            errors.push("Expected deduction cannot be negative".to_string());
+        }
+
+        for (label, opt) in [
+            ("QBI deduction", &self.expected_qbi_deduction),
+            ("AMT", &self.expected_amt),
+            ("Credits", &self.expected_credits),
+            ("Other taxes", &self.expected_other_taxes),
+            ("Withholding", &self.expected_withholding),
+            ("Prior year tax", &self.prior_year_tax),
+            ("SE income", &self.se_income),
+            ("CRP payments", &self.expected_crp_payments),
+            ("Wages", &self.expected_wages),
+        ] {
+            if let Some(d) = opt {
+                if *d < Decimal::ZERO {
+                    errors.push(format!("{label} cannot be negative"));
+                }
+            }
+        }
+
+        if errors.is_empty() {
             Ok(())
         } else {
-            Err(_errors)
+            Err(errors)
         }
     }
 
@@ -121,5 +157,70 @@ impl fmt::Display for EstimatedIncomeModel {
             "Wages:              {}",
             opt_decimal_display(&self.expected_wages)
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_test_model() -> EstimatedIncomeModel {
+        EstimatedIncomeModel {
+            tax_year: 2025,
+            filing_status_id: FilingStatusCode::Single,
+            expected_agi: Decimal::ZERO,
+            expected_deduction: Decimal::ZERO,
+            expected_qbi_deduction: None,
+            expected_amt: None,
+            expected_credits: None,
+            expected_other_taxes: None,
+            expected_withholding: None,
+            prior_year_tax: None,
+            se_income: None,
+            expected_crp_payments: None,
+            expected_wages: None,
+        }
+    }
+
+    #[test]
+    fn validate_for_submit_accepts_valid_model() {
+        let m = valid_test_model();
+        assert!(m.validate_for_submit().is_ok());
+    }
+
+    #[test]
+    fn validate_for_submit_rejects_tax_year_below_min() {
+        let mut m = valid_test_model();
+        m.tax_year = TAX_YEAR_MIN - 1;
+        let err = m.validate_for_submit().unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert!(err[0].contains("Tax year must be between"));
+    }
+
+    #[test]
+    fn validate_for_submit_rejects_tax_year_above_max() {
+        let mut m = valid_test_model();
+        m.tax_year = TAX_YEAR_MAX + 1;
+        let err = m.validate_for_submit().unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert!(err[0].contains("Tax year must be between"));
+    }
+
+    #[test]
+    fn validate_for_submit_rejects_negative_agi() {
+        let mut m = valid_test_model();
+        m.expected_agi = Decimal::from(-1);
+        let err = m.validate_for_submit().unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0], "Expected AGI cannot be negative");
+    }
+
+    #[test]
+    fn validate_for_submit_rejects_negative_optional_decimal() {
+        let mut m = valid_test_model();
+        m.se_income = Some(Decimal::from(-100));
+        let err = m.validate_for_submit().unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0], "SE income cannot be negative");
     }
 }

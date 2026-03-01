@@ -10,7 +10,9 @@ use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::{Quit, themes::apply_macos_system_theme};
 use crate::{
-    components::{EstimatedIncomeForm, make_button}, models::EstimatedIncomeModel, quit
+    components::{EstimatedIncomeForm, make_button},
+    models::EstimatedIncomeModel,
+    quit,
 };
 
 pub fn setup_app(app_cx: &mut App) {
@@ -74,24 +76,15 @@ pub fn build_main_content(
                         make_button("ok-go", "Convert Files", move |_, _, cx: &mut App| {
                             let form_model = match form_handle.read(cx).to_model(cx) {
                                 Ok(m) => m,
-                                Err(e) => {
-                                    warn!(%e, "Invalid decimal in form");
+                                Err(errors) => {
+                                    for e in &errors {
+                                        warn!(%e, "form error");
+                                    }
                                     return;
                                 }
                             };
-                            match form_model.validate_for_submit() {
-                                Ok(()) => {
-                                    info!(%form_model, "Form validated\n");
-                                    // Next step: pass validated model to the processing crate.
-                                    make_estimate(&form_model);
-                                }
-                                Err(errors) => {
-                                    warn!("Cannot submit form due to validation errors");
-                                    for error in errors {
-                                        warn!(%error, "validation error");
-                                    }
-                                }
-                            }
+                            info!(%form_model, "Form validated\n");
+                            make_estimate(&form_model);
                         })
                     }),
             )
