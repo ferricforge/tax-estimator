@@ -10,8 +10,15 @@ use crate::utils::opt_decimal_display;
 pub struct EstimatedIncomeModel {
     pub tax_year: i32,
 
-    // User-provided values (1040-ES Worksheet inputs)
+    // User-provided values
     pub filing_status_id: FilingStatusCode,
+
+    // User-provided values (SE Worksheet inputs)
+    pub se_income: Option<Decimal>,
+    pub expected_crp_payments: Option<Decimal>,
+    pub expected_wages: Option<Decimal>,
+
+    // User-provided values (1040-ES Worksheet inputs)
     pub expected_agi: Decimal,
     pub expected_deduction: Decimal,
     pub expected_qbi_deduction: Option<Decimal>,
@@ -20,11 +27,6 @@ pub struct EstimatedIncomeModel {
     pub expected_other_taxes: Option<Decimal>,
     pub expected_withholding: Option<Decimal>,
     pub prior_year_tax: Option<Decimal>,
-
-    // User-provided values (SE Worksheet inputs)
-    pub se_income: Option<Decimal>,
-    pub expected_crp_payments: Option<Decimal>,
-    pub expected_wages: Option<Decimal>,
 }
 
 /// Tax year range accepted for estimates (inclusive).
@@ -56,20 +58,20 @@ impl EstimatedIncomeModel {
         }
 
         for (label, opt) in [
+            ("SE income", &self.se_income),
+            ("CRP payments", &self.expected_crp_payments),
+            ("Wages", &self.expected_wages),
             ("QBI deduction", &self.expected_qbi_deduction),
             ("AMT", &self.expected_amt),
             ("Credits", &self.expected_credits),
             ("Other taxes", &self.expected_other_taxes),
             ("Withholding", &self.expected_withholding),
             ("Prior year tax", &self.prior_year_tax),
-            ("SE income", &self.se_income),
-            ("CRP payments", &self.expected_crp_payments),
-            ("Wages", &self.expected_wages),
         ] {
-            if let Some(d) = opt {
-                if *d < Decimal::ZERO {
-                    errors.push(format!("{label} cannot be negative"));
-                }
+            if let Some(d) = opt
+                && *d < Decimal::ZERO
+            {
+                errors.push(format!("{label} cannot be negative"));
             }
         }
 
@@ -84,6 +86,9 @@ impl EstimatedIncomeModel {
         NewTaxEstimate {
             tax_year: self.tax_year,
             filing_status_id: FilingStatusCode::filing_status_to_id(self.filing_status_id),
+            se_income: self.se_income,
+            expected_crp_payments: self.expected_crp_payments,
+            expected_wages: self.expected_wages,
             expected_agi: self.expected_agi,
             expected_deduction: self.expected_deduction,
             expected_qbi_deduction: self.expected_qbi_deduction,
@@ -92,9 +97,6 @@ impl EstimatedIncomeModel {
             expected_other_taxes: self.expected_other_taxes,
             expected_withholding: self.expected_withholding,
             prior_year_tax: self.prior_year_tax,
-            se_income: self.se_income,
-            expected_crp_payments: self.expected_crp_payments,
-            expected_wages: self.expected_wages,
         }
     }
 }
@@ -109,6 +111,21 @@ impl fmt::Display for EstimatedIncomeModel {
             f,
             "Filing status:     {}",
             self.filing_status_id.to_long_str()
+        )?;
+        writeln!(
+            f,
+            "SE income:          {}",
+            opt_decimal_display(&self.se_income)
+        )?;
+        writeln!(
+            f,
+            "CRP payments:       {}",
+            opt_decimal_display(&self.expected_crp_payments)
+        )?;
+        writeln!(
+            f,
+            "Wages:              {}",
+            opt_decimal_display(&self.expected_wages)
         )?;
         writeln!(f, "Expected AGI:       {}", self.expected_agi)?;
         writeln!(f, "Expected deduction: {}", self.expected_deduction)?;
@@ -137,25 +154,10 @@ impl fmt::Display for EstimatedIncomeModel {
             "Withholding:        {}",
             opt_decimal_display(&self.expected_withholding)
         )?;
-        writeln!(
+        write!(
             f,
             "Prior year tax:     {}",
             opt_decimal_display(&self.prior_year_tax)
-        )?;
-        writeln!(
-            f,
-            "SE income:          {}",
-            opt_decimal_display(&self.se_income)
-        )?;
-        writeln!(
-            f,
-            "CRP payments:       {}",
-            opt_decimal_display(&self.expected_crp_payments)
-        )?;
-        write!(
-            f,
-            "Wages:              {}",
-            opt_decimal_display(&self.expected_wages)
         )
     }
 }
@@ -168,6 +170,9 @@ mod tests {
         EstimatedIncomeModel {
             tax_year: 2025,
             filing_status_id: FilingStatusCode::Single,
+            se_income: None,
+            expected_crp_payments: None,
+            expected_wages: None,
             expected_agi: Decimal::ZERO,
             expected_deduction: Decimal::ZERO,
             expected_qbi_deduction: None,
@@ -176,9 +181,6 @@ mod tests {
             expected_other_taxes: None,
             expected_withholding: None,
             prior_year_tax: None,
-            se_income: None,
-            expected_crp_payments: None,
-            expected_wages: None,
         }
     }
 

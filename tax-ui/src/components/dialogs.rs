@@ -39,7 +39,7 @@ pub async fn get_folder_path(location: String) -> Option<PathBuf> {
 /// # Examples
 ///
 /// ```
-/// use gpui_demo::components::owned_filters;
+/// use tax_ui::components::dialogs::owned_filters;
 ///
 /// let filters = owned_filters(&[
 ///     ("Excel", &["xlsx", "xlsm"]),

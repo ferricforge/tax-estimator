@@ -9,8 +9,15 @@ pub struct TaxEstimate {
     pub id: i64,
     pub tax_year: i32,
 
-    // User-provided values (1040-ES Worksheet inputs)
+    // User-provided values
     pub filing_status_id: i32,
+
+    // User-provided values (SE Worksheet inputs)
+    pub se_income: Option<Decimal>,
+    pub expected_crp_payments: Option<Decimal>,
+    pub expected_wages: Option<Decimal>,
+
+    // User-provided values (1040-ES Worksheet inputs)
     pub expected_agi: Decimal,
     pub expected_deduction: Decimal,
     pub expected_qbi_deduction: Option<Decimal>,
@@ -19,11 +26,6 @@ pub struct TaxEstimate {
     pub expected_other_taxes: Option<Decimal>,
     pub expected_withholding: Option<Decimal>,
     pub prior_year_tax: Option<Decimal>,
-
-    // User-provided values (SE Worksheet inputs)
-    pub se_income: Option<Decimal>,
-    pub expected_crp_payments: Option<Decimal>,
-    pub expected_wages: Option<Decimal>,
 
     // Calculated values
     pub calculated_se_tax: Option<Decimal>,
@@ -39,6 +41,11 @@ pub struct TaxEstimate {
 pub struct NewTaxEstimate {
     pub tax_year: i32,
     pub filing_status_id: i32,
+
+    pub se_income: Option<Decimal>,
+    pub expected_crp_payments: Option<Decimal>,
+    pub expected_wages: Option<Decimal>,
+
     pub expected_agi: Decimal,
     pub expected_deduction: Decimal,
     pub expected_qbi_deduction: Option<Decimal>,
@@ -47,9 +54,6 @@ pub struct NewTaxEstimate {
     pub expected_other_taxes: Option<Decimal>,
     pub expected_withholding: Option<Decimal>,
     pub prior_year_tax: Option<Decimal>,
-    pub se_income: Option<Decimal>,
-    pub expected_crp_payments: Option<Decimal>,
-    pub expected_wages: Option<Decimal>,
 }
 
 fn fmt_opt_decimal(
@@ -69,8 +73,19 @@ impl Display for NewTaxEstimate {
     ) -> fmt::Result {
         write!(
             f,
-            "Tax estimate {}: filing status {}, AGI {}, deduction {}",
-            self.tax_year, self.filing_status_id, self.expected_agi, self.expected_deduction
+            "Tax estimate {}: filing status {}",
+            self.tax_year, self.filing_status_id
+        )?;
+        write!(f, ", se_income: ")?;
+        fmt_opt_decimal(f, self.se_income.as_ref())?;
+        write!(f, ", crp_payments: ")?;
+        fmt_opt_decimal(f, self.expected_crp_payments.as_ref())?;
+        write!(f, ", wages: ")?;
+        fmt_opt_decimal(f, self.expected_wages.as_ref())?;
+        write!(
+            f,
+            ", AGI {}, deduction {}",
+            self.expected_agi, self.expected_deduction
         )?;
         write!(f, ", qbi_deduction: ")?;
         fmt_opt_decimal(f, self.expected_qbi_deduction.as_ref())?;
@@ -84,12 +99,6 @@ impl Display for NewTaxEstimate {
         fmt_opt_decimal(f, self.expected_withholding.as_ref())?;
         write!(f, ", prior_year_tax: ")?;
         fmt_opt_decimal(f, self.prior_year_tax.as_ref())?;
-        write!(f, ", se_income: ")?;
-        fmt_opt_decimal(f, self.se_income.as_ref())?;
-        write!(f, ", crp_payments: ")?;
-        fmt_opt_decimal(f, self.expected_crp_payments.as_ref())?;
-        write!(f, ", wages: ")?;
-        fmt_opt_decimal(f, self.expected_wages.as_ref())?;
         Ok(())
     }
 }

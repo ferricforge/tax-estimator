@@ -20,8 +20,14 @@ use crate::{
 pub struct EstimatedIncomeForm {
     tax_year: Entity<InputState>,
 
-    // User-provided values (1040-ES Worksheet inputs)
     filing_status: Entity<SelectState<Vec<SharedString>>>,
+
+    // User-provided values (SE Worksheet inputs)
+    se_income: Entity<InputState>,
+    expected_crp_payments: Entity<InputState>,
+    expected_wages: Entity<InputState>,
+
+    // User-provided values (1040-ES Worksheet inputs)
     expected_agi: Entity<InputState>,
     expected_deduction: Entity<InputState>,
     expected_qbi_deduction: Entity<InputState>,
@@ -30,11 +36,6 @@ pub struct EstimatedIncomeForm {
     expected_other_taxes: Entity<InputState>,
     expected_withholding: Entity<InputState>,
     prior_year_tax: Entity<InputState>,
-
-    // User-provided values (SE Worksheet inputs)
-    se_income: Entity<InputState>,
-    expected_crp_payments: Entity<InputState>,
-    expected_wages: Entity<InputState>,
 }
 
 impl EstimatedIncomeForm {
@@ -85,6 +86,9 @@ impl EstimatedIncomeForm {
         Self {
             tax_year,
             filing_status,
+            se_income,
+            expected_crp_payments,
+            expected_wages,
             expected_agi,
             expected_deduction,
             expected_qbi_deduction,
@@ -93,9 +97,6 @@ impl EstimatedIncomeForm {
             expected_other_taxes,
             expected_withholding,
             prior_year_tax,
-            se_income,
-            expected_crp_payments,
-            expected_wages,
         }
     }
 
@@ -162,6 +163,11 @@ impl EstimatedIncomeForm {
         let model = EstimatedIncomeModel {
             tax_year: tax_year.unwrap(),
             filing_status_id: filing_status_id.unwrap(),
+            se_income: parse_optional_decimal(self.se_income.read(cx).value().as_str()),
+            expected_crp_payments: parse_optional_decimal(
+                self.expected_crp_payments.read(cx).value().as_str(),
+            ),
+            expected_wages: parse_optional_decimal(self.expected_wages.read(cx).value().as_str()),
             expected_agi: expected_agi.unwrap(),
             expected_deduction: expected_deduction.unwrap(),
             expected_qbi_deduction: parse_optional_decimal(
@@ -178,16 +184,9 @@ impl EstimatedIncomeForm {
                 self.expected_withholding.read(cx).value().as_str(),
             ),
             prior_year_tax: parse_optional_decimal(self.prior_year_tax.read(cx).value().as_str()),
-            se_income: parse_optional_decimal(self.se_income.read(cx).value().as_str()),
-            expected_crp_payments: parse_optional_decimal(
-                self.expected_crp_payments.read(cx).value().as_str(),
-            ),
-            expected_wages: parse_optional_decimal(self.expected_wages.read(cx).value().as_str()),
         };
 
-        if let Err(validation_errors) = model.validate_for_submit() {
-            return Err(validation_errors);
-        }
+        model.validate_for_submit()?;
         Ok(model)
     }
 }
