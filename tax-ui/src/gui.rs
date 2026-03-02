@@ -1,8 +1,10 @@
+use anyhow::Result;
 use gpui::{
     AnyElement, App, AppContext, Context, InteractiveElement, IntoElement, KeyBinding, Menu,
     MenuItem, ParentElement, Styled, Window,
 };
 use gpui_component::{h_flex, v_flex};
+use tax_core::db::DbConfig;
 use tracing::{info, warn};
 
 #[cfg(target_os = "linux")]
@@ -10,6 +12,7 @@ use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::{Quit, themes::apply_macos_system_theme};
 use crate::{
+    app,
     components::{EstimatedIncomeForm, make_button},
     models::EstimatedIncomeModel,
     quit,
@@ -73,7 +76,28 @@ pub fn build_main_content(
                     .justify_center()
                     .child({
                         let form_handle = form.clone();
-                        make_button("ok-go", "Convert Files", move |_, _, cx: &mut App| {
+                        make_button("load-data", "Load Data", move |_, _, cx: &mut App| {
+                            let form_model = match form_handle.read(cx).to_model(cx) {
+                                Ok(m) => m,
+                                Err(errors) => {
+                                    for e in &errors {
+                                        warn!(%e, "form error");
+                                    }
+                                    return;
+                                }
+                            };
+                            let year = form_model.tax_year;
+                            cx.spawn(async move |_cx| {
+                                if let Err(e) = load_some_data("taxes.db", "sqlite", year).await {
+                                    warn!(%e, "Load Data failed");
+                                }
+                            })
+                            .detach();
+                        })
+                    })
+                    .child({
+                        let form_handle = form.clone();
+                        make_button("convert-files", "Convert Files", move |_, _, cx: &mut App| {
                             let form_model = match form_handle.read(cx).to_model(cx) {
                                 Ok(m) => m,
                                 Err(errors) => {
@@ -95,4 +119,23 @@ pub fn build_main_content(
 fn make_estimate(model: &EstimatedIncomeModel) {
     let new_est = model.to_new_tax_estimate();
     info!(%new_est, "New Estimate");
+}
+
+async fn load_some_data(
+    db_connection: &str,
+    backend: &str,
+    year: i32,
+) -> Result<()> {
+    let db_config = DbConfig {
+        backend: backend.to_string(),
+        connection_string: db_connection.to_string(),
+    };
+
+    tracing::debug!("connecting to {} backend", db_config.backend);
+    let registry = app::build_registry();
+    let repo = registry.create(&db_config).await?;
+
+    let data = app::load_tax_year_data(&*repo, year).await?;
+    info!("{}", data);
+    Ok(())
 }

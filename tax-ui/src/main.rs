@@ -1,4 +1,3 @@
-use clap::Parser;
 use gpui::{
     App, AppContext, Application, Bounds, Context, TitlebarOptions, WindowBounds,
     WindowDecorations, WindowHandle, WindowOptions,
@@ -6,65 +5,20 @@ use gpui::{
 
 use gpui_component::Root;
 use gpui_component_assets::Assets;
-use tracing::{debug, info};
 
-use tax_core::db::DbConfig;
 use tax_ui::{
-    app,
     components::{AppWindow, WindowPreferences},
     gui::build_main_content,
     logging::{init_default_logging, log_task_error},
     setup_app,
 };
 
-// ─── CLI definition ──────────────────────────────────────────────────────────
-
-/// Estimated tax calculator for IRS Form 1040-ES.
-///
-/// Connects to the configured database, loads reference data for the
-/// requested tax year, and prints it.
-#[derive(Debug, Parser)]
-struct Cli {
-    /// Database backend to use.
-    #[arg(long, default_value = "sqlite")]
-    backend: String,
-
-    /// Database connection string.
-    /// For SQLite this is a file path (e.g. `taxes.db`) or `:memory:`.
-    #[arg(long, default_value = "taxes.db")]
-    db: String,
-
-    /// Tax year to retrieve and display.
-    #[arg(long, default_value = "2025")]
-    year: i32,
-
-    /// Run the UI
-    #[arg(long)]
-    ui: bool,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_default_logging();
 
-    let cli = Cli::parse();
-
-    if cli.ui {
-        run_ui();
-        return Ok(());
-    }
-
-    let db_config = DbConfig {
-        backend: cli.backend,
-        connection_string: cli.db,
-    };
-
-    debug!("connecting to {} backend", db_config.backend);
-    let registry = app::build_registry();
-    let repo = registry.create(&db_config).await?;
-
-    let data = app::load_tax_year_data(&*repo, cli.year).await?;
-    info!("{}", data);
+    run_ui();
 
     Ok(())
 }
