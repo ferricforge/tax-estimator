@@ -10,11 +10,12 @@ use tracing::{info, warn};
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
-use crate::{Quit, themes::apply_macos_system_theme};
+use crate::{themes::apply_macos_system_theme};
 use crate::{
     app,
     components::{EstimatedIncomeForm, make_button},
     models::EstimatedIncomeModel,
+    Quit,
     quit,
 };
 
