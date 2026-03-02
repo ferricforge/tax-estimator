@@ -13,7 +13,6 @@ use tax_ui::{
     setup_app,
 };
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_default_logging();

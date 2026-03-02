@@ -10,12 +10,11 @@ use tracing::{info, warn};
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
-use crate::{themes::apply_macos_system_theme};
+use crate::themes::apply_macos_system_theme;
 use crate::{
-    app,
+    Quit, app,
     components::{EstimatedIncomeForm, make_button},
     models::EstimatedIncomeModel,
-    Quit,
     quit,
 };
 
@@ -98,19 +97,23 @@ pub fn build_main_content(
                     })
                     .child({
                         let form_handle = form.clone();
-                        make_button("convert-files", "Convert Files", move |_, _, cx: &mut App| {
-                            let form_model = match form_handle.read(cx).to_model(cx) {
-                                Ok(m) => m,
-                                Err(errors) => {
-                                    for e in &errors {
-                                        warn!(%e, "form error");
+                        make_button(
+                            "convert-files",
+                            "Convert Files",
+                            move |_, _, cx: &mut App| {
+                                let form_model = match form_handle.read(cx).to_model(cx) {
+                                    Ok(m) => m,
+                                    Err(errors) => {
+                                        for e in &errors {
+                                            warn!(%e, "form error");
+                                        }
+                                        return;
                                     }
-                                    return;
-                                }
-                            };
-                            info!(%form_model, "Form validated\n");
-                            make_estimate(&form_model);
-                        })
+                                };
+                                info!(%form_model, "Form validated\n");
+                                make_estimate(&form_model);
+                            },
+                        )
                     }),
             )
             .into_any_element()
