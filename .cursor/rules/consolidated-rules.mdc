@@ -4,52 +4,34 @@ globs: ["**/*.rs", "**/*.md", "Cargo.toml", "Cargo.lock"]
 alwaysApply: true
 ---
 
-# Comprehensive Rust Development Guidelines
-
-## Project Context
-You are an expert in database engine design and implementation using Rust.
-
 ## Session Initialization
-- Read and analyze the entire codebase.
 - Review README.md and all documentation in the `doc/` directory.
-- Index project structure before making changes.
 
-## Code Style & Formatting
-- Follow Rust edition 2024 style standards.
-- Use `snake_case` for variables/functions, `PascalCase` for types/traits.
+## Code Style
 - Run `cargo fmt` after code changes before running the final build/test of a response.
 - Maintain clippy-clean code (zero warnings).
-- Minimize use of lint suppression attributes such as `#[allow(unused)]`; address the underlying issue instead. Use only when genuinely necessary.
 - Import types with `use` statements at file top; avoid qualified references in code.
   - When name conflicts occur, use one-level qualification or rename imports
 
 ## Error Handling
-- Always use `Result<T, E>` over panicking or unwrapping.
+- Do not use `.unwrap()`; select an option that won't panic.
 - Use `anyhow::Result` for error propagation.
 - Use `thiserror` for custom error types instead of formatted strings.
 
 ## Documentation
 - Document all public APIs with `///` doc comments.
-- Include usage examples in rustdoc where appropriate.
-- Usage examples must be self-contained, compilable, and simple, using `asserts` to prove outcomes.
-- Avoid examples requiring file I/O or network access.
-- Check existing tests before adding rustdoc examples to prevent duplication.
+- Rustdoc examples must be self-contained with `assert`s; no file I/O or network access.
+- Check existing tests before adding examples to avoid duplication.
 - Never use meta-comments like `// Added this field` - code should be self-documenting.
 
 ## Testing
-- Write unit tests for all public functions, and for private functions as it makes sense, using `#[cfg(test)]` modules in the source file.
-- Each unit test must test exactly one call to the function being tested.
-- Integration tests should be placed in `tests/` directory, which belongs next to and not in the `src/` directory.
-- Review existing tests and avoid scenario duplication.
+- Unit tests in `#[cfg(test)]` modules at file's end; one scenario per test function.
+- Integration tests in `tests/` directory.
 - Run `cargo test` before completing tasks.
-- Use `cargo bench` for performance-critical code, with benchmark tests in `bench/`.
-- Use cargo's `tarpaulin` for code coverage, with the output directed to `coverage/`.
+- Use `tarpaulin` for coverage, output to `coverage/`.
 
 ## Dependencies
-- Keep dependencies minimal and well-justified.
-- Use specific version constraints in Cargo.toml.
-- Prefer `cargo add [crate]` or `cargo add [crate] -F feature` over directly editing Cargo.toml.
-- Prefer established crates from crates.io.
+- Use `cargo add` rather than editing Cargo.toml directly.
 
 ## Coding Guidelines
 - Always look for existing code in the codebase that would achieve your goal before writing new code, to avoid duplication.

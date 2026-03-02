@@ -98,8 +98,8 @@ pub fn build_main_content(
                     .child({
                         let form_handle = form.clone();
                         make_button(
-                            "convert-files",
-                            "Convert Files",
+                            "calculate-estimates",
+                            "Calculate",
                             move |_, _, cx: &mut App| {
                                 let form_model = match form_handle.read(cx).to_model(cx) {
                                     Ok(m) => m,
