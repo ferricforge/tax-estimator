@@ -75,7 +75,7 @@ fn run_estimated_tax_worksheet(
         prior_year_tax: model.prior_year_tax.unwrap_or(Decimal::ZERO),
         withholding: model.expected_withholding.unwrap_or(Decimal::ZERO),
         is_farmer_or_fisher: false,
-        required_payment_threshold: config.required_payment_threshold,
+        required_payment_threshold: config.req_pmnt_threshold,
     };
     let worksheet = EstimatedTaxWorksheet::new(&status_data.tax_brackets);
     worksheet

@@ -178,7 +178,7 @@ impl SeWorksheetConfig {
             ss_wage_max: config.ss_wage_max,
             ss_tax_rate: config.ss_tax_rate,
             medicare_tax_rate: config.medicare_tax_rate,
-            net_earnings_factor: config.se_tax_deductible_percentage,
+            net_earnings_factor: config.se_tax_deduct_pcnt,
             deduction_factor: config.se_deduction_factor,
             min_se_threshold: config.min_se_threshold,
         }
@@ -928,9 +928,9 @@ mod tests {
             ss_wage_max: dec!(176100.00),
             ss_tax_rate: dec!(0.124),
             medicare_tax_rate: dec!(0.029),
-            se_tax_deductible_percentage: dec!(0.9235),
+            se_tax_deduct_pcnt: dec!(0.9235),
             se_deduction_factor: dec!(0.50),
-            required_payment_threshold: dec!(1000.00),
+            req_pmnt_threshold: dec!(1000.00),
             min_se_threshold: dec!(400.00),
         };
 
@@ -951,9 +951,9 @@ mod tests {
             ss_wage_max: dec!(168600.00),
             ss_tax_rate: dec!(0.124),
             medicare_tax_rate: dec!(0.029),
-            se_tax_deductible_percentage: dec!(0.9235),
+            se_tax_deduct_pcnt: dec!(0.9235),
             se_deduction_factor: dec!(0.50),
-            required_payment_threshold: dec!(1000.00),
+            req_pmnt_threshold: dec!(1000.00),
             min_se_threshold: dec!(400.00),
         };
 
@@ -969,9 +969,9 @@ mod tests {
             ss_wage_max: dec!(180000.00),
             ss_tax_rate: dec!(0.124),
             medicare_tax_rate: dec!(0.029),
-            se_tax_deductible_percentage: dec!(0.9235),
+            se_tax_deduct_pcnt: dec!(0.9235),
             se_deduction_factor: dec!(0.50),
-            required_payment_threshold: dec!(1000.00),
+            req_pmnt_threshold: dec!(1000.00),
             min_se_threshold: dec!(450.00), // Different threshold for 2026
         };
 

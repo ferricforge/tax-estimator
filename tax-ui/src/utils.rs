@@ -60,6 +60,22 @@ pub fn opt_decimal_display(d: &Option<Decimal>) -> String {
         .unwrap_or_else(|| "—".to_string())
 }
 
+/// `$1234.50`
+///
+/// `round_dp` does not pad trailing zeros — a Decimal with scale 0
+/// passes through unchanged.  The `:.2` precision specifier on
+/// rust_decimal's Display impl is what guarantees exactly two fractional
+/// digits in all cases.
+pub fn currency(d: &Decimal) -> String {
+    format!("${:.2}", d.round_dp(2))
+}
+
+/// `6.20%`  —  the stored value is a fraction (0.062), not a percentage.
+pub fn percent(d: &Decimal) -> String {
+    format!("{:.2}%", (d * Decimal::from(100)).round_dp(2))
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,4 +109,24 @@ mod tests {
         assert_eq!(parse_optional_decimal(""), None);
         assert_eq!(parse_optional_decimal("   "), None);
     }
+
+    // ── currency / percent ──────────────────────────────────────────────
+
+    #[test]
+    fn currency_always_shows_two_decimal_places() {
+        assert_eq!(currency(&dec!(15_000)), "$15000.00");
+        assert_eq!(currency(&dec!(0)), "$0.00");
+        assert_eq!(currency(&dec!(1234.5)), "$1234.50");
+        // third decimal ≥ 5 rounds up
+        assert_eq!(currency(&dec!(99.999)), "$100.00");
+    }
+
+    #[test]
+    fn percent_multiplies_by_100_then_formats() {
+        assert_eq!(percent(&dec!(0.10)), "10.00%");
+        assert_eq!(percent(&dec!(0.062)), "6.20%");
+        assert_eq!(percent(&dec!(0.0145)), "1.45%");
+        assert_eq!(percent(&dec!(0.37)), "37.00%");
+    }
+
 }

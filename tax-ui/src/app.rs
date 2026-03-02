@@ -1,11 +1,14 @@
 use std::fmt;
 
 use rust_decimal::Decimal;
+use tax_core::calculations::{SeWorksheet, SeWorksheetConfig};
 use tracing::debug;
 
-use tax_core::db::{RepositoryRegistry, TaxRepository};
+use tax_core::db::{DbConfig, RepositoryRegistry, TaxRepository};
 use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket, TaxYearConfig};
 use tax_db_sqlite::SqliteRepositoryFactory;
+
+use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────
 
@@ -83,26 +86,8 @@ pub async fn load_tax_year_data(
 // decimal places so the output is stable regardless of how the Decimal
 // was originally constructed.
 
-/// `$1234.50`
-///
-/// `round_dp` does not pad trailing zeros — a Decimal with scale 0
-/// passes through unchanged.  The `:.2` precision specifier on
-/// rust_decimal's Display impl is what guarantees exactly two fractional
-/// digits in all cases.
-fn currency(d: &Decimal) -> String {
-    format!("${:.2}", d.round_dp(2))
-}
-
-/// `6.20%`  —  the stored value is a fraction (0.062), not a percentage.
-fn percent(d: &Decimal) -> String {
-    format!("{:.2}%", (d * Decimal::from(100)).round_dp(2))
-}
 
 // ─── Display ─────────────────────────────────────────────────────────────────
-// TaxYearConfig is a foreign type (tax-core), so we cannot impl Display on it
-// directly.  Its fields are written inline inside TaxYearData's impl.
-// FilingStatusData and TaxYearData are ours, so Display is fine on both.
-
 impl fmt::Display for FilingStatusData {
     fn fmt(
         &self,
@@ -147,44 +132,7 @@ impl fmt::Display for TaxYearData {
     ) -> fmt::Result {
         // ── TaxYearConfig fields (foreign type, inlined) ──────────────
         let c = &self.config;
-        writeln!(f, "Tax Year Configuration ({})", c.tax_year)?;
-        writeln!(
-            f,
-            "  Social Security wage maximum  {}",
-            currency(&c.ss_wage_max)
-        )?;
-        writeln!(
-            f,
-            "  Social Security tax rate      {}",
-            percent(&c.ss_tax_rate)
-        )?;
-        writeln!(
-            f,
-            "  Medicare tax rate             {}",
-            percent(&c.medicare_tax_rate)
-        )?;
-        writeln!(
-            f,
-            "  SE deductible percentage      {}",
-            percent(&c.se_tax_deductible_percentage)
-        )?;
-        // se_deduction_factor is a multiplier, not a rate — display as-is.
-        writeln!(
-            f,
-            "  SE deduction factor           {}",
-            c.se_deduction_factor
-        )?;
-        writeln!(
-            f,
-            "  Required payment threshold    {}",
-            currency(&c.required_payment_threshold)
-        )?;
-        writeln!(
-            f,
-            "  Minimum SE threshold          {}",
-            currency(&c.min_se_threshold)
-        )?;
-
+        writeln!(f, "{}", c)?;
         // ── one block per filing status, each preceded by a blank line ─
         for status in &self.statuses {
             writeln!(f)?;
@@ -194,9 +142,37 @@ impl fmt::Display for TaxYearData {
     }
 }
 
+pub async fn se_tax_estimate() {
+    let db_config = DbConfig {
+        backend: "sqlite".to_string(),
+        connection_string: ":memory:".to_string(),
+    };
+    let registry = build_registry();
+    let repo = registry
+        .create(&db_config)
+        .await
+        .expect("repository creation should succeed");
+
+}
+
+fn run_se_worksheet(
+    config: &TaxYearConfig,
+    se_income: Decimal,
+    crp_payments: Decimal,
+    wages: Decimal,
+) -> tax_core::calculations::SeWorksheetResult {
+    let se_config = SeWorksheetConfig::from_tax_year_config(config);
+    let worksheet = SeWorksheet::new(se_config);
+    worksheet
+        .calculate(se_income, crp_payments, wages)
+        .expect("SE worksheet calculation should succeed")
+}
+
+
 // ─── tests ───────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use pretty_assertions::assert_eq;
     use rust_decimal_macros::dec;
 
@@ -204,7 +180,7 @@ mod tests {
         FilingStatus, FilingStatusCode, StandardDeduction, TaxBracket, TaxYearConfig,
     };
 
-    use super::{FilingStatusData, TaxYearData, currency, percent};
+    use super::{FilingStatusData, TaxYearData};
 
     // ── test-data builders ──────────────────────────────────────────────
     // Each builder produces the minimal, realistic shape needed by the
@@ -217,9 +193,9 @@ mod tests {
             ss_wage_max: dec!(176_100),
             ss_tax_rate: dec!(0.062),
             medicare_tax_rate: dec!(0.0145),
-            se_tax_deductible_percentage: dec!(0.5),
+            se_tax_deduct_pcnt: dec!(0.5),
             se_deduction_factor: dec!(0.9235),
-            required_payment_threshold: dec!(1_000),
+            req_pmnt_threshold: dec!(1_000),
             min_se_threshold: dec!(400),
         }
     }
@@ -284,24 +260,6 @@ mod tests {
         }
     }
 
-    // ── currency / percent ──────────────────────────────────────────────
-
-    #[test]
-    fn currency_always_shows_two_decimal_places() {
-        assert_eq!(currency(&dec!(15_000)), "$15000.00");
-        assert_eq!(currency(&dec!(0)), "$0.00");
-        assert_eq!(currency(&dec!(1234.5)), "$1234.50");
-        // third decimal ≥ 5 rounds up
-        assert_eq!(currency(&dec!(99.999)), "$100.00");
-    }
-
-    #[test]
-    fn percent_multiplies_by_100_then_formats() {
-        assert_eq!(percent(&dec!(0.10)), "10.00%");
-        assert_eq!(percent(&dec!(0.062)), "6.20%");
-        assert_eq!(percent(&dec!(0.0145)), "1.45%");
-        assert_eq!(percent(&dec!(0.37)), "37.00%");
-    }
 
     // ── FilingStatusData Display ────────────────────────────────────────
 

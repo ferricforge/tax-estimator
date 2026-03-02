@@ -144,9 +144,9 @@ impl TaxRepository for SqliteRepository {
             ss_wage_max: get_decimal(&row, "ss_wage_max")?,
             ss_tax_rate: get_decimal(&row, "ss_tax_rate")?,
             medicare_tax_rate: get_decimal(&row, "medicare_tax_rate")?,
-            se_tax_deductible_percentage: get_decimal(&row, "se_tax_deductible_percentage")?,
+            se_tax_deduct_pcnt: get_decimal(&row, "se_tax_deductible_percentage")?,
             se_deduction_factor: get_decimal(&row, "se_deduction_factor")?,
-            required_payment_threshold: get_decimal(&row, "required_payment_threshold")?,
+            req_pmnt_threshold: get_decimal(&row, "required_payment_threshold")?,
             min_se_threshold: get_decimal(&row, "min_se_threshold")?,
         })
     }
@@ -703,9 +703,9 @@ mod tests {
         assert_eq!(config.ss_wage_max, dec!(200000.00));
         assert_eq!(config.ss_tax_rate, dec!(0.125));
         assert_eq!(config.medicare_tax_rate, dec!(0.030));
-        assert_eq!(config.se_tax_deductible_percentage, dec!(0.9300));
+        assert_eq!(config.se_tax_deduct_pcnt, dec!(0.9300));
         assert_eq!(config.se_deduction_factor, dec!(0.55));
-        assert_eq!(config.required_payment_threshold, dec!(1500.00));
+        assert_eq!(config.req_pmnt_threshold, dec!(1500.00));
         assert_eq!(config.min_se_threshold, dec!(400.00));
     }
 
