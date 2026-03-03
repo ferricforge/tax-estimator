@@ -15,9 +15,11 @@ pub struct TaxYearConfig {
     pub min_se_threshold: Decimal,
 }
 
-
 impl Display for TaxYearConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         writeln!(f, "TaxYearConfig {{")?;
         writeln!(f, "    tax_year            : {}", self.tax_year)?;
         writeln!(f, "    ss_wage_max         : {}", self.ss_wage_max)?;

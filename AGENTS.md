@@ -26,3 +26,7 @@
 
 ## Build
 - Run `cargo build` after changes; fix all warnings and errors before submitting.
+
+## Available Cargo Commands
+- `cargo --list` to see the available cargo commands
+- Use built-in agent tools for reading, searching, and updating files or assets, where possible.

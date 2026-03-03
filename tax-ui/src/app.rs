@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::fmt;
 
 use rust_decimal::Decimal;
@@ -86,7 +87,6 @@ pub async fn load_tax_year_data(
 // decimal places so the output is stable regardless of how the Decimal
 // was originally constructed.
 
-
 // ─── Display ─────────────────────────────────────────────────────────────────
 impl fmt::Display for FilingStatusData {
     fn fmt(
@@ -152,7 +152,6 @@ pub async fn se_tax_estimate() {
         .create(&db_config)
         .await
         .expect("repository creation should succeed");
-
 }
 
 fn run_se_worksheet(
@@ -167,7 +166,6 @@ fn run_se_worksheet(
         .calculate(se_income, crp_payments, wages)
         .expect("SE worksheet calculation should succeed")
 }
-
 
 // ─── tests ───────────────────────────────────────────────────────────────────
 #[cfg(test)]
@@ -259,7 +257,6 @@ mod tests {
             }],
         }
     }
-
 
     // ── FilingStatusData Display ────────────────────────────────────────
 

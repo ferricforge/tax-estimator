@@ -75,7 +75,6 @@ pub fn percent(d: &Decimal) -> String {
     format!("{:.2}%", (d * Decimal::from(100)).round_dp(2))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +127,4 @@ mod tests {
         assert_eq!(percent(&dec!(0.0145)), "1.45%");
         assert_eq!(percent(&dec!(0.37)), "37.00%");
     }
-
 }
