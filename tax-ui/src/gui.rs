@@ -12,7 +12,8 @@ use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::themes::apply_macos_system_theme;
 use crate::{
-    Quit, app,
+    Quit,
+    app::{self, se_tax_estimate},
     components::{EstimatedIncomeForm, make_button},
     models::EstimatedIncomeModel,
     quit,
@@ -99,7 +100,7 @@ pub fn build_main_content(
                         let form_handle = form.clone();
                         make_button(
                             "calculate-estimates",
-                            "Calculate",
+                            "Calculate SE Tax",
                             move |_, _, cx: &mut App| {
                                 let form_model = match form_handle.read(cx).to_model(cx) {
                                     Ok(m) => m,
@@ -111,7 +112,12 @@ pub fn build_main_content(
                                     }
                                 };
                                 info!(%form_model, "Form validated\n");
-                                make_estimate(&form_model);
+                                cx.spawn(async move |_cx| {
+                                    if let Err(e) = make_estimate(&form_model).await {
+                                        warn!(%e, "Load Data failed");
+                                    }
+                                })
+                                .detach();
                             },
                         )
                     }),
@@ -120,9 +126,10 @@ pub fn build_main_content(
     }
 }
 
-fn make_estimate(model: &EstimatedIncomeModel) {
+async fn make_estimate(model: &EstimatedIncomeModel) -> Result<()> {
     let new_est = model.to_new_tax_estimate();
     info!(%new_est, "New Estimate");
+    se_tax_estimate(new_est, "taxes.db", "sqlite").await
 }
 
 async fn load_some_data(

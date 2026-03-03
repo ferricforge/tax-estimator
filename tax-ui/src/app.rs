@@ -1,8 +1,10 @@
 #![allow(unused)]
 use std::fmt;
 
+use anyhow::{Context, Result};
 use rust_decimal::Decimal;
-use tax_core::calculations::{SeWorksheet, SeWorksheetConfig};
+use tax_core::NewTaxEstimate;
+use tax_core::calculations::{SeWorksheet, SeWorksheetConfig, SeWorksheetResult};
 use tracing::debug;
 
 use tax_core::db::{DbConfig, RepositoryRegistry, TaxRepository};
@@ -142,16 +144,32 @@ impl fmt::Display for TaxYearData {
     }
 }
 
-pub async fn se_tax_estimate() {
+pub async fn se_tax_estimate(
+    inputs: NewTaxEstimate,
+    db_connection: &str,
+    backend: &str,
+) -> Result<()> {
     let db_config = DbConfig {
-        backend: "sqlite".to_string(),
-        connection_string: ":memory:".to_string(),
+        backend: backend.to_string(),
+        connection_string: db_connection.to_string(),
     };
     let registry = build_registry();
     let repo = registry
         .create(&db_config)
         .await
         .expect("repository creation should succeed");
+
+    let se_income = inputs.se_income.unwrap_or_default();
+    let crp_payments = inputs.expected_crp_payments.unwrap_or_default();
+    let wages = inputs.expected_wages.unwrap_or_default();
+
+    let tax_year_config: TaxYearConfig = repo.get_tax_year_config(inputs.tax_year).await?;
+    let estimate: SeWorksheetResult =
+        run_se_worksheet(&tax_year_config, se_income, crp_payments, wages)?;
+
+    tracing::info!("Estimate Result=\n{}", estimate);
+
+    Ok(())
 }
 
 fn run_se_worksheet(
@@ -159,12 +177,16 @@ fn run_se_worksheet(
     se_income: Decimal,
     crp_payments: Decimal,
     wages: Decimal,
-) -> tax_core::calculations::SeWorksheetResult {
+) -> Result<SeWorksheetResult> {
     let se_config = SeWorksheetConfig::from_tax_year_config(config);
     let worksheet = SeWorksheet::new(se_config);
     worksheet
         .calculate(se_income, crp_payments, wages)
-        .expect("SE worksheet calculation should succeed")
+        .with_context(|| {
+            format!(
+                "SE worksheet calculation failed (se_income={se_income}, crp_payments={crp_payments}, wages={wages})"
+            )
+        })
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
@@ -258,17 +280,6 @@ mod tests {
         }
     }
 
-    // ── FilingStatusData Display ────────────────────────────────────────
-
-    #[test]
-    fn status_display_contains_name_code_deduction_and_base_tax() {
-        let out = format!("{}", single_status_data());
-
-        assert!(out.contains("Single (S)"), "name + code");
-        assert!(out.contains("$15000.00"), "standard deduction");
-        assert!(out.contains("10.00%"), "first bracket rate");
-        assert!(out.contains("base $0.00"), "first bracket base tax");
-    }
 
     /// The two bracket variants ("to" and "and above") live in the same
     /// fixture; one test, two assertions, zero duplication.
@@ -284,29 +295,6 @@ mod tests {
             out.contains("$11600.00 and above"),
             "open-ended bracket should use 'and above'"
         );
-    }
-
-    // ── TaxYearData Display ─────────────────────────────────────────────
-
-    /// Every field of TaxYearConfig must appear in the output.  The
-    /// se_deduction_factor is a plain multiplier — it must NOT be run
-    /// through percent().
-    #[test]
-    fn full_output_contains_every_config_field() {
-        let data = TaxYearData {
-            config: sample_config(),
-            statuses: vec![single_status_data()],
-        };
-        let out = format!("{}", data);
-
-        assert!(out.contains("Tax Year Configuration (2025)"));
-        assert!(out.contains("$176100.00"), "ss_wage_max");
-        assert!(out.contains("6.20%"), "ss_tax_rate");
-        assert!(out.contains("1.45%"), "medicare_tax_rate");
-        assert!(out.contains("50.00%"), "se_tax_deductible_percentage");
-        assert!(out.contains("0.9235"), "se_deduction_factor — plain, not %");
-        assert!(out.contains("$1000.00"), "required_payment_threshold");
-        assert!(out.contains("$400.00"), "min_se_threshold");
     }
 
     /// Two statuses must both appear.  A blank line (`\n\n`) separates

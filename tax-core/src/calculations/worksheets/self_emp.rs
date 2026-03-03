@@ -54,6 +54,8 @@
 //! assert_eq!(result.se_tax_deduction, dec!(7064.78));
 //! ```
 
+use std::fmt;
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -312,6 +314,53 @@ impl SeWorksheetResult {
             se_tax_deduction: Decimal::ZERO,
             below_threshold: true,
         }
+    }
+}
+
+impl fmt::Display for SeWorksheetResult {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        writeln!(f, "SeWorksheetResult {{")?;
+        writeln!(
+            f,
+            "    combined_se_income   : ${}",
+            self.combined_se_income.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    net_earnings        : ${}",
+            self.net_earnings.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    medicare_tax        : ${}",
+            self.medicare_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    ss_taxable_earnings : ${}",
+            self.ss_taxable_earnings.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    social_security_tax : ${}",
+            self.social_security_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    self_employment_tax : ${}",
+            self.self_employment_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    se_tax_deduction    : ${}",
+            self.se_tax_deduction.round_dp(2)
+        )?;
+        writeln!(f, "    below_threshold    : {}", self.below_threshold)?;
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
