@@ -1,5 +1,7 @@
 pub mod dialogs;
-pub mod estimate_form;
+mod estimate_form;
+pub mod file_picker;
+pub mod filters;
 pub mod window;
 
 use gpui::{App, SharedString, Window};

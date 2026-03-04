@@ -65,3 +65,6 @@ clippy.toml.bk
 # Cursor SpecStory assets
 .specstory/
 .cursorindexingignore
+
+# Claude local settings
+.claude/*.local.*
