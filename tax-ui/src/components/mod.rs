@@ -8,6 +8,7 @@ use gpui::{Pixels, Size, px};
 use gpui_component::Sizable;
 use gpui_component::button::{Button, ButtonVariants};
 
+pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
 pub use window::AppWindow;
 

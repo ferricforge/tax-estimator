@@ -280,7 +280,6 @@ mod tests {
         }
     }
 
-
     /// The two bracket variants ("to" and "and above") live in the same
     /// fixture; one test, two assertions, zero duplication.
     #[test]

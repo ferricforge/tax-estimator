@@ -1,6 +1,34 @@
 use rfd::AsyncFileDialog;
 use std::path::PathBuf;
 
+use gpui::{App, PromptLevel, Window};
+
+pub struct ErrorDialog;
+
+impl ErrorDialog {
+    pub fn show(
+        title: &str,
+        errors: &[String],
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let detail = Self::format_error_list(errors);
+        let _ = window.prompt(PromptLevel::Warning, title, Some(&detail), &["OK"], cx);
+    }
+
+    fn format_error_list(errors: &[String]) -> String {
+        match errors.len() {
+            0 => "An unknown error occurred.".to_owned(),
+            1 => errors[0].clone(),
+            _ => errors
+                .iter()
+                .map(|e| format!("• {e}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }
+    }
+}
+
 /// Opens an async file picker dialog with the given filters and starting directory.
 ///
 /// Each filter is a `(name, extensions)` pair, e.g. `("Excel", &["xlsx", "xlsm"])`.

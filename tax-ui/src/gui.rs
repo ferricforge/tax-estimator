@@ -1,7 +1,7 @@
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, AppContext, Context, InteractiveElement, IntoElement, KeyBinding, Menu,
-    MenuItem, ParentElement, Styled, Window,
+    AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement, KeyBinding,
+    Menu, MenuItem, ParentElement, Styled, Window,
 };
 use gpui_component::{h_flex, v_flex};
 use tax_core::db::DbConfig;
@@ -14,7 +14,7 @@ use crate::themes::apply_macos_system_theme;
 use crate::{
     Quit,
     app::{self, se_tax_estimate},
-    components::{EstimatedIncomeForm, make_button},
+    components::{ErrorDialog, EstimatedIncomeForm, make_button},
     models::EstimatedIncomeModel,
     quit,
 };
@@ -101,13 +101,14 @@ pub fn build_main_content(
                         make_button(
                             "calculate-estimates",
                             "Calculate SE Tax",
-                            move |_, _, cx: &mut App| {
+                            move |_click_event: &ClickEvent, window: &mut Window, cx: &mut App| {
                                 let form_model = match form_handle.read(cx).to_model(cx) {
                                     Ok(m) => m,
                                     Err(errors) => {
                                         for e in &errors {
                                             warn!(%e, "form error");
                                         }
+                                        ErrorDialog::show("Validation failed", &errors, window, cx);
                                         return;
                                     }
                                 };
@@ -128,7 +129,6 @@ pub fn build_main_content(
 
 async fn make_estimate(model: &EstimatedIncomeModel) -> Result<()> {
     let new_est = model.to_new_tax_estimate();
-    info!(%new_est, "New Estimate");
     se_tax_estimate(new_est, "taxes.db", "sqlite").await
 }
 
