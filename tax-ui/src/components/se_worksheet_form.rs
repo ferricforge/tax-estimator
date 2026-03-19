@@ -1,6 +1,5 @@
 use gpui::{
-    App, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
-    Window,
+    App, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window,
 };
 use gpui_component::{h_flex, input::InputState, v_flex};
 use rust_decimal::Decimal;
@@ -39,7 +38,10 @@ pub struct SeWorksheetForm {
 }
 
 impl SeWorksheetForm {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             se_income: make_decimal_input("Net SE income", 2, window, cx),
             crp_payments: make_decimal_input("CRP payments", 2, window, cx),
@@ -56,15 +58,24 @@ impl SeWorksheetForm {
         }
     }
 
-    pub fn se_income(&self, cx: &App) -> SharedString {
+    pub fn se_income(
+        &self,
+        cx: &App,
+    ) -> SharedString {
         self.se_income.read(cx).value()
     }
 
-    pub fn crp_payments(&self, cx: &App) -> SharedString {
+    pub fn crp_payments(
+        &self,
+        cx: &App,
+    ) -> SharedString {
         self.crp_payments.read(cx).value()
     }
 
-    pub fn expected_wages(&self, cx: &App) -> SharedString {
+    pub fn expected_wages(
+        &self,
+        cx: &App,
+    ) -> SharedString {
         self.expected_wages.read(cx).value()
     }
 
@@ -101,14 +112,24 @@ impl SeWorksheetForm {
 }
 
 impl Render for SeWorksheetForm {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let this = cx.entity().clone();
 
         v_flex()
             .gap_2()
             .p_4()
-            .child(make_input_row_fixed(&self.se_income, "1a. Net SE income: $"))
-            .child(make_input_row_fixed(&self.crp_payments, "1b. CRP payments: $"))
+            .child(make_input_row_fixed(
+                &self.se_income,
+                "1a. Net SE income: $",
+            ))
+            .child(make_input_row_fixed(
+                &self.crp_payments,
+                "1b. CRP payments: $",
+            ))
             .child(make_display_row(
                 "2. Net SE earnings (1a × 92.35%):",
                 self.line_2_net_se_earnings,
@@ -141,35 +162,30 @@ impl Render for SeWorksheetForm {
                 "9. Medicare (line 2 × 2.9%):",
                 self.line_9_medicare_tax,
             ))
-            .child(make_display_row("10. Total SE tax:", self.line_10_total_se_tax))
+            .child(make_display_row(
+                "10. Total SE tax:",
+                self.line_10_total_se_tax,
+            ))
             .child(make_display_row(
                 "11. Deductible (line 10 × 50%):",
                 self.line_11_deductible,
             ))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .justify_end()
-                    .mt_4()
-                    .child(make_button(
-                        "se_calculate",
-                        "Calculate",
-                        move |_ev, _window, cx| {
-                            this.update(cx, |form, cx| {
-                                // Smoke test only: line 2 = 1a - 1b
-                                let income = parse_optional_decimal(
-                                    form.se_income.read(cx).value().as_str(),
-                                )
+            .child(h_flex().gap_2().justify_end().mt_4().child(make_button(
+                "se_calculate",
+                "Calculate",
+                move |_ev, _window, cx| {
+                    this.update(cx, |form, cx| {
+                        // Smoke test only: line 2 = 1a - 1b
+                        let income =
+                            parse_optional_decimal(form.se_income.read(cx).value().as_str())
                                 .unwrap_or(Decimal::ZERO);
-                                let crp = parse_optional_decimal(
-                                    form.crp_payments.read(cx).value().as_str(),
-                                )
+                        let crp =
+                            parse_optional_decimal(form.crp_payments.read(cx).value().as_str())
                                 .unwrap_or(Decimal::ZERO);
-                                form.line_2_net_se_earnings = Some(income - crp);
-                                cx.notify();
-                            });
-                        },
-                    )),
-            )
+                        form.line_2_net_se_earnings = Some(income - crp);
+                        cx.notify();
+                    });
+                },
+            )))
     }
 }

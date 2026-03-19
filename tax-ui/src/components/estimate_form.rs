@@ -41,7 +41,10 @@ pub struct EstimatedIncomeForm {
 }
 
 impl EstimatedIncomeForm {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let statuses = vec![
             SharedString::from("Single"),
             SharedString::from("Married Filing Jointly"),
@@ -83,7 +86,10 @@ impl EstimatedIncomeForm {
     ///
     /// Runs parse/required-field checks then business-rule validation. Returns
     /// all errors so the user can see every problem at once.
-    pub fn to_model(&self, cx: &App) -> Result<EstimatedIncomeModel, Vec<String>> {
+    pub fn to_model(
+        &self,
+        cx: &App,
+    ) -> Result<EstimatedIncomeModel, Vec<String>> {
         let mut errors = Vec::new();
 
         let filing_status_id = match self.filing_status.read(cx).selected_value() {

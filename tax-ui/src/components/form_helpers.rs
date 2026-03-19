@@ -163,14 +163,10 @@ pub fn make_display_row(
 /// Base row for fixed-layout dialogs: fixed-width right-aligned label,
 /// no outer border (the individual fields carry their own borders).
 pub fn make_labeled_row_fixed(label: impl Into<SharedString>) -> Div {
-    h_flex()
-        .items_center()
-        .gap_2()
-        .p(px(2.))
-        .child(
-            div()
-                .w(px(SE_LABEL_WIDTH))
-                .text_align(TextAlign::Right)
-                .child(label.into()),
-        )
+    h_flex().items_center().gap_2().p(px(2.)).child(
+        div()
+            .w(px(SE_LABEL_WIDTH))
+            .text_align(TextAlign::Right)
+            .child(label.into()),
+    )
 }

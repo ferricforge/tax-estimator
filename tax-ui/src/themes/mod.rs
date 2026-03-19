@@ -12,7 +12,6 @@ pub use linux_theme::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 pub use macos_theme::apply_macos_system_theme;
 
-
 /// Converts RGBA (0.0–1.0) to a `gpui::Hsla`.
 ///
 /// GPUI's `Hsla` expects h as a fraction of a full turn (0.0–1.0),
