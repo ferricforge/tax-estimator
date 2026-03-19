@@ -59,8 +59,8 @@ impl Render for AppWindow {
             .items_center()
             .justify_center()
             .children(content)
+            .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))
-            .children(Root::render_sheet_layer(window, cx))
     }
 }

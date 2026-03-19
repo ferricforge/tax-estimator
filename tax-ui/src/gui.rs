@@ -4,7 +4,6 @@ use gpui::{
     Menu, MenuItem, ParentElement, Styled, Window, px,
 };
 use gpui_component::{WindowExt, dialog::DialogButtonProps, h_flex, v_flex};
-use tax_core::db::DbConfig;
 use tracing::{info, warn};
 
 #[cfg(target_os = "linux")]
@@ -13,7 +12,7 @@ use crate::themes::apply_linux_system_theme;
 use crate::themes::apply_macos_system_theme;
 use crate::{
     Quit,
-    app::{self, se_tax_estimate},
+    app::se_tax_estimate,
     components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm, make_button},
     models::EstimatedIncomeModel,
     quit,
@@ -55,7 +54,12 @@ pub fn build_main_content(
         EstimatedIncomeForm::new(window, form_cx)
     });
 
+    let worksheet =
+        app_cx.new(|form_cx: &mut Context<SeWorksheetForm>| SeWorksheetForm::new(window, form_cx));
+
     move || {
+        let worksheet_for_button = worksheet.clone();
+
         v_flex()
             .size_full()
             .p_5()
@@ -68,27 +72,6 @@ pub fn build_main_content(
                     .gap_4()
                     .items_center()
                     .justify_center()
-                    .child({
-                        let form_handle = form.clone();
-                        make_button("load-data", "Load Data", move |_, _, cx: &mut App| {
-                            let form_model = match form_handle.read(cx).to_model(cx) {
-                                Ok(m) => m,
-                                Err(errors) => {
-                                    for e in &errors {
-                                        warn!(%e, "form error");
-                                    }
-                                    return;
-                                }
-                            };
-                            let year = form_model.tax_year;
-                            cx.spawn(async move |_cx| {
-                                if let Err(e) = load_some_data("taxes.db", "sqlite", year).await {
-                                    warn!(%e, "Load Data failed");
-                                }
-                            })
-                            .detach();
-                        })
-                    })
                     .child({
                         let form_handle = form.clone();
                         make_button(
@@ -119,22 +102,20 @@ pub fn build_main_content(
                         "open-se-worksheet",
                         "SE Worksheet",
                         move |_ev, window, cx| {
-                            let worksheet = cx.new(|form_cx: &mut Context<SeWorksheetForm>| {
-                                SeWorksheetForm::new(window, form_cx)
+                            let worksheet_for_dialog = worksheet_for_button.clone();
+            
+                            window.open_dialog(cx, move |dialog, _window, _cx| {
+                                dialog
+                                    .overlay_closable(false)
+                                    .w(px(520.0))
+                                    .margin_top(px(-20.0))
+                                    .title("SE Tax Worksheet")
+                                    .child(worksheet_for_dialog.clone())
+                                    .button_props(
+                                        DialogButtonProps::default().cancel_text("Close"),
+                                    )
+                                    .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
                             });
-                            window.open_dialog(
-                                cx,
-                                move |dialog, _window: &mut Window, _cx: &mut App| {
-                                    dialog
-                                        .w(px(520.))
-                                        .title("SE Tax Worksheet")
-                                        .child(worksheet.clone())
-                                        .button_props(
-                                            DialogButtonProps::default().cancel_text("Close"),
-                                        )
-                                        .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
-                                },
-                            );
                         },
                     )),
             )
@@ -145,23 +126,4 @@ pub fn build_main_content(
 async fn make_estimate(model: &EstimatedIncomeModel) -> Result<()> {
     let new_est = model.to_new_tax_estimate();
     se_tax_estimate(new_est, "taxes.db", "sqlite").await
-}
-
-async fn load_some_data(
-    db_connection: &str,
-    backend: &str,
-    year: i32,
-) -> Result<()> {
-    let db_config = DbConfig {
-        backend: backend.to_string(),
-        connection_string: db_connection.to_string(),
-    };
-
-    tracing::debug!("connecting to {} backend", db_config.backend);
-    let registry = app::build_registry();
-    let repo = registry.create(&db_config).await?;
-
-    let data = app::load_tax_year_data(&*repo, year).await?;
-    info!("{}", data);
-    Ok(())
 }
