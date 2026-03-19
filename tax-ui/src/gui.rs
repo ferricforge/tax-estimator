@@ -1,9 +1,9 @@
 use anyhow::Result;
 use gpui::{
     AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement, KeyBinding,
-    Menu, MenuItem, ParentElement, Styled, Window,
+    Menu, MenuItem, ParentElement, Styled, Window, px,
 };
-use gpui_component::{h_flex, v_flex};
+use gpui_component::{WindowExt, dialog::DialogButtonProps, h_flex, v_flex};
 use tax_core::db::DbConfig;
 use tracing::{info, warn};
 
@@ -14,13 +14,12 @@ use crate::themes::apply_macos_system_theme;
 use crate::{
     Quit,
     app::{self, se_tax_estimate},
-    components::{ErrorDialog, EstimatedIncomeForm, make_button},
+    components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm, make_button},
     models::EstimatedIncomeModel,
     quit,
 };
 
 pub fn setup_app(app_cx: &mut App) {
-    // This must be called before using any GPUI Component features.
     gpui_component::init(app_cx);
 
     #[cfg(target_os = "macos")]
@@ -30,7 +29,6 @@ pub fn setup_app(app_cx: &mut App) {
 
     app_cx.activate(true);
 
-    // Bind platform-appropriate quit shortcut
     #[cfg(target_os = "macos")]
     app_cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
 
@@ -40,10 +38,8 @@ pub fn setup_app(app_cx: &mut App) {
         KeyBinding::new("alt-F4", Quit, None),
     ]);
 
-    // Register the quit action handler
     app_cx.on_action(quit);
 
-    // Set up the application menu with Quit
     app_cx.set_menus(vec![Menu {
         name: "Tax Estimator".into(),
         items: vec![MenuItem::action("Quit", Quit)],
@@ -51,9 +47,6 @@ pub fn setup_app(app_cx: &mut App) {
 }
 
 /// Builds the primary window content.
-///
-/// Returns a closure suitable for passing to `Window::set_content`,
-/// producing a styled "Click Me!" button on each render frame.
 pub fn build_main_content(
     window: &mut Window,
     app_cx: &mut App,
@@ -115,13 +108,35 @@ pub fn build_main_content(
                                 info!(%form_model, "Form validated\n");
                                 cx.spawn(async move |_cx| {
                                     if let Err(e) = make_estimate(&form_model).await {
-                                        warn!(%e, "Load Data failed");
+                                        warn!(%e, "Calculate SE Tax failed");
                                     }
                                 })
                                 .detach();
                             },
                         )
-                    }),
+                    })
+                    .child(make_button(
+                        "open-se-worksheet",
+                        "SE Worksheet",
+                        move |_ev, window, cx| {
+                            let worksheet = cx.new(|form_cx: &mut Context<SeWorksheetForm>| {
+                                SeWorksheetForm::new(window, form_cx)
+                            });
+                            window.open_dialog(
+                                cx,
+                                move |dialog, _window: &mut Window, _cx: &mut App| {
+                                    dialog
+                                        .w(px(520.))
+                                        .title("SE Tax Worksheet")
+                                        .child(worksheet.clone())
+                                        .button_props(
+                                            DialogButtonProps::default().cancel_text("Close"),
+                                        )
+                                        .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
+                                },
+                            );
+                        },
+                    )),
             )
             .into_any_element()
     }

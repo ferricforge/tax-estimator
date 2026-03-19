@@ -3,6 +3,7 @@
 use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement, Render, Styled, Subscription, Window, div,
 };
+use gpui_component::Root;
 use gpui_component::StyledExt;
 use tracing::info;
 
@@ -46,8 +47,8 @@ impl AppWindow {
 impl Render for AppWindow {
     fn render(
         &mut self,
-        _: &mut Window,
-        _cx: &mut Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let content = self.content.as_ref().map(|f| f());
 
@@ -58,5 +59,8 @@ impl Render for AppWindow {
             .items_center()
             .justify_center()
             .children(content)
+            .children(Root::render_dialog_layer(window, cx))
+            .children(Root::render_notification_layer(window, cx))
+            .children(Root::render_sheet_layer(window, cx))
     }
 }

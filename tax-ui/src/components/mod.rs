@@ -2,6 +2,9 @@ pub mod dialogs;
 mod estimate_form;
 pub mod file_picker;
 pub mod filters;
+mod form_helpers;
+mod se_worksheet_form;
+mod theme;
 pub mod window;
 
 use gpui::{App, SharedString, Window};
@@ -12,13 +15,17 @@ use gpui_component::button::{Button, ButtonVariants};
 
 pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
+pub use form_helpers::{
+    make_decimal_input, make_display_row, make_header_row, make_input_row, make_input_row_fixed,
+    make_integer_input, make_labeled_row, make_labeled_row_fixed, make_select_row,
+    SE_FIELD_WIDTH, SE_LABEL_WIDTH,
+};
+pub use se_worksheet_form::SeWorksheetForm;
 pub use window::AppWindow;
 
 #[derive(Debug, Clone, Copy)]
 pub struct WindowPreferences {
     pub size: Size<Pixels>,
-    // TODO: Implement window centering once we determine the correct
-    // gpui API for getting display bounds
 }
 
 impl Default for WindowPreferences {
@@ -55,7 +62,7 @@ pub fn make_button(
     Button::new(id.into())
         .primary()
         .large()
-        .w(px(140.)) // ← fixed width
+        .w(px(140.))
         .label(label.into())
         .on_click(on_click)
 }

@@ -1,17 +1,20 @@
 use gpui::{
-    App, AppContext, ClickEvent, Context, Div, Entity, Hsla, IntoElement, ParentElement, Render,
-    RenderOnce, SharedString, Styled, TextAlign, Window, div, px,
+    App, AppContext, Context, Entity, IntoElement, ParentElement, Render, RenderOnce, SharedString,
+    Styled, Window, div,
 };
 use gpui_component::{
     IndexPath, h_flex,
-    input::{Input, InputState, MaskPattern},
+    input::InputState,
     select::{Select, SelectState},
     v_flex,
 };
 use regex::Regex;
 
 use crate::{
-    components::make_button,
+    components::{
+        make_decimal_input, make_header_row, make_input_row, make_integer_input, make_labeled_row,
+        make_select_row,
+    },
     models::EstimatedIncomeModel,
     utils::{parse_decimal, parse_optional_decimal},
 };
@@ -19,15 +22,14 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct EstimatedIncomeForm {
     tax_year: Entity<InputState>,
-
     filing_status: Entity<SelectState<Vec<SharedString>>>,
 
-    // User-provided values (SE Worksheet inputs)
+    // SE Worksheet inputs
     se_income: Entity<InputState>,
     expected_crp_payments: Entity<InputState>,
     expected_wages: Entity<InputState>,
 
-    // User-provided values (1040-ES Worksheet inputs)
+    // 1040-ES Worksheet inputs
     expected_agi: Entity<InputState>,
     expected_deduction: Entity<InputState>,
     expected_qbi_deduction: Entity<InputState>,
@@ -39,10 +41,7 @@ pub struct EstimatedIncomeForm {
 }
 
 impl EstimatedIncomeForm {
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let statuses = vec![
             SharedString::from("Single"),
             SharedString::from("Married Filing Jointly"),
@@ -56,58 +55,35 @@ impl EstimatedIncomeForm {
             .position(|s| s.as_ref() == "Single")
             .map(|i| IndexPath::default().row(i));
 
-        let tax_year = make_input_state_integer_mask("Tax Year", window, cx);
+        let tax_year = make_integer_input("Tax Year", window, cx);
         tax_year.update(cx, |input_state, cx| {
             input_state.set_pattern(Regex::new(r"^\d{0,4}$").unwrap(), window, cx);
         });
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
 
-        // SE Worksheet values
-        let se_income = make_input_state_with_decimal_mask("Self-emp income", 2, window, cx);
-        let expected_crp_payments =
-            make_input_state_with_decimal_mask("Exp CRP payments", 2, window, cx);
-        let expected_wages = make_input_state_with_decimal_mask("Exp wages", 2, window, cx);
-
-        // 1040-ES Worksheet
-        let expected_agi = make_input_state_with_decimal_mask("Exp AGI", 2, window, cx);
-        let expected_deduction = make_input_state_with_decimal_mask("Exp deduction", 2, window, cx);
-        let expected_qbi_deduction =
-            make_input_state_with_decimal_mask("Exp QBI deduction", 2, window, cx);
-        let expected_amt = make_input_state_with_decimal_mask("Exp AMT", 2, window, cx);
-        let expected_credits = make_input_state_with_decimal_mask("Exp tax credits", 2, window, cx);
-        let expected_other_taxes =
-            make_input_state_with_decimal_mask("Exp other taxes", 2, window, cx);
-        let expected_withholding =
-            make_input_state_with_decimal_mask("Exp inc tax withheld", 2, window, cx);
-        let prior_year_tax =
-            make_input_state_with_decimal_mask("Prior year tax liability", 2, window, cx);
-
         Self {
             tax_year,
             filing_status,
-            se_income,
-            expected_crp_payments,
-            expected_wages,
-            expected_agi,
-            expected_deduction,
-            expected_qbi_deduction,
-            expected_amt,
-            expected_credits,
-            expected_other_taxes,
-            expected_withholding,
-            prior_year_tax,
+            se_income: make_decimal_input("Self-emp income", 2, window, cx),
+            expected_crp_payments: make_decimal_input("Exp CRP payments", 2, window, cx),
+            expected_wages: make_decimal_input("Exp wages", 2, window, cx),
+            expected_agi: make_decimal_input("Exp AGI", 2, window, cx),
+            expected_deduction: make_decimal_input("Exp deduction", 2, window, cx),
+            expected_qbi_deduction: make_decimal_input("Exp QBI deduction", 2, window, cx),
+            expected_amt: make_decimal_input("Exp AMT", 2, window, cx),
+            expected_credits: make_decimal_input("Exp tax credits", 2, window, cx),
+            expected_other_taxes: make_decimal_input("Exp other taxes", 2, window, cx),
+            expected_withholding: make_decimal_input("Exp inc tax withheld", 2, window, cx),
+            prior_year_tax: make_decimal_input("Prior year tax liability", 2, window, cx),
         }
     }
 
     /// Collects the current form values into an [`EstimatedIncomeModel`].
     ///
-    /// Runs parse/required-field checks then business-rule validation. Returns all
-    /// errors (parse or validation) so the user can see every problem at once.
-    pub fn to_model(
-        &self,
-        cx: &App,
-    ) -> Result<EstimatedIncomeModel, Vec<String>> {
+    /// Runs parse/required-field checks then business-rule validation. Returns
+    /// all errors so the user can see every problem at once.
+    pub fn to_model(&self, cx: &App) -> Result<EstimatedIncomeModel, Vec<String>> {
         let mut errors = Vec::new();
 
         let filing_status_id = match self.filing_status.read(cx).selected_value() {
@@ -243,120 +219,4 @@ impl Render for EstimatedIncomeForm {
                     ),
             )
     }
-}
-
-fn make_input_state_with_decimal_mask(
-    label: impl Into<SharedString>,
-    decimals: usize,
-    window: &mut Window,
-    cx: &mut Context<EstimatedIncomeForm>,
-) -> Entity<InputState> {
-    let pattern: MaskPattern = MaskPattern::Number {
-        separator: Some('_'),
-        fraction: Some(decimals),
-    };
-
-    cx.new(|closure_cx| {
-        InputState::new(window, closure_cx)
-            //.text_align(TextAlign::Right)
-            .mask_pattern(pattern)
-            .placeholder(label.into())
-            .multi_line(false)
-    })
-}
-
-fn make_input_state_integer_mask(
-    label: impl Into<SharedString>,
-    window: &mut Window,
-    cx: &mut Context<EstimatedIncomeForm>,
-) -> Entity<InputState> {
-    let pattern: MaskPattern = MaskPattern::Number {
-        separator: None,
-        fraction: Some(0),
-    };
-
-    cx.new(|closure_cx| {
-        InputState::new(window, closure_cx)
-            //.text_align(TextAlign::Right)
-            .mask_pattern(pattern)
-            .placeholder(label.into())
-            .multi_line(false)
-    })
-}
-
-#[allow(unused)]
-fn make_input_row_with_button(
-    state: &Entity<InputState>,
-    input_label: impl Into<SharedString>,
-    button_id: impl Into<SharedString>,
-    button_label: impl Into<SharedString>,
-    button_callback: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> Div {
-    make_labeled_row(input_label)
-        .child(Input::new(state).flex_grow())
-        .child(make_button(button_id, button_label, button_callback))
-}
-
-fn make_input_row(
-    state: &Entity<InputState>,
-    input_label: impl Into<SharedString>,
-) -> Div {
-    make_labeled_row(input_label).child(Input::new(state).flex_grow())
-}
-
-/// Creates a labeled row containing a text label and an already-rendered
-/// [`Select`] dropdown, styled consistently with [`make_input_row`].
-fn make_select_row(
-    label: impl Into<SharedString>,
-    select_element: impl IntoElement,
-) -> Div {
-    make_labeled_row(label).child(select_element)
-}
-
-/// Creates the common outer container and label used by both input and select
-/// rows, ensuring consistent alignment, spacing, and border styling.
-fn make_labeled_row(label: impl Into<SharedString>) -> Div {
-    h_flex()
-        .items_center()
-        .gap_5()
-        .p(px(2.))
-        .rounded_md()
-        .border_1()
-        .child(
-            div()
-                .min_w(px(150.))
-                .text_align(TextAlign::Right)
-                .child(label.into()),
-        )
-}
-
-/// Creates the common outer container and label used by both input and select
-/// rows, ensuring consistent alignment, spacing, and border styling.
-fn make_header_row(header: impl Into<SharedString>) -> Div {
-    h_flex()
-        .items_center()
-        .gap_5()
-        .p(px(2.))
-        .rounded_md()
-        .child(
-            div()
-                .size_full()
-                .border_1()
-                .gap_1()
-                .p_1()
-                .border_color(Hsla {
-                    h: (336 / 360) as f32,
-                    s: 0.75,
-                    l: 0.5,
-                    a: 1.0,
-                })
-                .text_color(Hsla {
-                    h: (336 / 360) as f32,
-                    s: 0.75,
-                    l: 0.5,
-                    a: 1.0,
-                })
-                .text_center()
-                .child(header.into()),
-        )
 }
