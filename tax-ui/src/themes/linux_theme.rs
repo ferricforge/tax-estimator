@@ -5,7 +5,7 @@ use zbus::{
     zvariant::OwnedValue,
 };
 
-use super::{apply_palette, SystemPalette};
+use super::{SystemPalette, apply_palette};
 
 // ── Portal constants ──────────────────────────────────────────────
 
@@ -130,13 +130,7 @@ fn read_portal_setting(
     key: &str,
 ) -> Option<OwnedValue> {
     let connection = Connection::session().ok()?;
-    let proxy = Proxy::new(
-        &connection,
-        PORTAL_SERVICE,
-        PORTAL_PATH,
-        PORTAL_INTERFACE,
-    )
-    .ok()?;
+    let proxy = Proxy::new(&connection, PORTAL_SERVICE, PORTAL_PATH, PORTAL_INTERFACE).ok()?;
 
     proxy.call("ReadOne", &(namespace, key)).ok()
 }
@@ -200,13 +194,11 @@ fn parse_accent_color(value: OwnedValue) -> Option<Rgba> {
 }
 
 fn portal_color_scheme() -> Option<ColorScheme> {
-    read_portal_setting("org.freedesktop.appearance", "color-scheme")
-        .and_then(parse_color_scheme)
+    read_portal_setting("org.freedesktop.appearance", "color-scheme").and_then(parse_color_scheme)
 }
 
 fn portal_accent_color() -> Option<Rgba> {
-    read_portal_setting("org.freedesktop.appearance", "accent-color")
-        .and_then(parse_accent_color)
+    read_portal_setting("org.freedesktop.appearance", "accent-color").and_then(parse_accent_color)
 }
 
 fn prefers_dark() -> bool {

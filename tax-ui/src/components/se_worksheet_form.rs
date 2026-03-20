@@ -1,5 +1,6 @@
 use gpui::{
-    App, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled, Window,
+    App, ClickEvent, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
+    Window,
 };
 use gpui_component::{h_flex, input::InputState, v_flex};
 use rust_decimal::Decimal;
@@ -109,6 +110,43 @@ impl SeWorksheetForm {
     pub fn deductible_se_tax(&self) -> Option<Decimal> {
         self.line_11_deductible
     }
+
+    pub fn clear(
+        &mut self,
+        window: &mut Window,
+        app_cx: &mut App,
+    ) {
+        self.line_2_net_se_earnings = None;
+        self.line_3_ss_wage_base = None;
+        self.line_5_total_wages = None;
+        self.line_6_remaining_base = None;
+        self.line_7_ss_taxable = None;
+        self.line_8_ss_tax = None;
+        self.line_9_medicare_tax = None;
+        self.line_10_total_se_tax = None;
+        self.line_11_deductible = None;
+
+        let value = SharedString::new("");
+        self.se_income.update(
+            app_cx,
+            |state: &mut InputState, is_cx: &mut Context<'_, InputState>| {
+                state.set_value(value.clone(), window, is_cx);
+            },
+        );
+
+        self.expected_wages.update(
+            app_cx,
+            |state: &mut InputState, is_cx: &mut Context<'_, InputState>| {
+                state.set_value(value.clone(), window, is_cx);
+            },
+        );
+        self.crp_payments.update(
+            app_cx,
+            |state: &mut InputState, is_cx: &mut Context<'_, InputState>| {
+                state.set_value(value, window, is_cx);
+            },
+        );
+    }
 }
 
 impl Render for SeWorksheetForm {
@@ -170,22 +208,37 @@ impl Render for SeWorksheetForm {
                 "11. Deductible (line 10 × 50%):",
                 self.line_11_deductible,
             ))
-            .child(h_flex().gap_2().justify_end().mt_4().child(make_button(
-                "se_calculate",
-                "Calculate",
-                move |_ev, _window, cx| {
-                    this.update(cx, |form, cx| {
-                        // Smoke test only: line 2 = 1a - 1b
-                        let income =
-                            parse_optional_decimal(form.se_income.read(cx).value().as_str())
+            .child(
+                h_flex()
+                    .gap_2()
+                    .justify_end()
+                    .mt_4()
+                    .child(make_button("calculate_se_tax", "Calculate", {
+                        let this = this.clone();
+                        move |_ev, _window, cx| {
+                            this.update(cx, |form, cx| {
+                                let income = parse_optional_decimal(
+                                    form.se_income.read(cx).value().as_str(),
+                                )
                                 .unwrap_or(Decimal::ZERO);
-                        let crp =
-                            parse_optional_decimal(form.crp_payments.read(cx).value().as_str())
+                                let crp = parse_optional_decimal(
+                                    form.crp_payments.read(cx).value().as_str(),
+                                )
                                 .unwrap_or(Decimal::ZERO);
-                        form.line_2_net_se_earnings = Some(income - crp);
-                        cx.notify();
-                    });
-                },
-            )))
+                                form.line_2_net_se_earnings = Some(income - crp);
+                                cx.notify();
+                            });
+                        }
+                    }))
+                    .child(make_button(
+                        "calculate_se_clear",
+                        "Clear",
+                        move |_ev: &ClickEvent, window: &mut Window, app_cx: &mut App| {
+                            this.update(app_cx, |form, cx| {
+                                form.clear(window, cx);
+                            });
+                        },
+                    )),
+            )
     }
 }

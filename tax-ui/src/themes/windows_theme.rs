@@ -1,11 +1,11 @@
 use gpui::{App, Hsla};
 use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
+    HKEY, HKEY_CURRENT_USER, KEY_READ, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
 };
 use windows::core::PCWSTR;
 
-use super::{apply_palette, hex, rgba_to_hsla, SystemPalette};
+use super::{SystemPalette, apply_palette, hex, rgba_to_hsla};
 
 // ── Registry helpers ──────────────────────────────────────────────
 

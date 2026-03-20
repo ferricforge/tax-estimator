@@ -1,7 +1,9 @@
 use anyhow::Result;
+#[cfg(target_os = "macos")]
+use gpui::KeyBinding;
 use gpui::{
-    AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement, KeyBinding,
-    Menu, MenuItem, ParentElement, Styled, Window, px,
+    AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement, Menu,
+    MenuItem, ParentElement, Styled, Window, px,
 };
 use gpui_component::{WindowExt, dialog::DialogButtonProps, h_flex, v_flex};
 use tracing::{info, warn};
@@ -15,9 +17,11 @@ use crate::themes::apply_windows_system_theme;
 use crate::{
     Quit,
     app::se_tax_estimate,
-    components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm, make_button, theme::init_theme_colors},
-    models::EstimatedIncomeModel,
-    quit,
+    components::{
+        CloseProject, ErrorDialog, EstimatedIncomeForm, NewProject, OpenProject, SaveProject,
+        SaveProjectAs, SeWorksheetForm, bind_menu_keys, init_theme_colors, make_button,
+    },
+    models::EstimatedIncomeModel, quit,
 };
 
 pub fn setup_app(app_cx: &mut App) {
@@ -33,8 +37,6 @@ pub fn setup_app(app_cx: &mut App) {
     // Populate legacy theme constants from the now-active theme.
     init_theme_colors(app_cx);
 
-    app_cx.activate(true);
-
     #[cfg(target_os = "macos")]
     app_cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
 
@@ -46,10 +48,44 @@ pub fn setup_app(app_cx: &mut App) {
 
     app_cx.on_action(quit);
 
-    app_cx.set_menus(vec![Menu {
-        name: "Tax Estimator".into(),
-        items: vec![MenuItem::action("Quit", Quit)],
-    }]);
+    app_cx.on_action(|_: &NewProject, _: &mut App| {
+        tracing::info!("NewProject: not yet implemented");
+    });
+    app_cx.on_action(|_: &OpenProject, _: &mut App| {
+        tracing::info!("OpenProject: not yet implemented");
+    });
+    app_cx.on_action(|_: &SaveProject, _: &mut App| {
+        tracing::info!("SaveProject: not yet implemented");
+    });
+    app_cx.on_action(|_: &SaveProjectAs, _: &mut App| {
+        tracing::info!("SaveProjectAs: not yet implemented");
+    });
+    app_cx.on_action(|_: &CloseProject, _: &mut App| {
+        tracing::info!("CloseProject: not yet implemented");
+    });
+
+    bind_menu_keys(app_cx);
+
+    // Native macOS menu bar
+    app_cx.set_menus(vec![
+        Menu {
+            name: "Tax Estimator".into(),
+            items: vec![MenuItem::action("Quit", Quit)],
+        },
+        Menu {
+            name: "File".into(),
+            items: vec![
+                MenuItem::action("New Project", NewProject),
+                MenuItem::action("Open Project", OpenProject),
+                MenuItem::separator(),
+                MenuItem::action("Save", SaveProject),
+                MenuItem::action("Save As...", SaveProjectAs),
+                MenuItem::separator(),
+                MenuItem::action("Close Project", CloseProject),
+            ],
+        },
+    ]);
+    app_cx.activate(true);
 }
 
 /// Builds the primary window content.

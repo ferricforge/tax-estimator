@@ -11,7 +11,7 @@ use gpui::{App, actions};
 pub use gui::setup_app;
 use tracing::info;
 
-actions!(gpui_demo, [Quit]);
+actions!(tax_estimator, [Quit]);
 
 // Takes a reference to the action (often unused) and mutable app context
 pub fn quit(
