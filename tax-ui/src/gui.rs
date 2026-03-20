@@ -1,5 +1,4 @@
 use anyhow::Result;
-#[cfg(target_os = "macos")]
 use gpui::KeyBinding;
 use gpui::{
     AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement, Menu,
