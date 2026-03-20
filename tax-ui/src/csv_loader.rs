@@ -51,22 +51,6 @@ use serde::Deserialize;
 use tax_core::models::{FilingStatusCode, NewTaxEstimate};
 
 // ---------------------------------------------------------------------------
-// Filing-status code → seed ID mapping
-// ---------------------------------------------------------------------------
-// This mirrors the IDs established by 01_filing_status.sql.  If the seed
-// data ever changes the mapping lives in exactly one place.
-
-fn filing_status_to_id(code: FilingStatusCode) -> i32 {
-    match code {
-        FilingStatusCode::Single => 1,
-        FilingStatusCode::MarriedFilingJointly => 2,
-        FilingStatusCode::MarriedFilingSeparately => 3,
-        FilingStatusCode::HeadOfHousehold => 4,
-        FilingStatusCode::QualifyingSurvivingSpouse => 5,
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Serde-compatible row that mirrors the CSV layout exactly
 // ---------------------------------------------------------------------------
 
@@ -74,6 +58,9 @@ fn filing_status_to_id(code: FilingStatusCode) -> i32 {
 struct CsvRow {
     tax_year: i32,
     filing_status: String,
+    se_income: Option<Decimal>,
+    expected_crp_payments: Option<Decimal>,
+    expected_wages: Option<Decimal>,
     expected_agi: Decimal,
     expected_deduction: Decimal,
     expected_qbi_deduction: Option<Decimal>,
@@ -82,9 +69,6 @@ struct CsvRow {
     expected_other_taxes: Option<Decimal>,
     expected_withholding: Option<Decimal>,
     prior_year_tax: Option<Decimal>,
-    se_income: Option<Decimal>,
-    expected_crp_payments: Option<Decimal>,
-    expected_wages: Option<Decimal>,
 }
 
 // ---------------------------------------------------------------------------
@@ -117,16 +101,18 @@ fn convert_row(
     row: CsvRow,
     row_number: usize,
 ) -> Result<NewTaxEstimate, CsvLoadError> {
-    let code = FilingStatusCode::parse(&row.filing_status).ok_or_else(|| {
-        CsvLoadError::InvalidFilingStatus {
+    let code =
+        FilingStatusCode::parse(&row.filing_status).ok_or(CsvLoadError::InvalidFilingStatus {
             status: row.filing_status,
             row: row_number,
-        }
-    })?;
+        })?;
 
     Ok(NewTaxEstimate {
         tax_year: row.tax_year,
-        filing_status_id: filing_status_to_id(code),
+        filing_status_id: FilingStatusCode::filing_status_to_id(code),
+        se_income: row.se_income,
+        expected_crp_payments: row.expected_crp_payments,
+        expected_wages: row.expected_wages,
         expected_agi: row.expected_agi,
         expected_deduction: row.expected_deduction,
         expected_qbi_deduction: row.expected_qbi_deduction,
@@ -135,9 +121,6 @@ fn convert_row(
         expected_other_taxes: row.expected_other_taxes,
         expected_withholding: row.expected_withholding,
         prior_year_tax: row.prior_year_tax,
-        se_income: row.se_income,
-        expected_crp_payments: row.expected_crp_payments,
-        expected_wages: row.expected_wages,
     })
 }
 

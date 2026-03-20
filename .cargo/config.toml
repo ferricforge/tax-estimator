@@ -1,0 +1,37 @@
+# .cargo/config.toml
+
+# ---------------------------------------------------------------------------
+# Build parallelism
+# ---------------------------------------------------------------------------
+[build]
+# Fixed parallelism for your machine. If you move between machines a lot,
+# consider removing this and letting Cargo auto-detect.
+jobs = 8
+
+# ---------------------------------------------------------------------------
+# Faster linkers per platform
+# ---------------------------------------------------------------------------
+# Linux gets the biggest linker win from mold.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=--ld-path=mold"]
+
+# ---------------------------------------------------------------------------
+# Dev profile — optimise for compile speed
+# ---------------------------------------------------------------------------
+[profile.dev]
+incremental = true
+codegen-units = 256
+
+# Keep third-party dependencies optimized so they run fast, but avoid
+# recompiling them all the time while you edit your own workspace crates.
+[profile.dev.package."*"]
+opt-level = 2
+
+# ---------------------------------------------------------------------------
+# Release profile — optimise for runtime performance
+# ---------------------------------------------------------------------------
+[profile.release]
+incremental = false
+codegen-units = 1
+lto = "thin"

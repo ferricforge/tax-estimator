@@ -7,7 +7,7 @@ Cargo.toml.orig
 
 # Rust tools and IDE-specific files
 .rustup/
-.cargo/
+# .cargo/
 .vscode/
 .idea/
 *.rs.bk
@@ -65,3 +65,6 @@ clippy.toml.bk
 # Cursor SpecStory assets
 .specstory/
 .cursorindexingignore
+
+# Claude local settings
+.claude/*.local.*

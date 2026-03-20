@@ -54,6 +54,8 @@
 //! assert_eq!(result.se_tax_deduction, dec!(7064.78));
 //! ```
 
+use std::fmt;
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -178,7 +180,7 @@ impl SeWorksheetConfig {
             ss_wage_max: config.ss_wage_max,
             ss_tax_rate: config.ss_tax_rate,
             medicare_tax_rate: config.medicare_tax_rate,
-            net_earnings_factor: config.se_tax_deductible_percentage,
+            net_earnings_factor: config.se_tax_deduct_pcnt,
             deduction_factor: config.se_deduction_factor,
             min_se_threshold: config.min_se_threshold,
         }
@@ -312,6 +314,53 @@ impl SeWorksheetResult {
             se_tax_deduction: Decimal::ZERO,
             below_threshold: true,
         }
+    }
+}
+
+impl fmt::Display for SeWorksheetResult {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        writeln!(f, "SeWorksheetResult {{")?;
+        writeln!(
+            f,
+            "    combined_se_income   : ${}",
+            self.combined_se_income.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    net_earnings        : ${}",
+            self.net_earnings.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    medicare_tax        : ${}",
+            self.medicare_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    ss_taxable_earnings : ${}",
+            self.ss_taxable_earnings.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    social_security_tax : ${}",
+            self.social_security_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    self_employment_tax : ${}",
+            self.self_employment_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    se_tax_deduction    : ${}",
+            self.se_tax_deduction.round_dp(2)
+        )?;
+        writeln!(f, "    below_threshold    : {}", self.below_threshold)?;
+        write!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -928,9 +977,9 @@ mod tests {
             ss_wage_max: dec!(176100.00),
             ss_tax_rate: dec!(0.124),
             medicare_tax_rate: dec!(0.029),
-            se_tax_deductible_percentage: dec!(0.9235),
+            se_tax_deduct_pcnt: dec!(0.9235),
             se_deduction_factor: dec!(0.50),
-            required_payment_threshold: dec!(1000.00),
+            req_pmnt_threshold: dec!(1000.00),
             min_se_threshold: dec!(400.00),
         };
 
@@ -951,9 +1000,9 @@ mod tests {
             ss_wage_max: dec!(168600.00),
             ss_tax_rate: dec!(0.124),
             medicare_tax_rate: dec!(0.029),
-            se_tax_deductible_percentage: dec!(0.9235),
+            se_tax_deduct_pcnt: dec!(0.9235),
             se_deduction_factor: dec!(0.50),
-            required_payment_threshold: dec!(1000.00),
+            req_pmnt_threshold: dec!(1000.00),
             min_se_threshold: dec!(400.00),
         };
 
@@ -969,9 +1018,9 @@ mod tests {
             ss_wage_max: dec!(180000.00),
             ss_tax_rate: dec!(0.124),
             medicare_tax_rate: dec!(0.029),
-            se_tax_deductible_percentage: dec!(0.9235),
+            se_tax_deduct_pcnt: dec!(0.9235),
             se_deduction_factor: dec!(0.50),
-            required_payment_threshold: dec!(1000.00),
+            req_pmnt_threshold: dec!(1000.00),
             min_se_threshold: dec!(450.00), // Different threshold for 2026
         };
 

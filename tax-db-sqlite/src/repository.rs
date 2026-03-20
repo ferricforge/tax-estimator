@@ -96,6 +96,9 @@ fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, Rep
         filing_status_id: row
             .try_get("filing_status_id")
             .map_err(|e| RepositoryError::Database(e.into()))?,
+        se_income: get_optional_decimal(row, "se_income")?,
+        expected_crp_payments: get_optional_decimal(row, "expected_crp_payments")?,
+        expected_wages: get_optional_decimal(row, "expected_wages")?,
         expected_agi: get_decimal(row, "expected_agi")?,
         expected_deduction: get_decimal(row, "expected_deduction")?,
         expected_qbi_deduction: get_optional_decimal(row, "expected_qbi_deduction")?,
@@ -104,9 +107,6 @@ fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, Rep
         expected_other_taxes: get_optional_decimal(row, "expected_other_taxes")?,
         expected_withholding: get_optional_decimal(row, "expected_withholding")?,
         prior_year_tax: get_optional_decimal(row, "prior_year_tax")?,
-        se_income: get_optional_decimal(row, "se_income")?,
-        expected_crp_payments: get_optional_decimal(row, "expected_crp_payments")?,
-        expected_wages: get_optional_decimal(row, "expected_wages")?,
         calculated_se_tax: get_optional_decimal(row, "calculated_se_tax")?,
         calculated_total_tax: get_optional_decimal(row, "calculated_total_tax")?,
         calculated_required_payment: get_optional_decimal(row, "calculated_required_payment")?,
@@ -144,9 +144,9 @@ impl TaxRepository for SqliteRepository {
             ss_wage_max: get_decimal(&row, "ss_wage_max")?,
             ss_tax_rate: get_decimal(&row, "ss_tax_rate")?,
             medicare_tax_rate: get_decimal(&row, "medicare_tax_rate")?,
-            se_tax_deductible_percentage: get_decimal(&row, "se_tax_deductible_percentage")?,
+            se_tax_deduct_pcnt: get_decimal(&row, "se_tax_deductible_percentage")?,
             se_deduction_factor: get_decimal(&row, "se_deduction_factor")?,
-            required_payment_threshold: get_decimal(&row, "required_payment_threshold")?,
+            req_pmnt_threshold: get_decimal(&row, "required_payment_threshold")?,
             min_se_threshold: get_decimal(&row, "min_se_threshold")?,
         })
     }
@@ -657,6 +657,9 @@ mod tests {
         NewTaxEstimate {
             tax_year: 8888,
             filing_status_id: 50,
+            se_income: Some(dec!(50000.00)),
+            expected_crp_payments: None,
+            expected_wages: Some(dec!(50000.00)),
             expected_agi: dec!(100000.00),
             expected_deduction: dec!(15000.00),
             expected_qbi_deduction: Some(dec!(5000.00)),
@@ -665,9 +668,6 @@ mod tests {
             expected_other_taxes: None,
             expected_withholding: Some(dec!(8000.00)),
             prior_year_tax: Some(dec!(12000.00)),
-            se_income: Some(dec!(50000.00)),
-            expected_crp_payments: None,
-            expected_wages: Some(dec!(50000.00)),
         }
     }
 
@@ -675,6 +675,9 @@ mod tests {
         NewTaxEstimate {
             tax_year: 8888,
             filing_status_id: 50,
+            se_income: None,
+            expected_crp_payments: None,
+            expected_wages: None,
             expected_agi: dec!(75000.00),
             expected_deduction: dec!(15000.00),
             expected_qbi_deduction: None,
@@ -683,9 +686,6 @@ mod tests {
             expected_other_taxes: None,
             expected_withholding: None,
             prior_year_tax: None,
-            se_income: None,
-            expected_crp_payments: None,
-            expected_wages: None,
         }
     }
 
@@ -703,9 +703,9 @@ mod tests {
         assert_eq!(config.ss_wage_max, dec!(200000.00));
         assert_eq!(config.ss_tax_rate, dec!(0.125));
         assert_eq!(config.medicare_tax_rate, dec!(0.030));
-        assert_eq!(config.se_tax_deductible_percentage, dec!(0.9300));
+        assert_eq!(config.se_tax_deduct_pcnt, dec!(0.9300));
         assert_eq!(config.se_deduction_factor, dec!(0.55));
-        assert_eq!(config.required_payment_threshold, dec!(1500.00));
+        assert_eq!(config.req_pmnt_threshold, dec!(1500.00));
         assert_eq!(config.min_se_threshold, dec!(400.00));
     }
 
@@ -1136,6 +1136,9 @@ mod tests {
         let estimate_8888 = NewTaxEstimate {
             tax_year: 8888,
             filing_status_id: 50,
+            se_income: None,
+            expected_crp_payments: None,
+            expected_wages: None,
             expected_agi: dec!(100000.00),
             expected_deduction: dec!(15000.00),
             expected_qbi_deduction: None,
@@ -1144,14 +1147,14 @@ mod tests {
             expected_other_taxes: None,
             expected_withholding: None,
             prior_year_tax: None,
-            se_income: None,
-            expected_crp_payments: None,
-            expected_wages: None,
         };
 
         let estimate_8887 = NewTaxEstimate {
             tax_year: 8887,
             filing_status_id: 50,
+            se_income: None,
+            expected_crp_payments: None,
+            expected_wages: None,
             expected_agi: dec!(90000.00),
             expected_deduction: dec!(14000.00),
             expected_qbi_deduction: None,
@@ -1160,9 +1163,6 @@ mod tests {
             expected_other_taxes: None,
             expected_withholding: None,
             prior_year_tax: None,
-            se_income: None,
-            expected_crp_payments: None,
-            expected_wages: None,
         };
 
         repo.create_estimate(estimate_8888.clone())
