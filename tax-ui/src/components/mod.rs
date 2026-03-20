@@ -4,7 +4,7 @@ pub mod file_picker;
 pub mod filters;
 mod form_helpers;
 mod se_worksheet_form;
-mod theme;
+pub(crate) mod theme;
 pub mod window;
 
 use gpui::{App, SharedString, Window};

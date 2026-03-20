@@ -10,10 +10,12 @@ use tracing::{info, warn};
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::themes::apply_macos_system_theme;
+#[cfg(target_os = "windows")]
+use crate::themes::apply_windows_system_theme;
 use crate::{
     Quit,
     app::se_tax_estimate,
-    components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm, make_button},
+    components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm, make_button, theme::init_theme_colors},
     models::EstimatedIncomeModel,
     quit,
 };
@@ -23,8 +25,13 @@ pub fn setup_app(app_cx: &mut App) {
 
     #[cfg(target_os = "macos")]
     apply_macos_system_theme(app_cx);
+    #[cfg(target_os = "windows")]
+    apply_windows_system_theme(app_cx);
     #[cfg(target_os = "linux")]
     apply_linux_system_theme(app_cx);
+
+    // Populate legacy theme constants from the now-active theme.
+    init_theme_colors(app_cx);
 
     app_cx.activate(true);
 
@@ -103,7 +110,7 @@ pub fn build_main_content(
                         "SE Worksheet",
                         move |_ev, window, cx| {
                             let worksheet_for_dialog = worksheet_for_button.clone();
-            
+
                             window.open_dialog(cx, move |dialog, _window, _cx| {
                                 dialog
                                     .overlay_closable(false)
@@ -111,9 +118,7 @@ pub fn build_main_content(
                                     .margin_top(px(-20.0))
                                     .title("SE Tax Worksheet")
                                     .child(worksheet_for_dialog.clone())
-                                    .button_props(
-                                        DialogButtonProps::default().cancel_text("Close"),
-                                    )
+                                    .button_props(DialogButtonProps::default().cancel_text("Close"))
                                     .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
                             });
                         },
