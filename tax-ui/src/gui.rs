@@ -20,7 +20,8 @@ use crate::{
         CloseProject, ErrorDialog, EstimatedIncomeForm, NewProject, OpenProject, SaveProject,
         SaveProjectAs, SeWorksheetForm, bind_menu_keys, init_theme_colors, make_button,
     },
-    models::EstimatedIncomeModel, quit,
+    models::EstimatedIncomeModel,
+    quit,
 };
 
 pub fn setup_app(app_cx: &mut App) {
