@@ -37,6 +37,8 @@ impl SqliteRepository {
         }
         .with_context(|| format!("Failed to connect to database: {}", database_url))?;
 
+        tracing::info!("Connected to database {database_url}");
+
         Ok(Self { pool })
     }
 
@@ -58,6 +60,8 @@ impl SqliteRepository {
         &self,
         seeds_dir: &Path,
     ) -> Result<()> {
+        tracing::info!("Running seeds for sqlite from {}", seeds_dir.to_string_lossy());
+        
         let mut entries: Vec<_> = std::fs::read_dir(seeds_dir)
             .with_context(|| format!("Failed to read seeds directory '{}'", seeds_dir.display()))?
             .filter_map(|entry| entry.ok())
