@@ -1,5 +1,7 @@
 use anyhow::Result;
 use gpui::KeyBinding;
+#[cfg(target_os = "macos")]
+use gpui::{Menu, MenuItem};
 use gpui::{
     AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement,
     ParentElement, Styled, Window, px,
@@ -18,12 +20,14 @@ use crate::{
     app::se_tax_estimate,
     components::{
         CloseProject, ErrorDialog, EstimatedIncomeForm, NewProject, OpenProject, SaveProject,
-        SaveProjectAs, SeWorksheetForm, bind_menu_keys, build_menu_bar, init_theme_colors,
+        SaveProjectAs, SeWorksheetForm, bind_menu_keys, init_theme_colors,
         make_button,
     },
     models::EstimatedIncomeModel,
     quit,
 };
+#[cfg(not(target_os = "macos"))]
+use crate::components::build_menu_bar;
 
 pub fn setup_app(app_cx: &mut App) {
     gpui_component::init(app_cx);
@@ -105,7 +109,7 @@ pub fn build_main_content(
     move || {
         let worksheet_for_button = worksheet.clone();
 
-        let mut root = v_flex().size_full().gap_0(); // gap_0 so menu bar sits flush
+        let root = v_flex().size_full().gap_0(); // gap_0 so menu bar sits flush
 
         // Render the in-window menu bar on every non-macOS platform
         #[cfg(not(target_os = "macos"))]
