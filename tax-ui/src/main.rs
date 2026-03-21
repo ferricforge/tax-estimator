@@ -1,6 +1,6 @@
 use gpui::{
-    App, AppContext, Application, Bounds, Context, Pixels, Size, TitlebarOptions,
-    WindowBounds, WindowDecorations, WindowHandle, WindowOptions,
+    App, AppContext, Application, Bounds, Context, Pixels, Size, TitlebarOptions, WindowBounds,
+    WindowDecorations, WindowHandle, WindowOptions,
 };
 #[cfg(target_os = "linux")]
 use gpui::{Point, px};
@@ -46,11 +46,16 @@ fn should_force_xwayland() -> bool {
     is_gnome && has_x11_display && has_wayland_display
 }
 
-/// Computes window bounds, handling WSL's combined multi-monitor virtual desktop.
+/// Computes window bounds for Linux.
 ///
-/// On WSL, X11 reports all monitors as one giant display. If we detect an
-/// ultra-wide aspect ratio (> 2.5:1), we assume it's a dual-monitor setup
-/// and center the window on the left half instead of the combined desktop.
+/// **Native Linux** always uses [`Bounds::centered`]; no custom sizing or
+/// positioning logic runs outside WSL.
+///
+/// **WSL only:** X11 can report all monitors as one combined desktop. If the
+/// primary display looks ultra-wide (aspect ratio > 2.5:1), we assume a
+/// dual-monitor span and center the window on the **left half** instead of the
+/// full virtual desktop. Otherwise WSL uses [`Bounds::centered`] like native
+/// Linux.
 #[cfg(target_os = "linux")]
 fn compute_window_bounds(
     size: Size<Pixels>,
@@ -62,6 +67,13 @@ fn compute_window_bounds(
     let displays = app_cx.displays();
     let primary = displays.first();
 
+    if !is_wsl {
+        return match primary {
+            Some(display) => Bounds::centered(Some(display.id()), size, app_cx),
+            None => Bounds::centered(None, size, app_cx),
+        };
+    }
+
     match primary {
         Some(display) => {
             let display_bounds = display.bounds();
@@ -72,7 +84,7 @@ fn compute_window_bounds(
             // Two side-by-side 16:9 monitors = 32:9 combined.
             let is_ultra_wide = display_size.width > display_size.height * 2.5;
 
-            if is_wsl && is_ultra_wide {
+            if is_ultra_wide {
                 tracing::debug!(
                     "WSL ultra-wide detected ({} x {}), centering on left half",
                     display_size.width,
@@ -95,13 +107,9 @@ fn compute_window_bounds(
                 };
             }
 
-            // Normal case: center on this display
             Bounds::centered(Some(display.id()), size, app_cx)
         }
-        None => {
-            // No display found; fall back to default
-            Bounds::centered(None, size, app_cx)
-        }
+        None => Bounds::centered(None, size, app_cx),
     }
 }
 

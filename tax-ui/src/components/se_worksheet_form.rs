@@ -80,6 +80,7 @@ impl SeWorksheetForm {
         self.expected_wages.read(cx).value()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn set_calculated_values(
         &mut self,
         line_2: Option<Decimal>,

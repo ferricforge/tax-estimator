@@ -1,14 +1,16 @@
 use anyhow::Result;
 use gpui::KeyBinding;
+use gpui::{
+    Action, AnyElement, App, AppContext, ClickEvent, Context, Entity, InteractiveElement,
+    IntoElement, ParentElement, Styled, Window, px,
+};
 #[cfg(target_os = "macos")]
 use gpui::{Menu, MenuItem};
-use gpui::{
-    AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement,
-    ParentElement, Styled, Window, px,
-};
 use gpui_component::{WindowExt, dialog::DialogButtonProps, h_flex, v_flex};
 use tracing::{info, warn};
 
+#[cfg(not(target_os = "macos"))]
+use crate::components::build_menu_bar;
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
@@ -20,14 +22,25 @@ use crate::{
     app::se_tax_estimate,
     components::{
         CloseProject, ErrorDialog, EstimatedIncomeForm, NewProject, OpenProject, SaveProject,
-        SaveProjectAs, SeWorksheetForm, bind_menu_keys, init_theme_colors,
-        make_button,
+        SaveProjectAs, SeWorksheetForm, bind_menu_keys, init_theme_colors, make_button,
     },
     models::EstimatedIncomeModel,
     quit,
 };
-#[cfg(not(target_os = "macos"))]
-use crate::components::build_menu_bar;
+
+/// Registers a handler for a GPUI [`Action`] type.
+fn register_action<A: Action>(
+    app: &mut App,
+    f: impl Fn(&A, &mut App) + 'static,
+) {
+    app.on_action(f);
+}
+
+fn stub_file_action<A: Action>(name: &'static str) -> impl Fn(&A, &mut App) {
+    move |_, _| {
+        tracing::info!("{name}: not yet implemented");
+    }
+}
 
 pub fn setup_app(app_cx: &mut App) {
     gpui_component::init(app_cx);
@@ -53,21 +66,11 @@ pub fn setup_app(app_cx: &mut App) {
 
     app_cx.on_action(quit);
 
-    app_cx.on_action(|_: &NewProject, _: &mut App| {
-        tracing::info!("NewProject: not yet implemented");
-    });
-    app_cx.on_action(|_: &OpenProject, _: &mut App| {
-        tracing::info!("OpenProject: not yet implemented");
-    });
-    app_cx.on_action(|_: &SaveProject, _: &mut App| {
-        tracing::info!("SaveProject: not yet implemented");
-    });
-    app_cx.on_action(|_: &SaveProjectAs, _: &mut App| {
-        tracing::info!("SaveProjectAs: not yet implemented");
-    });
-    app_cx.on_action(|_: &CloseProject, _: &mut App| {
-        tracing::info!("CloseProject: not yet implemented");
-    });
+    register_action(app_cx, stub_file_action::<NewProject>("NewProject"));
+    register_action(app_cx, stub_file_action::<OpenProject>("OpenProject"));
+    register_action(app_cx, stub_file_action::<SaveProject>("SaveProject"));
+    register_action(app_cx, stub_file_action::<SaveProjectAs>("SaveProjectAs"));
+    register_action(app_cx, stub_file_action::<CloseProject>("CloseProject"));
 
     bind_menu_keys(app_cx);
 
@@ -107,85 +110,112 @@ pub fn build_main_content(
         app_cx.new(|form_cx: &mut Context<SeWorksheetForm>| SeWorksheetForm::new(window, form_cx));
 
     move || {
-        let worksheet_for_button = worksheet.clone();
+        let root = {
+            let base = v_flex().size_full().gap_0(); // gap_0 so menu bar sits flush
+            #[cfg(not(target_os = "macos"))]
+            {
+                base.child(build_menu_bar())
+            }
+            #[cfg(target_os = "macos")]
+            {
+                base
+            }
+        };
 
-        let root = v_flex().size_full().gap_0(); // gap_0 so menu bar sits flush
-
-        // Render the in-window menu bar on every non-macOS platform
-        #[cfg(not(target_os = "macos"))]
-        {
-            root = root.child(build_menu_bar());
-        }
-
-        root.child(
-            v_flex()
-                .size_full()
-                .p_5()
-                .gap_4()
-                .child(form.clone())
-                .child(
-                    h_flex()
-                        .id("window-body")
-                        .p_1()
-                        .gap_4()
-                        .items_center()
-                        .justify_center()
-                        .child({
-                            let form_handle = form.clone();
-                            make_button(
-                                "calculate-estimates",
-                                "Calculate SE Tax",
-                                move |_click_event: &ClickEvent,
-                                      window: &mut Window,
-                                      cx: &mut App| {
-                                    let form_model = match form_handle.read(cx).to_model(cx) {
-                                        Ok(m) => m,
-                                        Err(errors) => {
-                                            for e in &errors {
-                                                warn!(%e, "form error");
-                                            }
-                                            ErrorDialog::show(
-                                                "Validation failed",
-                                                &errors,
-                                                window,
-                                                cx,
-                                            );
-                                            return;
-                                        }
-                                    };
-                                    info!(%form_model, "Form validated\n");
-                                    cx.spawn(async move |_cx| {
-                                        if let Err(e) = make_estimate(&form_model).await {
-                                            warn!(%e, "Calculate SE Tax failed");
-                                        }
-                                    })
-                                    .detach();
-                                },
-                            )
-                        })
-                        .child(make_button(
-                            "open-se-worksheet",
-                            "SE Worksheet",
-                            move |_ev, window, cx| {
-                                let worksheet_for_dialog = worksheet_for_button.clone();
-                                window.open_dialog(cx, move |dialog, _window, _cx| {
-                                    dialog
-                                        .overlay_closable(false)
-                                        .w(px(520.0))
-                                        .margin_top(px(-20.0))
-                                        .title("SE Tax Worksheet")
-                                        .child(worksheet_for_dialog.clone())
-                                        .button_props(
-                                            DialogButtonProps::default().cancel_text("Close"),
-                                        )
-                                        .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
-                                });
-                            },
-                        )),
-                ),
-        )
-        .into_any_element()
+        root.child(main_body(form.clone(), worksheet.clone()))
+            .into_any_element()
     }
+}
+
+fn main_body(
+    form: Entity<EstimatedIncomeForm>,
+    worksheet: Entity<SeWorksheetForm>,
+) -> impl IntoElement {
+    v_flex()
+        .size_full()
+        .p_5()
+        .gap_4()
+        .child(form.clone())
+        .child(main_toolbar(form, worksheet))
+}
+
+fn main_toolbar(
+    form: Entity<EstimatedIncomeForm>,
+    worksheet: Entity<SeWorksheetForm>,
+) -> impl IntoElement {
+    let form_calc = form.clone();
+    h_flex()
+        .id("window-body")
+        .p_1()
+        .gap_4()
+        .items_center()
+        .justify_center()
+        .child(make_button(
+            "calculate-estimates",
+            "Calculate SE Tax",
+            move |_click_event: &ClickEvent, window: &mut Window, cx: &mut App| {
+                spawn_calculate_se_tax(&form_calc, window, cx);
+            },
+        ))
+        .child(make_button(
+            "open-se-worksheet",
+            "SE Worksheet",
+            move |_ev, window, cx| {
+                open_se_worksheet_dialog(worksheet.clone(), window, cx);
+            },
+        ))
+}
+
+fn model_from_form_or_show_errors(
+    form: &Entity<EstimatedIncomeForm>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<EstimatedIncomeModel> {
+    match form.read(cx).to_model(cx) {
+        Ok(m) => Some(m),
+        Err(errors) => {
+            for e in &errors {
+                warn!(%e, "form error");
+            }
+            ErrorDialog::show("Validation failed", &errors, window, cx);
+            None
+        }
+    }
+}
+
+fn spawn_calculate_se_tax(
+    form: &Entity<EstimatedIncomeForm>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(form_model) = model_from_form_or_show_errors(form, window, cx) else {
+        return;
+    };
+    info!(%form_model, "Form validated\n");
+    cx.spawn(async move |_cx| {
+        if let Err(e) = make_estimate(&form_model).await {
+            warn!(%e, "Calculate SE Tax failed");
+        }
+    })
+    .detach();
+}
+
+fn open_se_worksheet_dialog(
+    worksheet: Entity<SeWorksheetForm>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let worksheet_for_dialog = worksheet.clone();
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        dialog
+            .overlay_closable(false)
+            .w(px(520.0))
+            .margin_top(px(-20.0))
+            .title("SE Tax Worksheet")
+            .child(worksheet_for_dialog.clone())
+            .button_props(DialogButtonProps::default().cancel_text("Close"))
+            .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
+    });
 }
 
 async fn make_estimate(model: &EstimatedIncomeModel) -> Result<()> {

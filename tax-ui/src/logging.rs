@@ -126,8 +126,51 @@ static SET_LOG_LEVEL: OnceLock<SetStrFn> = OnceLock::new();
 static SET_STDOUT_ENABLED: OnceLock<SetBoolFn> = OnceLock::new();
 static FILE_SLOT: OnceLock<Arc<Mutex<Option<File>>>> = OnceLock::new();
 
+/// Workspace library crates that emit [`tracing`] events. When adding a new
+/// workspace member crate, include it here if logs from that crate should
+/// appear under the default and bare-level [`set_log_level`] presets.
+pub const WORKSPACE_CRATES: &[&str] = &["tax_core", "tax_data", "tax_db_sqlite", "tax_ui"];
+
+fn default_workspace_filter() -> &'static str {
+    "warn,tax_core=info,tax_data=info,tax_db_sqlite=info,tax_ui=info"
+}
+
+fn workspace_filter_for_bare_level(level: &str) -> String {
+    let mut out = String::from("warn");
+    for name in WORKSPACE_CRATES {
+        out.push(',');
+        out.push_str(name);
+        out.push('=');
+        out.push_str(level);
+    }
+    out
+}
+
+fn log_filter_from_input(level_str: &str) -> Result<EnvFilter> {
+    let t = level_str.trim();
+    if t.is_empty() {
+        anyhow::bail!("empty log filter");
+    }
+    let lower = t.to_ascii_lowercase();
+    let is_bare = matches!(
+        lower.as_str(),
+        "error" | "warn" | "info" | "debug" | "trace"
+    );
+    if is_bare {
+        let directive = workspace_filter_for_bare_level(&lower);
+        EnvFilter::try_new(&directive)
+            .map_err(|e| anyhow::anyhow!("invalid built-in workspace filter '{directive}': {e}"))
+    } else {
+        EnvFilter::try_new(level_str)
+            .map_err(|e| anyhow::anyhow!("invalid log filter '{level_str}': {e}"))
+    }
+}
+
 fn make_filter() -> EnvFilter {
-    EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,gpui_demo=debug"))
+    EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::try_new(default_workspace_filter())
+            .expect("built-in default workspace filter must parse as EnvFilter")
+    })
 }
 
 fn store_level_handle<S>(handle: reload::Handle<EnvFilter, S>)
@@ -135,8 +178,7 @@ where
     S: Subscriber + Send + Sync + 'static,
 {
     let _ = SET_LOG_LEVEL.set(Box::new(move |level_str: &str| {
-        let filter = EnvFilter::try_new(level_str)
-            .map_err(|e| anyhow::anyhow!("invalid log level '{level_str}': {e}"))?;
+        let filter = log_filter_from_input(level_str)?;
         handle
             .reload(filter)
             .map_err(|e| anyhow::anyhow!("filter reload failed: {e}"))
@@ -163,8 +205,13 @@ where
 // --- Public API ---
 
 /// Changes the active log filter at runtime.
-/// Accepts a bare level ("error", "warn", "info", "debug", "trace")
-/// or any full EnvFilter directive. Case-insensitive.
+///
+/// A **bare** level (`error`, `warn`, `info`, `debug`, `trace`, case-insensitive)
+/// applies that level only to workspace crates ([`WORKSPACE_CRATES`]), with a
+/// global default of `warn` so dependency crates stay quiet.
+///
+/// Any other string is parsed as a full [`EnvFilter`] directive (e.g.
+/// `gpui=debug,tax_ui=trace`) for advanced use.
 pub fn set_log_level(level: &str) -> Result<()> {
     match SET_LOG_LEVEL.get() {
         Some(f) => f(level),
@@ -224,7 +271,9 @@ pub fn app_name() -> &'static str {
 ///
 /// - Stdout: colored when attached to a terminal, plain when piped.
 /// - File: inactive until `enable_file_logging()` is called.
-/// - Level: INFO by default, or overridden by the RUST_LOG env var.
+/// - Level: if `RUST_LOG` is unset, uses a workspace-only default (`warn` for
+///   dependencies, `info` for [`WORKSPACE_CRATES`]). Set `RUST_LOG` to override
+///   (e.g. `RUST_LOG=gpui=debug,tax_ui=trace`).
 pub fn init_default_logging() {
     // Initialise the name while we are still in a simple synchronous context.
     let _ = app_name();
@@ -266,5 +315,33 @@ pub fn log_task_error(
 ) {
     if let Err(error) = result {
         error!(task = task_name, ?error, "background task failed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_workspace_filter_parses() {
+        EnvFilter::try_new(default_workspace_filter()).expect("default filter must parse");
+    }
+
+    #[test]
+    fn workspace_filter_for_bare_level_matches_expected_shape() {
+        assert_eq!(
+            workspace_filter_for_bare_level("info"),
+            "warn,tax_core=info,tax_data=info,tax_db_sqlite=info,tax_ui=info"
+        );
+    }
+
+    #[test]
+    fn log_filter_from_input_bare_info_ok() {
+        log_filter_from_input("info").expect("bare info");
+    }
+
+    #[test]
+    fn log_filter_from_input_accepts_full_directive() {
+        log_filter_from_input("gpui=warn,tax_ui=debug").expect("full directive");
     }
 }
