@@ -38,8 +38,8 @@ impl Default for WindowPreferences {
     fn default() -> Self {
         Self {
             size: Size {
-                width: px(800.0),
-                height: px(800.0),
+                width: px(820.0),
+                height: px(900.0),
             },
         }
     }

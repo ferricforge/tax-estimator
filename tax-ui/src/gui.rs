@@ -1,8 +1,8 @@
 use anyhow::Result;
 use gpui::KeyBinding;
 use gpui::{
-    AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement, Menu,
-    MenuItem, ParentElement, Styled, Window, px,
+    AnyElement, App, AppContext, ClickEvent, Context, InteractiveElement, IntoElement,
+    ParentElement, Styled, Window, px,
 };
 use gpui_component::{WindowExt, dialog::DialogButtonProps, h_flex, v_flex};
 use tracing::{info, warn};
@@ -18,7 +18,8 @@ use crate::{
     app::se_tax_estimate,
     components::{
         CloseProject, ErrorDialog, EstimatedIncomeForm, NewProject, OpenProject, SaveProject,
-        SaveProjectAs, SeWorksheetForm, bind_menu_keys, init_theme_colors, make_button,
+        SaveProjectAs, SeWorksheetForm, bind_menu_keys, build_menu_bar, init_theme_colors,
+        make_button,
     },
     models::EstimatedIncomeModel,
     quit,
@@ -67,6 +68,7 @@ pub fn setup_app(app_cx: &mut App) {
     bind_menu_keys(app_cx);
 
     // Native macOS menu bar
+    #[cfg(target_os = "macos")]
     app_cx.set_menus(vec![
         Menu {
             name: "Tax Estimator".into(),
@@ -103,64 +105,82 @@ pub fn build_main_content(
     move || {
         let worksheet_for_button = worksheet.clone();
 
-        v_flex()
-            .size_full()
-            .p_5()
-            .gap_4()
-            .child(form.clone())
-            .child(
-                h_flex()
-                    .id("window-body")
-                    .p_1()
-                    .gap_4()
-                    .items_center()
-                    .justify_center()
-                    .child({
-                        let form_handle = form.clone();
-                        make_button(
-                            "calculate-estimates",
-                            "Calculate SE Tax",
-                            move |_click_event: &ClickEvent, window: &mut Window, cx: &mut App| {
-                                let form_model = match form_handle.read(cx).to_model(cx) {
-                                    Ok(m) => m,
-                                    Err(errors) => {
-                                        for e in &errors {
-                                            warn!(%e, "form error");
-                                        }
-                                        ErrorDialog::show("Validation failed", &errors, window, cx);
-                                        return;
-                                    }
-                                };
-                                info!(%form_model, "Form validated\n");
-                                cx.spawn(async move |_cx| {
-                                    if let Err(e) = make_estimate(&form_model).await {
-                                        warn!(%e, "Calculate SE Tax failed");
-                                    }
-                                })
-                                .detach();
-                            },
-                        )
-                    })
-                    .child(make_button(
-                        "open-se-worksheet",
-                        "SE Worksheet",
-                        move |_ev, window, cx| {
-                            let worksheet_for_dialog = worksheet_for_button.clone();
+        let mut root = v_flex().size_full().gap_0(); // gap_0 so menu bar sits flush
 
-                            window.open_dialog(cx, move |dialog, _window, _cx| {
-                                dialog
-                                    .overlay_closable(false)
-                                    .w(px(520.0))
-                                    .margin_top(px(-20.0))
-                                    .title("SE Tax Worksheet")
-                                    .child(worksheet_for_dialog.clone())
-                                    .button_props(DialogButtonProps::default().cancel_text("Close"))
-                                    .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
-                            });
-                        },
-                    )),
-            )
-            .into_any_element()
+        // Render the in-window menu bar on every non-macOS platform
+        #[cfg(not(target_os = "macos"))]
+        {
+            root = root.child(build_menu_bar());
+        }
+
+        root.child(
+            v_flex()
+                .size_full()
+                .p_5()
+                .gap_4()
+                .child(form.clone())
+                .child(
+                    h_flex()
+                        .id("window-body")
+                        .p_1()
+                        .gap_4()
+                        .items_center()
+                        .justify_center()
+                        .child({
+                            let form_handle = form.clone();
+                            make_button(
+                                "calculate-estimates",
+                                "Calculate SE Tax",
+                                move |_click_event: &ClickEvent,
+                                      window: &mut Window,
+                                      cx: &mut App| {
+                                    let form_model = match form_handle.read(cx).to_model(cx) {
+                                        Ok(m) => m,
+                                        Err(errors) => {
+                                            for e in &errors {
+                                                warn!(%e, "form error");
+                                            }
+                                            ErrorDialog::show(
+                                                "Validation failed",
+                                                &errors,
+                                                window,
+                                                cx,
+                                            );
+                                            return;
+                                        }
+                                    };
+                                    info!(%form_model, "Form validated\n");
+                                    cx.spawn(async move |_cx| {
+                                        if let Err(e) = make_estimate(&form_model).await {
+                                            warn!(%e, "Calculate SE Tax failed");
+                                        }
+                                    })
+                                    .detach();
+                                },
+                            )
+                        })
+                        .child(make_button(
+                            "open-se-worksheet",
+                            "SE Worksheet",
+                            move |_ev, window, cx| {
+                                let worksheet_for_dialog = worksheet_for_button.clone();
+                                window.open_dialog(cx, move |dialog, _window, _cx| {
+                                    dialog
+                                        .overlay_closable(false)
+                                        .w(px(520.0))
+                                        .margin_top(px(-20.0))
+                                        .title("SE Tax Worksheet")
+                                        .child(worksheet_for_dialog.clone())
+                                        .button_props(
+                                            DialogButtonProps::default().cancel_text("Close"),
+                                        )
+                                        .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
+                                });
+                            },
+                        )),
+                ),
+        )
+        .into_any_element()
     }
 }
 
