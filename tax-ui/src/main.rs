@@ -9,7 +9,6 @@ use gpui_component_assets::Assets;
 
 use tax_ui::{
     components::{AppWindow, WindowPreferences},
-    gui::build_main_content,
     logging::{init_default_logging, log_task_error},
     setup_app,
 };
@@ -186,11 +185,8 @@ fn run_ui() {
                             ..Default::default()
                         },
                         |window: &mut gpui::Window, window_cx| {
-                            let view = window_cx.new(|view_cx: &mut Context<AppWindow>| {
-                                let content = build_main_content(window, view_cx);
-                                let mut main_window = AppWindow::new(view_cx);
-                                main_window.set_content(content);
-                                main_window
+                            let view = window_cx.new(|view_cx: &mut Context<AppWindow>| {                                
+                                AppWindow::new(window, view_cx)
                             });
                             window_cx.new(|root_cx| Root::new(view, window, root_cx))
                         },

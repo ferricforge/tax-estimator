@@ -190,16 +190,16 @@ impl Render for EstimatedIncomeForm {
                         v_flex()
                             .gap_2()
                             .size_full()
-                            .child(make_input_row(&self.tax_year, "Tax Year")),
+                            .child(make_input_row(&self.tax_year, "Tax Year"))
+                            .child(make_select_row(
+                                "Filing Status:",
+                                Select::new(&self.filing_status).w_full().render(window, cx),
+                            ))
                     )
                     .child(
                         v_flex()
                             .gap_2()
                             .size_full()
-                            .child(make_select_row(
-                                "Filing Status:",
-                                Select::new(&self.filing_status).w_full().render(window, cx),
-                            ))
                             .child(make_header_row("SE Worksheet Inputs:"))
                             .child(make_input_row(&self.se_income, "SE income: $"))
                             .child(make_input_row(

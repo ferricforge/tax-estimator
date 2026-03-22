@@ -2,6 +2,9 @@
 use std::fmt;
 
 use anyhow::{Context, Result};
+use gpui::{App, Entity, ParentElement, Window, px};
+use gpui_component::WindowExt;
+use gpui_component::dialog::DialogButtonProps;
 use rust_decimal::Decimal;
 use tax_core::NewTaxEstimate;
 use tax_core::calculations::{SeWorksheet, SeWorksheetConfig, SeWorksheetResult};
@@ -11,6 +14,8 @@ use tax_core::db::{DbConfig, RepositoryRegistry, TaxRepository};
 use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket, TaxYearConfig};
 use tax_db_sqlite::SqliteRepositoryFactory;
 
+use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
+use crate::models::EstimatedIncomeModel;
 use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────
@@ -187,6 +192,63 @@ fn run_se_worksheet(
                 "SE worksheet calculation failed (se_income={se_income}, crp_payments={crp_payments}, wages={wages})"
             )
         })
+}
+
+pub fn spawn_calculate_se_tax(
+    form: Entity<EstimatedIncomeForm>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(form_model) = model_from_form_or_show_errors(&form, window, cx) else {
+        return;
+    };
+    tracing::info!(%form_model, "Form validated\n");
+    cx.spawn(async move |_cx| {
+        if let Err(e) = make_estimate(&form_model).await {
+            tracing::warn!(%e, "Calculate SE Tax failed");
+        }
+    })
+    .detach();
+}
+
+pub fn open_se_worksheet_dialog(
+    worksheet: Entity<SeWorksheetForm>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let worksheet_for_dialog = worksheet.clone();
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        dialog
+            .overlay_closable(false)
+            .w(px(520.0))
+            .margin_top(px(-20.0))
+            .title("SE Tax Worksheet")
+            .child(worksheet_for_dialog.clone())
+            .button_props(DialogButtonProps::default().cancel_text("Close"))
+            .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
+    });
+}
+
+async fn make_estimate(model: &EstimatedIncomeModel) -> Result<()> {
+    let new_est = model.to_new_tax_estimate();
+    se_tax_estimate(new_est, "taxes.db", "sqlite").await
+}
+
+fn model_from_form_or_show_errors(
+    form: &Entity<EstimatedIncomeForm>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<EstimatedIncomeModel> {
+    match form.read(cx).to_model(cx) {
+        Ok(m) => Some(m),
+        Err(errors) => {
+            for e in &errors {
+                tracing::warn!(%e, "form error");
+            }
+            ErrorDialog::show("Validation failed", &errors, window, cx);
+            None
+        }
+    }
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
