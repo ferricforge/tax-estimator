@@ -163,9 +163,9 @@ impl SeWorksheetConfig {
     ///     ss_wage_max: dec!(176100.00),
     ///     ss_tax_rate: dec!(0.124),
     ///     medicare_tax_rate: dec!(0.029),
-    ///     se_tax_deductible_percentage: dec!(0.9235),
+    ///     se_tax_deduct_pcnt: dec!(0.9235),
     ///     se_deduction_factor: dec!(0.50),
-    ///     required_payment_threshold: dec!(1000.00),
+    ///     req_pmnt_threshold: dec!(1000.00),
     ///     min_se_threshold: dec!(400.00),
     /// };
     ///

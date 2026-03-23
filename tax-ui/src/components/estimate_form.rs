@@ -171,6 +171,15 @@ impl EstimatedIncomeForm {
         model.validate_for_submit()?;
         Ok(model)
     }
+
+    /// Returns the raw tax year value, parsed if valid.
+    pub fn tax_year(
+        &self,
+        cx: &App,
+    ) -> Option<i32> {
+        let value = self.tax_year.read(cx).value();
+        value.trim().parse::<i32>().ok()
+    }
 }
 
 impl Render for EstimatedIncomeForm {

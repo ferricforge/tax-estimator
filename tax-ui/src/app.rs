@@ -15,7 +15,7 @@ use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket, TaxYearConfi
 use tax_db_sqlite::SqliteRepositoryFactory;
 
 use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
-use crate::models::EstimatedIncomeModel;
+use crate::models::{EstimatedIncomeModel, SeWorksheetModel};
 use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────
@@ -149,14 +149,14 @@ impl fmt::Display for TaxYearData {
     }
 }
 
-async fn se_tax_estimate(
+pub async fn se_tax_estimate(
     se_income: Decimal,
     crp_payments: Decimal,
     wages: Decimal,
     tax_year: i32,
     db_connection: &str,
     backend: &str,
-) -> Result<()> {
+) -> Result<SeWorksheetResult> {
     let db_config = DbConfig {
         backend: backend.to_string(),
         connection_string: db_connection.to_string(),
@@ -173,7 +173,7 @@ async fn se_tax_estimate(
 
     tracing::info!("Estimate Result=\n{}", estimate);
 
-    Ok(())
+    Ok(estimate)
 }
 
 fn run_se_worksheet(
@@ -202,28 +202,12 @@ pub fn spawn_calculate_se_tax(
         return;
     };
     tracing::info!(%form_model, "Form validated\n");
-    cx.spawn(async move |_cx| {
-        if let Err(e) = make_se_estimate(&form_model).await {
-            tracing::warn!(%e, "Calculate SE Tax failed");
-        }
-    })
-    .detach();
-}
-
-async fn make_se_estimate(model: &EstimatedIncomeModel) -> Result<()> {
-    let se_income = model.se_income.unwrap_or_default();
-    let crp_payments = model.expected_crp_payments.unwrap_or_default();
-    let wages = model.expected_wages.unwrap_or_default();
-    let tax_year = model.tax_year;
-    se_tax_estimate(
-        se_income,
-        crp_payments,
-        wages,
-        tax_year,
-        "taxes.db",
-        "sqlite",
-    )
-    .await
+    // cx.spawn(async move |_cx| {
+    //     if let Err(e) = make_se_estimate(&form_model).await {
+    //         tracing::warn!(%e, "Calculate SE Tax failed");
+    //     }
+    // })
+    // .detach();
 }
 
 fn model_from_form_or_show_errors(

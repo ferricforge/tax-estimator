@@ -34,6 +34,24 @@ pub struct SeWorksheetModel {
     pub line_10_total_se_tax: Option<Decimal>,
     /// Line 11: Multiply line 10 by 50% (0.50) — deductible SE tax.
     pub line_11_deductible_se_tax: Option<Decimal>,
+
+    pub tax_year: Option<i32>,
+}
+
+impl SeWorksheetModel {
+    // TODO: Account for Line 5, base SSA salary
+    pub fn from_worksheet_result(
+        &mut self,
+        result: &SeWorksheetResult,
+    ) {
+        self.line_2_subtract_1b_from_1a = Some(result.combined_se_income);
+        self.line_3_net_earnings = Some(result.net_earnings);
+        self.line_4_medicare_tax = Some(result.medicare_tax);
+        self.line_8_ss_taxable_earnings = Some(result.ss_taxable_earnings);
+        self.line_9_social_security_tax = Some(result.social_security_tax);
+        self.line_10_total_se_tax = Some(result.self_employment_tax);
+        self.line_11_deductible_se_tax = Some(result.se_tax_deduction);
+    }
 }
 
 /// Maps [`tax_core::calculations::SeWorksheetResult`] into IRS-aligned lines.
@@ -55,6 +73,7 @@ impl From<&SeWorksheetResult> for SeWorksheetModel {
             line_9_social_security_tax: Some(result.social_security_tax),
             line_10_total_se_tax: Some(result.self_employment_tax),
             line_11_deductible_se_tax: Some(result.se_tax_deduction),
+            ..Default::default()
         }
     }
 }
@@ -170,6 +189,7 @@ Line 11 (line 10 × 50%):      443.93";
             line_9_social_security_tax: Some(dec!(858.86)),
             line_10_total_se_tax: Some(dec!(887.86)),
             line_11_deductible_se_tax: Some(dec!(443.93)),
+            ..Default::default()
         };
         let actual = model.to_string();
         assert_eq!(actual, DISPLAY_FULL);
@@ -209,6 +229,7 @@ Line 11 (line 10 × 50%):      —";
             line_9_social_security_tax: None,
             line_10_total_se_tax: None,
             line_11_deductible_se_tax: None,
+            ..Default::default()
         };
         assert_eq!(actual, expected);
     }
@@ -238,6 +259,7 @@ Line 11 (line 10 × 50%):      —";
             line_9_social_security_tax: Some(dec!(5725.70)),
             line_10_total_se_tax: Some(dec!(7064.78)),
             line_11_deductible_se_tax: Some(dec!(3532.39)),
+            ..Default::default()
         };
         assert_eq!(SeWorksheetModel::from(&result), expected);
         assert_eq!(SeWorksheetModel::from(result.clone()), expected);
@@ -268,6 +290,7 @@ Line 11 (line 10 × 50%):      —";
             line_9_social_security_tax: Some(Decimal::ZERO),
             line_10_total_se_tax: Some(Decimal::ZERO),
             line_11_deductible_se_tax: Some(Decimal::ZERO),
+            ..Default::default()
         };
         assert_eq!(SeWorksheetModel::from(&result), expected);
     }
