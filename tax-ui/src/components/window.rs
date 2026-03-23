@@ -7,9 +7,11 @@ use gpui_component::{Root, h_flex, v_flex};
 use gpui_component::{StyledExt, WindowExt};
 use tracing::info;
 
-use crate::Quit;
+#[cfg(not(target_os = "macos"))]
+use crate::components::build_menu_bar;
 use crate::app::spawn_calculate_se_tax;
 use crate::components::{EstimatedIncomeForm, SeWorksheetForm, make_button};
+use crate::Quit;
 use crate::quit;
 
 pub struct AppWindow {
@@ -93,8 +95,6 @@ impl AppWindow {
             let base = v_flex().size_full().gap_0();
             #[cfg(not(target_os = "macos"))]
             {
-                use crate::components::build_menu_bar;
-
                 base.child(build_menu_bar())
             }
             #[cfg(target_os = "macos")]

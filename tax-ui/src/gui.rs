@@ -3,8 +3,6 @@ use gpui::{Action, App};
 #[cfg(target_os = "macos")]
 use gpui::{Menu, MenuItem};
 
-#[cfg(not(target_os = "macos"))]
-use crate::components::build_menu_bar;
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
