@@ -194,7 +194,7 @@ impl Render for EstimatedIncomeForm {
                             .child(make_select_row(
                                 "Filing Status:",
                                 Select::new(&self.filing_status).w_full().render(window, cx),
-                            ))
+                            )),
                     )
                     .child(
                         v_flex()

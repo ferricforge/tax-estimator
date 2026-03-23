@@ -1,7 +1,5 @@
 use gpui::KeyBinding;
-use gpui::{
-    Action, App,
-};
+use gpui::{Action, App};
 #[cfg(target_os = "macos")]
 use gpui::{Menu, MenuItem};
 
@@ -16,8 +14,8 @@ use crate::themes::apply_windows_system_theme;
 use crate::{
     Quit,
     components::{
-        CloseProject, NewProject, OpenProject, SaveProject,
-        SaveProjectAs, bind_menu_keys, init_theme_colors,
+        CloseProject, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
+        init_theme_colors,
     },
     quit,
 };

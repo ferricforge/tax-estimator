@@ -149,8 +149,11 @@ impl fmt::Display for TaxYearData {
     }
 }
 
-pub async fn se_tax_estimate(
-    inputs: NewTaxEstimate,
+async fn se_tax_estimate(
+    se_income: Decimal,
+    crp_payments: Decimal,
+    wages: Decimal,
+    tax_year: i32,
     db_connection: &str,
     backend: &str,
 ) -> Result<()> {
@@ -164,11 +167,7 @@ pub async fn se_tax_estimate(
         .await
         .expect("repository creation should succeed");
 
-    let se_income = inputs.se_income.unwrap_or_default();
-    let crp_payments = inputs.expected_crp_payments.unwrap_or_default();
-    let wages = inputs.expected_wages.unwrap_or_default();
-
-    let tax_year_config: TaxYearConfig = repo.get_tax_year_config(inputs.tax_year).await?;
+    let tax_year_config: TaxYearConfig = repo.get_tax_year_config(tax_year).await?;
     let estimate: SeWorksheetResult =
         run_se_worksheet(&tax_year_config, se_income, crp_payments, wages)?;
 
@@ -204,34 +203,27 @@ pub fn spawn_calculate_se_tax(
     };
     tracing::info!(%form_model, "Form validated\n");
     cx.spawn(async move |_cx| {
-        if let Err(e) = make_estimate(&form_model).await {
+        if let Err(e) = make_se_estimate(&form_model).await {
             tracing::warn!(%e, "Calculate SE Tax failed");
         }
     })
     .detach();
 }
 
-pub fn open_se_worksheet_dialog(
-    worksheet: Entity<SeWorksheetForm>,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let worksheet_for_dialog = worksheet.clone();
-    window.open_dialog(cx, move |dialog, _window, _cx| {
-        dialog
-            .overlay_closable(false)
-            .w(px(520.0))
-            .margin_top(px(-20.0))
-            .title("SE Tax Worksheet")
-            .child(worksheet_for_dialog.clone())
-            .button_props(DialogButtonProps::default().cancel_text("Close"))
-            .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
-    });
-}
-
-async fn make_estimate(model: &EstimatedIncomeModel) -> Result<()> {
-    let new_est = model.to_new_tax_estimate();
-    se_tax_estimate(new_est, "taxes.db", "sqlite").await
+async fn make_se_estimate(model: &EstimatedIncomeModel) -> Result<()> {
+    let se_income = model.se_income.unwrap_or_default();
+    let crp_payments = model.expected_crp_payments.unwrap_or_default();
+    let wages = model.expected_wages.unwrap_or_default();
+    let tax_year = model.tax_year;
+    se_tax_estimate(
+        se_income,
+        crp_payments,
+        wages,
+        tax_year,
+        "taxes.db",
+        "sqlite",
+    )
+    .await
 }
 
 fn model_from_form_or_show_errors(

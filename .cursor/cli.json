@@ -2,20 +2,20 @@
     "version": 1,
     "permissions": {
       "allow": [
-        "Shell(cargo)",
-        "Shell(rustc)",
-        "Shell(rustup)",
-        "Shell(rustfmt)",
-        "Shell(git)",
-        "Shell(sqlite3)",
-        "Shell(cd)"
+        "Bash(cargo)",
+        "Bash(rustc)",
+        "Bash(rustup)",
+        "Bash(rustfmt)",
+        "Bash(git)",
+        "Bash(sqlite3)",
+        "Bash(cd)"
       ],
       "deny": [
-        "Shell(cargo install)",
-        "Shell(cargo publish)",
-        "Shell(git commit)",
-        "Shell(git push)",
-        "Shell(git merge)"
+        "Bash(cargo install)",
+        "Bash(cargo publish)",
+        "Bash(git commit)",
+        "Bash(git push)",
+        "Bash(git merge)"
       ]
     }
   }

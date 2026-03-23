@@ -185,7 +185,7 @@ fn run_ui() {
                             ..Default::default()
                         },
                         |window: &mut gpui::Window, window_cx| {
-                            let view = window_cx.new(|view_cx: &mut Context<AppWindow>| {                                
+                            let view = window_cx.new(|view_cx: &mut Context<AppWindow>| {
                                 AppWindow::new(window, view_cx)
                             });
                             window_cx.new(|root_cx| Root::new(view, window, root_cx))

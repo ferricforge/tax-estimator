@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use anyhow::{Context as AnyContext, Result};
 use gpui::{
     App, ClickEvent, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
     Window,
@@ -7,35 +9,20 @@ use rust_decimal::Decimal;
 
 use crate::{
     components::{make_button, make_decimal_input, make_display_row, make_input_row_fixed},
+    models::SeWorksheetModel,
     utils::parse_optional_decimal,
 };
 
 pub struct SeWorksheetForm {
-    /// Line 1a: Net profit from self-employment
+    /// Line 1a: Expected SE income (Form 1040-ES).
     se_income: Entity<InputState>,
-    /// Line 1b: CRP payments included on Schedule SE
+    /// Line 1b: Expected CRP payments.
     crp_payments: Entity<InputState>,
-    /// Line 4a: Wages subject to social security tax
+    /// Line 6: Expected wages (SS or tier 1 RRTA).
     expected_wages: Entity<InputState>,
 
-    /// Line 2: Net SE earnings (line 1a × 92.35%)
-    line_2_net_se_earnings: Option<Decimal>,
-    /// Line 3: Social security wage base for the year
-    line_3_ss_wage_base: Option<Decimal>,
-    /// Line 5: Total wages subject to SS
-    line_5_total_wages: Option<Decimal>,
-    /// Line 6: SS wage base minus wages (line 3 - line 5)
-    line_6_remaining_base: Option<Decimal>,
-    /// Line 7: Amount subject to SS tax (lesser of line 2 or line 6)
-    line_7_ss_taxable: Option<Decimal>,
-    /// Line 8: Social security tax (line 7 × 12.4%)
-    line_8_ss_tax: Option<Decimal>,
-    /// Line 9: Medicare tax (line 2 × 2.9%)
-    line_9_medicare_tax: Option<Decimal>,
-    /// Line 10: Total SE tax (line 8 + line 9)
-    line_10_total_se_tax: Option<Decimal>,
-    /// Line 11: Deductible SE tax (line 10 × 50%)
-    line_11_deductible: Option<Decimal>,
+    /// Full worksheet model (lines 1a–11).
+    model: SeWorksheetModel,
 }
 
 impl SeWorksheetForm {
@@ -47,15 +34,7 @@ impl SeWorksheetForm {
             se_income: make_decimal_input("Net SE income", 2, window, cx),
             crp_payments: make_decimal_input("CRP payments", 2, window, cx),
             expected_wages: make_decimal_input("Expected wages", 2, window, cx),
-            line_2_net_se_earnings: None,
-            line_3_ss_wage_base: None,
-            line_5_total_wages: None,
-            line_6_remaining_base: None,
-            line_7_ss_taxable: None,
-            line_8_ss_tax: None,
-            line_9_medicare_tax: None,
-            line_10_total_se_tax: None,
-            line_11_deductible: None,
+            model: SeWorksheetModel::default(),
         }
     }
 
@@ -80,36 +59,39 @@ impl SeWorksheetForm {
         self.expected_wages.read(cx).value()
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn set_calculated_values(
         &mut self,
-        line_2: Option<Decimal>,
-        line_3: Option<Decimal>,
-        line_5: Option<Decimal>,
-        line_6: Option<Decimal>,
-        line_7: Option<Decimal>,
-        line_8: Option<Decimal>,
-        line_9: Option<Decimal>,
-        line_10: Option<Decimal>,
-        line_11: Option<Decimal>,
+        values: SeWorksheetModel,
     ) {
-        self.line_2_net_se_earnings = line_2;
-        self.line_3_ss_wage_base = line_3;
-        self.line_5_total_wages = line_5;
-        self.line_6_remaining_base = line_6;
-        self.line_7_ss_taxable = line_7;
-        self.line_8_ss_tax = line_8;
-        self.line_9_medicare_tax = line_9;
-        self.line_10_total_se_tax = line_10;
-        self.line_11_deductible = line_11;
+        self.model = values;
     }
 
     pub fn total_se_tax(&self) -> Option<Decimal> {
-        self.line_10_total_se_tax
+        self.model.line_10_total_se_tax
     }
 
     pub fn deductible_se_tax(&self) -> Option<Decimal> {
-        self.line_11_deductible
+        self.model.line_11_deductible_se_tax
+    }
+
+    /// Copies parsed inputs into lines 1a, 1b, 6, and line 2 (1a − 1b). Does not run full SE formulas.
+    pub fn calculate_se(
+        &mut self,
+        cx: &mut Context<'_, SeWorksheetForm>,
+    ) -> Result<()> {
+        let se_income = self.se_income.read(cx).value();
+        let crp_s = self.crp_payments.read(cx).value();
+        let wages_s = self.expected_wages.read(cx).value();
+
+        let income: Decimal = parse_optional_decimal(se_income.as_str()).unwrap_or(Decimal::ZERO);
+        let crp: Decimal = parse_optional_decimal(crp_s.as_str()).unwrap_or(Decimal::ZERO);
+
+        self.model.line_1a_expected_se_income = parse_optional_decimal(se_income.as_str());
+        self.model.line_1b_expected_crp_payments = parse_optional_decimal(crp_s.as_str());
+        self.model.line_6_expected_wages = parse_optional_decimal(wages_s.as_str());
+        self.model.line_2_subtract_1b_from_1a = Some(income - crp);
+
+        Ok(())
     }
 
     pub fn clear(
@@ -117,15 +99,7 @@ impl SeWorksheetForm {
         window: &mut Window,
         app_cx: &mut App,
     ) {
-        self.line_2_net_se_earnings = None;
-        self.line_3_ss_wage_base = None;
-        self.line_5_total_wages = None;
-        self.line_6_remaining_base = None;
-        self.line_7_ss_taxable = None;
-        self.line_8_ss_tax = None;
-        self.line_9_medicare_tax = None;
-        self.line_10_total_se_tax = None;
-        self.line_11_deductible = None;
+        self.model = SeWorksheetModel::default();
 
         let value = SharedString::new("");
         self.se_income.update(
@@ -163,51 +137,51 @@ impl Render for SeWorksheetForm {
             .p_4()
             .child(make_input_row_fixed(
                 &self.se_income,
-                "1a. Net SE income: $",
+                "1a. Expected SE income: $",
             ))
             .child(make_input_row_fixed(
                 &self.crp_payments,
-                "1b. CRP payments: $",
+                "1b. Expected CRP payments: $",
             ))
             .child(make_display_row(
-                "2. Net SE earnings (1a × 92.35%):",
-                self.line_2_net_se_earnings,
+                "2. Subtract line 1b from line 1a:",
+                self.model.line_2_subtract_1b_from_1a,
             ))
             .child(make_display_row(
-                "3. Social security wage base:",
-                self.line_3_ss_wage_base,
+                "3. Multiply line 2 by 92.35% (0.9235):",
+                self.model.line_3_net_earnings,
+            ))
+            .child(make_display_row(
+                "4. Multiply line 3 by 2.9% (0.029):",
+                self.model.line_4_medicare_tax,
+            ))
+            .child(make_display_row(
+                "5. Social security tax maximum income:",
+                self.model.line_5_ss_maximum_income,
             ))
             .child(make_input_row_fixed(
                 &self.expected_wages,
-                "4a. Wages subject to SS: $",
+                "6. Expected wages (SS / tier 1 RRTA 6.2%): $",
             ))
             .child(make_display_row(
-                "5. Total wages (line 4a):",
-                self.line_5_total_wages,
+                "7. Subtract line 6 from line 5:",
+                self.model.line_7_remaining_ss_base,
             ))
             .child(make_display_row(
-                "6. Line 3 minus line 5:",
-                self.line_6_remaining_base,
+                "8. Smaller of line 3 or line 7:",
+                self.model.line_8_ss_taxable_earnings,
             ))
             .child(make_display_row(
-                "7. Smaller of line 2 or 6:",
-                self.line_7_ss_taxable,
+                "9. Multiply line 8 by 12.4% (0.124):",
+                self.model.line_9_social_security_tax,
             ))
             .child(make_display_row(
-                "8. SS tax (line 7 × 12.4%):",
-                self.line_8_ss_tax,
+                "10. Add lines 4 and 9:",
+                self.model.line_10_total_se_tax,
             ))
             .child(make_display_row(
-                "9. Medicare (line 2 × 2.9%):",
-                self.line_9_medicare_tax,
-            ))
-            .child(make_display_row(
-                "10. Total SE tax:",
-                self.line_10_total_se_tax,
-            ))
-            .child(make_display_row(
-                "11. Deductible (line 10 × 50%):",
-                self.line_11_deductible,
+                "11. Multiply line 10 by 50% (0.50):",
+                self.model.line_11_deductible_se_tax,
             ))
             .child(
                 h_flex()
@@ -217,16 +191,8 @@ impl Render for SeWorksheetForm {
                     .child(make_button("calculate_se_tax", "Calculate", {
                         let this = this.clone();
                         move |_ev, _window, cx| {
-                            this.update(cx, |form, cx| {
-                                let income = parse_optional_decimal(
-                                    form.se_income.read(cx).value().as_str(),
-                                )
-                                .unwrap_or(Decimal::ZERO);
-                                let crp = parse_optional_decimal(
-                                    form.crp_payments.read(cx).value().as_str(),
-                                )
-                                .unwrap_or(Decimal::ZERO);
-                                form.line_2_net_se_earnings = Some(income - crp);
+                            this.update(cx, |form: &mut SeWorksheetForm, cx: &mut Context<'_, SeWorksheetForm>| {
+                                let _ = form.calculate_se(cx);
                                 cx.notify();
                             });
                         }
