@@ -93,6 +93,8 @@ impl AppWindow {
             let base = v_flex().size_full().gap_0();
             #[cfg(not(target_os = "macos"))]
             {
+                use crate::components::build_menu_bar;
+
                 base.child(build_menu_bar())
             }
             #[cfg(target_os = "macos")]
