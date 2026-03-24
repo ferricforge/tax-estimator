@@ -16,6 +16,7 @@ use tax_db_sqlite::SqliteRepositoryFactory;
 
 use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
 use crate::models::{EstimatedIncomeModel, SeWorksheetModel};
+use crate::repository::TaxRepo;
 use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────
@@ -150,29 +151,15 @@ impl fmt::Display for TaxYearData {
 }
 
 pub async fn se_tax_estimate(
+    repo: TaxRepo,
     se_income: Decimal,
     crp_payments: Decimal,
     wages: Decimal,
     tax_year: i32,
-    db_connection: &str,
-    backend: &str,
 ) -> Result<SeWorksheetResult> {
-    let db_config = DbConfig {
-        backend: backend.to_string(),
-        connection_string: db_connection.to_string(),
-    };
-    let registry = build_registry();
-    let repo = registry
-        .create(&db_config)
-        .await
-        .expect("repository creation should succeed");
-
-    let tax_year_config: TaxYearConfig = repo.get_tax_year_config(tax_year).await?;
-    let estimate: SeWorksheetResult =
-        run_se_worksheet(&tax_year_config, se_income, crp_payments, wages)?;
-
+    let cfg = repo.get_tax_year_config(tax_year).await?;
+    let estimate = run_se_worksheet(&cfg, se_income, crp_payments, wages)?;
     tracing::info!("Estimate Result=\n{}", estimate);
-
     Ok(estimate)
 }
 

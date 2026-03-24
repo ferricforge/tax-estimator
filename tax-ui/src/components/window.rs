@@ -7,12 +7,14 @@ use gpui_component::{Root, h_flex, v_flex};
 use gpui_component::{StyledExt, WindowExt};
 use tracing::info;
 
+#[cfg(not(target_os = "linux"))]
+use crate::Quit;
+#[cfg(not(target_os = "linux"))]
+use crate::quit;
+use crate::app::spawn_calculate_se_tax;
 #[cfg(not(target_os = "macos"))]
 use crate::components::build_menu_bar;
-use crate::app::spawn_calculate_se_tax;
 use crate::components::{EstimatedIncomeForm, SeWorksheetForm, make_button};
-use crate::Quit;
-use crate::quit;
 
 pub struct AppWindow {
     _window_close_subscription: Subscription,

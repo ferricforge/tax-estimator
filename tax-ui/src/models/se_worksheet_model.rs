@@ -39,7 +39,6 @@ pub struct SeWorksheetModel {
 }
 
 impl SeWorksheetModel {
-    // TODO: Account for Line 5, base SSA salary
     pub fn from_worksheet_result(
         &mut self,
         result: &SeWorksheetResult,
@@ -47,6 +46,7 @@ impl SeWorksheetModel {
         self.line_2_subtract_1b_from_1a = Some(result.combined_se_income);
         self.line_3_net_earnings = Some(result.net_earnings);
         self.line_4_medicare_tax = Some(result.medicare_tax);
+        self.line_7_remaining_ss_base = Some(result.remaining_ss_base);
         self.line_8_ss_taxable_earnings = Some(result.ss_taxable_earnings);
         self.line_9_social_security_tax = Some(result.social_security_tax);
         self.line_10_total_se_tax = Some(result.self_employment_tax);
@@ -56,19 +56,20 @@ impl SeWorksheetModel {
 
 /// Maps [`tax_core::calculations::SeWorksheetResult`] into IRS-aligned lines.
 ///
-/// Fills lines **3**, **4**, **8**, **9**, **10**, and **11** from the calculator. Lines **1a**, **1b**,
-/// **2**, **5**, **6**, and **7** are [`None`] (user inputs or config not present on the result type).
+/// Fills lines **2**, **3**, **4**, **7**, **8**, **9**, **10**, and **11**
+/// from the calculator. Lines **1a**, **1b**, **5**, and **6** are [`None`]
+/// (user inputs or tax-year config not carried on the result type).
 impl From<&SeWorksheetResult> for SeWorksheetModel {
     fn from(result: &SeWorksheetResult) -> Self {
         Self {
             line_1a_expected_se_income: None,
             line_1b_expected_crp_payments: None,
-            line_2_subtract_1b_from_1a: None,
+            line_2_subtract_1b_from_1a: Some(result.combined_se_income),
             line_3_net_earnings: Some(result.net_earnings),
             line_4_medicare_tax: Some(result.medicare_tax),
             line_5_ss_maximum_income: None,
             line_6_expected_wages: None,
-            line_7_remaining_ss_base: None,
+            line_7_remaining_ss_base: Some(result.remaining_ss_base),
             line_8_ss_taxable_earnings: Some(result.ss_taxable_earnings),
             line_9_social_security_tax: Some(result.social_security_tax),
             line_10_total_se_tax: Some(result.self_employment_tax),
@@ -240,6 +241,7 @@ Line 11 (line 10 × 50%):      —";
             combined_se_income: dec!(50_000),
             net_earnings: dec!(46_175),
             medicare_tax: dec!(1339.08),
+            remaining_ss_base: dec!(176_100),
             ss_taxable_earnings: dec!(46_175),
             social_security_tax: dec!(5725.70),
             self_employment_tax: dec!(7064.78),
@@ -249,12 +251,12 @@ Line 11 (line 10 × 50%):      —";
         let expected = SeWorksheetModel {
             line_1a_expected_se_income: None,
             line_1b_expected_crp_payments: None,
-            line_2_subtract_1b_from_1a: None,
+            line_2_subtract_1b_from_1a: Some(dec!(50000)),
             line_3_net_earnings: Some(dec!(46_175)),
             line_4_medicare_tax: Some(dec!(1339.08)),
             line_5_ss_maximum_income: None,
             line_6_expected_wages: None,
-            line_7_remaining_ss_base: None,
+            line_7_remaining_ss_base: Some(dec!(176_100)),
             line_8_ss_taxable_earnings: Some(dec!(46_175)),
             line_9_social_security_tax: Some(dec!(5725.70)),
             line_10_total_se_tax: Some(dec!(7064.78)),
@@ -271,6 +273,7 @@ Line 11 (line 10 × 50%):      —";
             combined_se_income: dec!(400),
             net_earnings: Decimal::ZERO,
             medicare_tax: Decimal::ZERO,
+            remaining_ss_base: Decimal::ZERO,
             ss_taxable_earnings: Decimal::ZERO,
             social_security_tax: Decimal::ZERO,
             self_employment_tax: Decimal::ZERO,
@@ -280,12 +283,12 @@ Line 11 (line 10 × 50%):      —";
         let expected = SeWorksheetModel {
             line_1a_expected_se_income: None,
             line_1b_expected_crp_payments: None,
-            line_2_subtract_1b_from_1a: None,
+            line_2_subtract_1b_from_1a: Some(dec!(400)),
             line_3_net_earnings: Some(Decimal::ZERO),
             line_4_medicare_tax: Some(Decimal::ZERO),
             line_5_ss_maximum_income: None,
             line_6_expected_wages: None,
-            line_7_remaining_ss_base: None,
+            line_7_remaining_ss_base: Some(Decimal::ZERO),
             line_8_ss_taxable_earnings: Some(Decimal::ZERO),
             line_9_social_security_tax: Some(Decimal::ZERO),
             line_10_total_se_tax: Some(Decimal::ZERO),

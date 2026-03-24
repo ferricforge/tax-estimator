@@ -6,7 +6,6 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace            = true
 chrono.workspace = true
-clap.workspace              = true
 csv.workspace               = true
 gpui = "0.2.2"
 gpui-component = "0.5.1"
@@ -19,6 +18,7 @@ tax-core                    = { path = "../tax-core" }
 tax-db-sqlite               = { path = "../tax-db-sqlite" }
 thiserror.workspace         = true
 tokio.workspace             = true
+toml                        = "0.8"
 tracing.workspace           = true
 tracing-subscriber.workspace = true
 

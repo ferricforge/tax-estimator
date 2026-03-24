@@ -4,7 +4,7 @@ use gpui::{
 };
 use gpui_component::{
     IndexPath, h_flex,
-    input::InputState,
+    input::{InputEvent, InputState},
     select::{Select, SelectState},
     v_flex,
 };
@@ -16,6 +16,7 @@ use crate::{
         make_select_row,
     },
     models::EstimatedIncomeModel,
+    repository::ActiveTaxYear,
     utils::{parse_decimal, parse_optional_decimal},
 };
 
@@ -62,6 +63,19 @@ impl EstimatedIncomeForm {
         tax_year.update(cx, |input_state, cx| {
             input_state.set_pattern(Regex::new(r"^\d{0,4}$").unwrap(), window, cx);
         });
+
+        // React to edits: once a full 4-digit year is entered, fetch its config.
+        cx.subscribe(&tax_year, |_this, input, event, cx| {
+            if let InputEvent::Change = event {
+                let raw = input.read(cx).value();
+                if let Ok(year) = raw.trim().parse::<i32>() {
+                    if (1900..=2200).contains(&year) {
+                        ActiveTaxYear::load(year, cx);
+                    }
+                }
+            }
+        })
+        .detach();
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
 

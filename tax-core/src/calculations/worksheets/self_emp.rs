@@ -272,6 +272,13 @@ pub struct SeWorksheetResult {
     /// Calculated as net_earnings × 2.9% (or configured rate).
     pub medicare_tax: Decimal,
 
+    /// Remaining social security wage base after subtracting wages (Line 7).
+    ///
+    /// Calculated as `ss_wage_max − wages`, clamped to zero. When wages meet
+    /// or exceed the SS wage maximum, no social security tax applies to SE
+    /// earnings and this value is zero.
+    pub remaining_ss_base: Decimal,
+
     /// Earnings subject to social security tax (Line 8).
     ///
     /// This is the smaller of net earnings or the remaining SS wage base
@@ -308,6 +315,7 @@ impl SeWorksheetResult {
             combined_se_income,
             net_earnings: Decimal::ZERO,
             medicare_tax: Decimal::ZERO,
+            remaining_ss_base: Decimal::ZERO,
             ss_taxable_earnings: Decimal::ZERO,
             social_security_tax: Decimal::ZERO,
             self_employment_tax: Decimal::ZERO,
@@ -337,6 +345,11 @@ impl fmt::Display for SeWorksheetResult {
             f,
             "    medicare_tax        : ${}",
             self.medicare_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    remaining_ss_base   : ${}",
+            self.remaining_ss_base.round_dp(2)
         )?;
         writeln!(
             f,
@@ -435,10 +448,11 @@ impl SeWorksheet {
     ///
     /// # Returns
     ///
-    /// Returns [`SeWorksheetResult`] containing the calculated SE tax and deduction,
-    /// along with intermediate values. If combined SE income is at or below the
-    /// minimum threshold ($400 for 2025), returns a zero-valued result with
-    /// `below_threshold` set to `true`.
+    /// Returns [`SeWorksheetResult`] containing the calculated SE tax and
+    /// deduction, along with intermediate values for Lines 3, 4, 7, 8, 9,
+    /// 10, and 11. If combined SE income is at or below the minimum threshold
+    /// ($400 for 2025), returns a zero-valued result with `below_threshold`
+    /// set to `true`.
     ///
     /// # Errors
     ///
@@ -472,6 +486,8 @@ impl SeWorksheet {
     /// assert_eq!(result.net_earnings, dec!(73880.00));
     ///
     /// // Remaining SS base = $176,100 - $60,000 = $116,100
+    /// assert_eq!(result.remaining_ss_base, dec!(116100.00));
+    ///
     /// // SS taxable = min($73,880, $116,100) = $73,880
     /// assert_eq!(result.ss_taxable_earnings, dec!(73880.00));
     /// ```
@@ -545,6 +561,7 @@ impl SeWorksheet {
             combined_se_income: combined_income,
             net_earnings,
             medicare_tax,
+            remaining_ss_base,
             ss_taxable_earnings,
             social_security_tax,
             self_employment_tax,

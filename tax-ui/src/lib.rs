@@ -1,32 +1,33 @@
 pub mod app;
 pub mod components;
+pub mod config;
 pub mod csv_loader;
 pub mod logging;
 pub mod models;
+pub mod repository;
 pub mod themes;
 pub mod utils;
 
 use gpui::KeyBinding;
-use gpui::{actions, Action, App};
+use gpui::{Action, App, actions};
 
 #[cfg(target_os = "macos")]
 use gpui::{Menu, MenuItem};
 
 use tracing::info;
 
+use crate::components::{
+    CloseProject, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
+    init_theme_colors,
+};
+use crate::config::{AppConfig, TomlConfigStore};
+use crate::repository::ActiveTaxYear;
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]
 use crate::themes::apply_macos_system_theme;
 #[cfg(target_os = "windows")]
 use crate::themes::apply_windows_system_theme;
-use crate::{
-    components::{
-        CloseProject, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
-        init_theme_colors,
-    },
-};
-
 
 actions!(tax_estimator, [Quit]);
 
@@ -38,7 +39,6 @@ pub fn quit(
     info!("Executing quit handler");
     cx.quit();
 }
-
 
 /// Registers a handler for a GPUI [`Action`] type.
 fn register_action<A: Action>(
@@ -55,6 +55,12 @@ fn stub_file_action<A: Action>(name: &'static str) -> impl Fn(&A, &mut App) {
 }
 
 pub fn setup_app(app_cx: &mut App) {
+    init_config(app_cx);
+
+    // Placeholder so observe_global has something to attach to before the
+    // async repo init finishes.
+    app_cx.set_global(ActiveTaxYear::default());
+
     gpui_component::init(app_cx);
 
     #[cfg(target_os = "macos")]
@@ -107,4 +113,27 @@ pub fn setup_app(app_cx: &mut App) {
         },
     ]);
     app_cx.activate(true);
+}
+
+fn init_config(cx: &mut App) {
+    match TomlConfigStore::default_location() {
+        Ok(store) => {
+            tracing::info!("Config path: {}", store.path().display());
+            if let Err(e) = AppConfig::init(cx, store) {
+                tracing::error!("Failed to load config: {e:#}; using defaults");
+                cx.set_global(AppConfig::default());
+            }
+        }
+        Err(e) => {
+            tracing::error!("Could not resolve config path: {e:#}; using in-memory defaults");
+            cx.set_global(AppConfig::default());
+        }
+    }
+
+    let cfg = AppConfig::get(cx);
+    tracing::info!(
+        database_url = %cfg.database_url,
+        backend = %cfg.database_backend,
+        "Configuration loaded"
+    );
 }

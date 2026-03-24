@@ -12,6 +12,7 @@ use crate::{
     app::se_tax_estimate,
     components::{make_button, make_decimal_input, make_display_row, make_input_row_fixed},
     models::SeWorksheetModel,
+    repository::{ActiveTaxYear, TaxRepo},
     utils::parse_optional_decimal,
 };
 
@@ -32,6 +33,13 @@ impl SeWorksheetForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        // Re-render whenever the active tax year's config changes.
+        cx.observe_global::<ActiveTaxYear>(|this, cx| {
+            this.model.line_5_ss_maximum_income = ActiveTaxYear::ss_wage_max(cx);
+            cx.notify();
+        })
+        .detach();
+
         Self {
             se_income: make_decimal_input("Net SE income", 2, window, cx),
             crp_payments: make_decimal_input("CRP payments", 2, window, cx),
@@ -91,15 +99,15 @@ impl SeWorksheetForm {
         let se_income = self.se_income.read(cx).value();
         let crp_s = self.crp_payments.read(cx).value();
         let wages_s = self.expected_wages.read(cx).value();
-    
+
         let income: Decimal = parse_optional_decimal(se_income.as_str()).unwrap_or(Decimal::ZERO);
         let crp: Decimal = parse_optional_decimal(crp_s.as_str()).unwrap_or(Decimal::ZERO);
-    
+
         self.model.line_1a_expected_se_income = parse_optional_decimal(se_income.as_str());
         self.model.line_1b_expected_crp_payments = parse_optional_decimal(crp_s.as_str());
         self.model.line_6_expected_wages = parse_optional_decimal(wages_s.as_str());
         self.model.line_2_subtract_1b_from_1a = Some(income - crp);
-    
+
         let worksheet = cx.entity().clone();
         call_calculator(worksheet, cx);
         Ok(())
@@ -223,43 +231,42 @@ impl Render for SeWorksheetForm {
 
 fn call_calculator(
     worksheet: Entity<SeWorksheetForm>,
-    cx: &mut App,
+    app_cx: &mut App,
 ) {
-    cx.spawn(async move |cx| {
-        let model = cx
-            .update(|cx| worksheet.read(cx).model.clone())
-            .unwrap();
+    let repo = TaxRepo::get(app_cx);
 
-        match make_se_estimate(model).await {
-            Ok(result) => {
-                cx.update(|cx| {
-                    worksheet.update(cx, |form, cx| {
-                        form.model.from_worksheet_result(&result);
-                        cx.notify();
-                    });
-                })
-                .ok();
+    app_cx
+        .spawn(async move |async_cx| {
+            let model = async_cx
+                .update(|cx| worksheet.read(cx).model.clone())
+                .unwrap();
+
+            match make_se_estimate(repo, model).await {
+                Ok(result) => {
+                    async_cx
+                        .update(|cx: &mut App| {
+                            worksheet.update(cx, |form, cx: &mut Context<'_, SeWorksheetForm>| {
+                                form.model.from_worksheet_result(&result);
+                                cx.notify();
+                            });
+                        })
+                        .ok();
+                }
+                Err(e) => {
+                    tracing::warn!(%e, "Calculate SE Tax failed");
+                }
             }
-            Err(e) => {
-                tracing::warn!(%e, "Calculate SE Tax failed");
-            }
-        }
-    })
-    .detach();
+        })
+        .detach();
 }
 
-async fn make_se_estimate(model: SeWorksheetModel) -> Result<SeWorksheetResult> {
+async fn make_se_estimate(
+    repo: TaxRepo,
+    model: SeWorksheetModel,
+) -> Result<SeWorksheetResult> {
     let se_income = model.line_1a_expected_se_income.unwrap_or_default();
     let crp_payments = model.line_1b_expected_crp_payments.unwrap_or_default();
     let wages = model.line_6_expected_wages.unwrap_or_default();
     let tax_year = model.tax_year.unwrap_or_default();
-    se_tax_estimate(
-        se_income,
-        crp_payments,
-        wages,
-        tax_year,
-        "taxes.db",
-        "sqlite",
-    )
-    .await
+    se_tax_estimate(repo, se_income, crp_payments, wages, tax_year).await
 }
