@@ -138,7 +138,7 @@ impl AppWindow {
         window.open_dialog(cx, move |dialog, _window, _cx| {
             dialog
                 .overlay_closable(false)
-                .w(px(520.0))
+                .w(px(600.0))
                 .margin_top(px(-20.0))
                 .title("SE Tax Worksheet")
                 .child(worksheet_for_dialog.clone())

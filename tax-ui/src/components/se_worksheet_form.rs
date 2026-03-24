@@ -10,7 +10,7 @@ use tax_core::calculations::SeWorksheetResult;
 
 use crate::{
     app::se_tax_estimate,
-    components::{make_button, make_decimal_input, make_display_row, make_input_row_fixed},
+    components::{make_button, make_decimal_input, make_display_row, make_header_row, make_input_row_fixed},
     models::SeWorksheetModel,
     repository::{ActiveTaxYear, TaxRepo},
     utils::parse_optional_decimal,
@@ -154,6 +154,7 @@ impl Render for SeWorksheetForm {
         v_flex()
             .gap_2()
             .p_4()
+            .child(make_header_row("SE Worksheet Inputs:"))
             .child(make_input_row_fixed(
                 &self.se_income,
                 "1a. Expected SE income: $",

@@ -230,6 +230,7 @@ pub fn make_labeled_row_fixed(label: impl Into<SharedString>) -> Div {
         div()
             .w(px(SE_LABEL_WIDTH))
             .text_align(TextAlign::Right)
+            .flex_grow()
             .child(label.into()),
     )
 }
