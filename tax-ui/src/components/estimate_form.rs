@@ -223,13 +223,13 @@ impl Render for EstimatedIncomeForm {
                         v_flex()
                             .gap_2()
                             .size_full()
-                            .child(make_header_row("SE Worksheet Inputs:"))
-                            .child(make_input_row(&self.se_income, "SE income: $"))
-                            .child(make_input_row(
-                                &self.expected_crp_payments,
-                                "CRP payments: $",
-                            ))
-                            .child(make_input_row(&self.expected_wages, "Wages: $"))
+                            // .child(make_header_row("SE Worksheet Inputs:"))
+                            // .child(make_input_row(&self.se_income, "SE income: $"))
+                            // .child(make_input_row(
+                            //     &self.expected_crp_payments,
+                            //     "CRP payments: $",
+                            // ))
+                            // .child(make_input_row(&self.expected_wages, "Wages: $"))
                             .child(make_header_row("1040-ES Worksheet Inputs:"))
                             .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
                             .child(make_input_row(
