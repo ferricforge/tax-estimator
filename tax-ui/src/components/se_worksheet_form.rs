@@ -10,7 +10,9 @@ use tax_core::calculations::SeWorksheetResult;
 
 use crate::{
     app::se_tax_estimate,
-    components::{make_button, make_decimal_input, make_display_row, make_header_row, make_input_row_fixed},
+    components::{
+        make_button, make_decimal_input, make_display_row, make_header_row, make_input_row_fixed,
+    },
     models::SeWorksheetModel,
     repository::{ActiveTaxYear, TaxRepo},
     utils::parse_optional_decimal,
@@ -208,7 +210,7 @@ impl Render for SeWorksheetForm {
                     .gap_2()
                     .justify_end()
                     .mt_4()
-                    .child(make_button("calculate_se_tax", "Calculate", {
+                    .child(make_button("calculate_se_tax", "Calculate", true, {
                         let this = this.clone();
                         move |_ev, _window, cx| {
                             this.update(cx, |form: &mut SeWorksheetForm, cx: &mut Context<'_, SeWorksheetForm>| {
@@ -220,6 +222,7 @@ impl Render for SeWorksheetForm {
                     .child(make_button(
                         "calculate_se_clear",
                         "Clear",
+                        true,
                         move |_ev: &ClickEvent, window: &mut Window, app_cx: &mut App| {
                             this.update(app_cx, |form, cx| {
                                 form.clear(window, cx);

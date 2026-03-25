@@ -14,7 +14,7 @@ use gpui::{
 use gpui::{ClickEvent, Styled};
 use gpui::{Pixels, Size, px};
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::{Sizable, h_flex};
+use gpui_component::{Disableable, Sizable, h_flex};
 
 pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
@@ -63,6 +63,7 @@ impl WindowPreferences {
 pub fn make_button(
     id: impl Into<SharedString>,
     label: impl Into<SharedString>,
+    enabled: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Button {
     Button::new(id.into())
@@ -70,6 +71,7 @@ pub fn make_button(
         .large()
         .w(px(140.))
         .label(label.into())
+        .disabled(!enabled)
         .on_click(on_click)
 }
 

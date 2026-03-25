@@ -49,7 +49,7 @@ impl TomlConfigStore {
     /// * Windows: `%APPDATA%\TaxEstimator\config.toml`
     /// * macOS:   `~/Library/Application Support/TaxEstimator/config.toml`
     /// * Linux:   `$XDG_CONFIG_HOME/TaxEstimator/config.toml`
-    ///            (falls back to `~/.config/…`)
+    ///   (falls back to `~/.config/…`)
     pub fn default_location() -> anyhow::Result<Self> {
         Ok(Self::new(default_config_path()?))
     }

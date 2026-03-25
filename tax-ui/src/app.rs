@@ -2,7 +2,7 @@
 use std::fmt;
 
 use anyhow::{Context, Result};
-use gpui::{App, Entity, ParentElement, Window, px};
+use gpui::{App, ParentElement, Window, px};
 use gpui_component::WindowExt;
 use gpui_component::dialog::DialogButtonProps;
 use rust_decimal::Decimal;
@@ -180,12 +180,12 @@ fn run_se_worksheet(
         })
 }
 
-pub fn spawn_calculate_se_tax(
-    form: Entity<EstimatedIncomeForm>,
+pub fn handle_calculate_se_tax(
+    form: &EstimatedIncomeForm,
     window: &mut Window,
     cx: &mut App,
 ) {
-    let Some(form_model) = model_from_form_or_show_errors(&form, window, cx) else {
+    let Some(form_model) = model_from_form_or_show_errors(form, window, cx) else {
         return;
     };
     tracing::info!(%form_model, "Form validated\n");
@@ -198,11 +198,11 @@ pub fn spawn_calculate_se_tax(
 }
 
 fn model_from_form_or_show_errors(
-    form: &Entity<EstimatedIncomeForm>,
+    form: &EstimatedIncomeForm,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<EstimatedIncomeModel> {
-    match form.read(cx).to_model(cx) {
+    match form.to_model(cx) {
         Ok(m) => Some(m),
         Err(errors) => {
             for e in &errors {

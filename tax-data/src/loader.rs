@@ -172,10 +172,10 @@ impl TaxBracketLoader {
                     };
 
                     repo.insert_tax_bracket(&bracket).await.map_err(|e| {
-                        if let RepositoryError::Database(ref inner) = e {
-                            if inner.to_string().contains("FOREIGN KEY constraint failed") {
-                                return TaxBracketLoaderError::TaxYearNotFound(record.tax_year);
-                            }
+                        if let RepositoryError::Database(ref inner) = e
+                            && inner.to_string().contains("FOREIGN KEY constraint failed")
+                        {
+                            return TaxBracketLoaderError::TaxYearNotFound(record.tax_year);
                         }
                         TaxBracketLoaderError::Repository(e)
                     })?;
