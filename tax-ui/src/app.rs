@@ -62,20 +62,20 @@ pub async fn load_tax_year_data(
     year: i32,
 ) -> anyhow::Result<TaxYearData> {
     debug!("loading tax-year config for {year}");
-    let config = repo.get_tax_year_config(year).await?;
+    let config: TaxYearConfig = repo.get_tax_year_config(year).await?;
 
     debug!("loading filing statuses");
-    let statuses = repo.list_filing_statuses().await?;
+    let statuses: Vec<FilingStatus> = repo.list_filing_statuses().await?;
 
-    let mut status_data = Vec::with_capacity(statuses.len());
+    let mut status_data: Vec<FilingStatusData> = Vec::with_capacity(statuses.len());
     for status in statuses {
         debug!(
             "loading deduction + brackets for {}",
             status.status_code.as_str()
         );
 
-        let deduction = repo.get_standard_deduction(year, status.id).await?;
-        let brackets = repo.get_tax_brackets(year, status.id).await?;
+        let deduction: StandardDeduction = repo.get_standard_deduction(year, status.id).await?;
+        let brackets: Vec<TaxBracket> = repo.get_tax_brackets(year, status.id).await?;
 
         status_data.push(FilingStatusData {
             filing_status: status,

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{
     Row,
-    sqlite::{SqliteConnectOptions, SqlitePool},
+    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteQueryResult, SqliteRow},
 };
 use tax_core::{
     FilingStatus, FilingStatusCode, NewTaxEstimate, RepositoryError, StandardDeduction, TaxBracket,
@@ -28,7 +28,7 @@ impl SqliteRepository {
         // For :memory:, each connection gets its own DB; use a single connection so
         // migrations and seeds run against the same in-memory database.
         let pool = if database_url == ":memory:" {
-            sqlx::sqlite::SqlitePoolOptions::new()
+            SqlitePoolOptions::new()
                 .max_connections(1)
                 .connect_with(options)
                 .await
@@ -92,7 +92,7 @@ impl SqliteRepository {
     }
 }
 
-fn row_to_tax_estimate(row: &sqlx::sqlite::SqliteRow) -> Result<TaxEstimate, RepositoryError> {
+fn row_to_tax_estimate(row: &SqliteRow) -> Result<TaxEstimate, RepositoryError> {
     Ok(TaxEstimate {
         id: row
             .try_get("id")
@@ -310,7 +310,7 @@ impl TaxRepository for SqliteRepository {
         .await
         .map_err(|e| RepositoryError::Database(e.into()))?;
 
-        let mut brackets = Vec::new();
+        let mut brackets: Vec<TaxBracket> = Vec::new();
         for row in rows {
             brackets.push(TaxBracket {
                 tax_year: row
@@ -368,9 +368,9 @@ impl TaxRepository for SqliteRepository {
         &self,
         estimate: NewTaxEstimate,
     ) -> Result<TaxEstimate, RepositoryError> {
-        let now = Utc::now();
+        let now: DateTime<Utc> = Utc::now();
 
-        let result = sqlx::query(
+        let result: SqliteQueryResult = sqlx::query(
             "INSERT INTO tax_estimate (
                 tax_year, filing_status_id, expected_agi, expected_deduction,
                 expected_qbi_deduction, expected_amt, expected_credits,
@@ -398,7 +398,7 @@ impl TaxRepository for SqliteRepository {
         .await
         .map_err(|e| RepositoryError::Database(e.into()))?;
 
-        let id = result.last_insert_rowid();
+        let id: i64 = result.last_insert_rowid();
         self.get_estimate(id).await
     }
 
@@ -418,7 +418,7 @@ impl TaxRepository for SqliteRepository {
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Database(e.into()))?
+        .map_err(|e: sqlx::Error| RepositoryError::Database(e.into()))?
         .ok_or(RepositoryError::NotFound)?;
 
         row_to_tax_estimate(&row)
