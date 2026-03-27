@@ -167,6 +167,13 @@ mod tests {
         ) -> Result<StandardDeduction, RepositoryError> {
             unimplemented!()
         }
+        async fn get_filing_status_data(
+            &self,
+            _year: i32,
+        ) -> Result<Vec<(FilingStatus, StandardDeduction, Vec<TaxBracket>)>, RepositoryError>
+        {
+            unimplemented!()
+        }
         async fn get_tax_brackets(
             &self,
             _tax_year: i32,

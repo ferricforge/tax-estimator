@@ -8,13 +8,15 @@ use gpui_component::{h_flex, input::InputState, v_flex};
 use rust_decimal::Decimal;
 use tax_core::calculations::SeWorksheetResult;
 
+use tax_core::TaxYearConfig;
+
 use crate::{
     app::se_tax_estimate,
     components::{
         make_button, make_decimal_input, make_display_row, make_header_row, make_input_row_fixed,
     },
     models::SeWorksheetModel,
-    repository::{ActiveTaxYear, TaxRepo},
+    repository::ActiveTaxYear,
     utils::parse_optional_decimal,
 };
 
@@ -237,7 +239,10 @@ fn call_calculator(
     worksheet: Entity<SeWorksheetForm>,
     app_cx: &mut App,
 ) {
-    let repo = TaxRepo::get(app_cx);
+    let Some(config) = ActiveTaxYear::get(app_cx).config.clone() else {
+        tracing::warn!("No tax year loaded; cannot calculate SE tax");
+        return;
+    };
 
     app_cx
         .spawn(async move |async_cx| {
@@ -245,7 +250,7 @@ fn call_calculator(
                 .update(|cx| worksheet.read(cx).model.clone())
                 .unwrap();
 
-            match make_se_estimate(repo, model).await {
+            match make_se_estimate(config, model) {
                 Ok(result) => {
                     async_cx
                         .update(|cx: &mut App| {
@@ -264,13 +269,12 @@ fn call_calculator(
         .detach();
 }
 
-async fn make_se_estimate(
-    repo: TaxRepo,
+fn make_se_estimate(
+    config: TaxYearConfig,
     model: SeWorksheetModel,
 ) -> Result<SeWorksheetResult> {
     let se_income = model.line_1a_expected_se_income.unwrap_or_default();
     let crp_payments = model.line_1b_expected_crp_payments.unwrap_or_default();
     let wages = model.line_6_expected_wages.unwrap_or_default();
-    let tax_year = model.tax_year.unwrap_or_default();
-    se_tax_estimate(repo, se_income, crp_payments, wages, tax_year).await
+    se_tax_estimate(&config, se_income, crp_payments, wages)
 }

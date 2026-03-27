@@ -68,3 +68,6 @@ clippy.toml.bk
 
 # Claude local settings
 .claude/*.local.*
+
+# Tokensave Code Graph db
+.tokensave/

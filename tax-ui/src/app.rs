@@ -16,7 +16,6 @@ use tax_db_sqlite::SqliteRepositoryFactory;
 
 use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
 use crate::models::{EstimatedIncomeModel, SeWorksheetModel};
-use crate::repository::TaxRepo;
 use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────
@@ -61,33 +60,24 @@ pub async fn load_tax_year_data(
     repo: &dyn TaxRepository,
     year: i32,
 ) -> anyhow::Result<TaxYearData> {
-    debug!("loading tax-year config for {year}");
-    let config = repo.get_tax_year_config(year).await?;
+    debug!("loading tax-year data for {year}");
+    let (config, status_rows) = tokio::try_join!(
+        repo.get_tax_year_config(year),
+        repo.get_filing_status_data(year),
+    )?;
 
-    debug!("loading filing statuses");
-    let statuses = repo.list_filing_statuses().await?;
+    let statuses = status_rows
+        .into_iter()
+        .map(
+            |(filing_status, standard_deduction, tax_brackets)| FilingStatusData {
+                filing_status,
+                standard_deduction,
+                tax_brackets,
+            },
+        )
+        .collect();
 
-    let mut status_data = Vec::with_capacity(statuses.len());
-    for status in statuses {
-        debug!(
-            "loading deduction + brackets for {}",
-            status.status_code.as_str()
-        );
-
-        let deduction = repo.get_standard_deduction(year, status.id).await?;
-        let brackets = repo.get_tax_brackets(year, status.id).await?;
-
-        status_data.push(FilingStatusData {
-            filing_status: status,
-            standard_deduction: deduction,
-            tax_brackets: brackets,
-        });
-    }
-
-    Ok(TaxYearData {
-        config,
-        statuses: status_data,
-    })
+    Ok(TaxYearData { config, statuses })
 }
 
 // ─── formatting helpers ──────────────────────────────────────────────────────
@@ -150,15 +140,13 @@ impl fmt::Display for TaxYearData {
     }
 }
 
-pub async fn se_tax_estimate(
-    repo: TaxRepo,
+pub fn se_tax_estimate(
+    config: &TaxYearConfig,
     se_income: Decimal,
     crp_payments: Decimal,
     wages: Decimal,
-    tax_year: i32,
 ) -> Result<SeWorksheetResult> {
-    let cfg = repo.get_tax_year_config(tax_year).await?;
-    let estimate = run_se_worksheet(&cfg, se_income, crp_payments, wages)?;
+    let estimate = run_se_worksheet(config, se_income, crp_payments, wages)?;
     tracing::info!("Estimate Result=\n{}", estimate);
     Ok(estimate)
 }

@@ -188,7 +188,7 @@ impl TaxRepository for SqliteRepository {
             .try_get("status_code")
             .map_err(|e| RepositoryError::Database(e.into()))?;
         let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-            RepositoryError::Database(anyhow::anyhow!("Invalid status code: {}", status_code_str))
+            RepositoryError::InvalidData(format!("Invalid status code: {status_code_str}"))
         })?;
 
         Ok(FilingStatus {
@@ -219,7 +219,7 @@ impl TaxRepository for SqliteRepository {
             .try_get("status_code")
             .map_err(|e| RepositoryError::Database(e.into()))?;
         let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-            RepositoryError::Database(anyhow::anyhow!("Invalid status code: {}", status_code_str))
+            RepositoryError::InvalidData(format!("Invalid status code: {status_code_str}"))
         })?;
 
         Ok(FilingStatus {
@@ -246,10 +246,7 @@ impl TaxRepository for SqliteRepository {
                 .try_get("status_code")
                 .map_err(|e| RepositoryError::Database(e.into()))?;
             let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
-                RepositoryError::Database(anyhow::anyhow!(
-                    "Invalid status code: {}",
-                    status_code_str
-                ))
+                RepositoryError::InvalidData(format!("Invalid status code: {status_code_str}"))
             })?;
 
             statuses.push(FilingStatus {
@@ -291,6 +288,93 @@ impl TaxRepository for SqliteRepository {
                 .map_err(|e| RepositoryError::Database(e.into()))?,
             amount: get_decimal(&row, "amount")?,
         })
+    }
+
+    async fn get_filing_status_data(
+        &self,
+        year: i32,
+    ) -> Result<Vec<(FilingStatus, StandardDeduction, Vec<TaxBracket>)>, RepositoryError> {
+        let rows = sqlx::query(
+            "SELECT
+                fs.id          AS status_id,
+                fs.status_code,
+                fs.status_name,
+                sd.amount      AS deduction_amount,
+                tb.min_income,
+                tb.max_income,
+                tb.tax_rate,
+                tb.base_tax
+             FROM filing_status fs
+             JOIN standard_deductions sd
+                 ON sd.filing_status_id = fs.id AND sd.tax_year = ?
+             LEFT JOIN tax_brackets tb
+                 ON tb.filing_status_id = fs.id AND tb.tax_year = ?
+             ORDER BY fs.id, tb.min_income",
+        )
+        .bind(year)
+        .bind(year)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Database(e.into()))?;
+
+        let mut result: Vec<(FilingStatus, StandardDeduction, Vec<TaxBracket>)> = Vec::new();
+        let mut current: Option<(FilingStatus, StandardDeduction, Vec<TaxBracket>)> = None;
+
+        for row in &rows {
+            let status_id: i32 = row
+                .try_get("status_id")
+                .map_err(|e| RepositoryError::Database(e.into()))?;
+
+            let is_new_group = current.as_ref().is_none_or(|(fs, _, _)| fs.id != status_id);
+
+            if is_new_group {
+                if let Some(group) = current.take() {
+                    result.push(group);
+                }
+
+                let status_code_str: String = row
+                    .try_get("status_code")
+                    .map_err(|e| RepositoryError::Database(e.into()))?;
+                let status_code = FilingStatusCode::parse(&status_code_str).ok_or_else(|| {
+                    RepositoryError::InvalidData(format!("Invalid status code: {status_code_str}"))
+                })?;
+
+                let filing_status = FilingStatus {
+                    id: status_id,
+                    status_code,
+                    status_name: row
+                        .try_get("status_name")
+                        .map_err(|e| RepositoryError::Database(e.into()))?,
+                };
+                let deduction = StandardDeduction {
+                    tax_year: year,
+                    filing_status_id: status_id,
+                    amount: get_decimal(row, "deduction_amount")?,
+                };
+                current = Some((filing_status, deduction, Vec::new()));
+            }
+
+            // LEFT JOIN: tb columns are NULL when a filing status has no brackets.
+            if let Some(min_income) = get_optional_decimal(row, "min_income")? {
+                let bracket = TaxBracket {
+                    tax_year: year,
+                    filing_status_id: status_id,
+                    min_income,
+                    max_income: get_optional_decimal(row, "max_income")?,
+                    tax_rate: get_decimal(row, "tax_rate")?,
+                    base_tax: get_decimal(row, "base_tax")?,
+                };
+                if let Some((_, _, brackets)) = &mut current {
+                    brackets.push(bracket);
+                }
+            }
+        }
+
+        if let Some(group) = current.take() {
+            result.push(group);
+        }
+
+        Ok(result)
     }
 
     async fn get_tax_brackets(

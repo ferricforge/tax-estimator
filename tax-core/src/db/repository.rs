@@ -20,6 +20,11 @@ pub enum RepositoryError {
     /// requested backend name, or when required configuration is missing.
     #[error("Configuration error: {0}")]
     Configuration(String),
+
+    /// A value was retrieved from the database but could not be parsed into
+    /// the expected domain type (e.g. an unrecognised filing status code).
+    #[error("Invalid data: {0}")]
+    InvalidData(String),
 }
 
 #[async_trait]
@@ -48,6 +53,14 @@ pub trait TaxRepository: Send + Sync {
         tax_year: i32,
         filing_status_id: i32,
     ) -> Result<StandardDeduction, RepositoryError>;
+
+    /// Fetch every filing status together with its standard deduction and tax
+    /// brackets for `year` via a single three-way JOIN, ordered by filing
+    /// status id then bracket min income.
+    async fn get_filing_status_data(
+        &self,
+        year: i32,
+    ) -> Result<Vec<(FilingStatus, StandardDeduction, Vec<TaxBracket>)>, RepositoryError>;
 
     // Tax brackets
     async fn get_tax_brackets(
