@@ -2,9 +2,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use gpui::{App, BorrowAppContext, Global};
+use rust_decimal::Decimal;
 use tax_core::{RepositoryError, TaxRepository, TaxYearConfig, db::DbConfig}; // adjust path as needed
 
-use crate::{app::build_registry, config::AppConfig};
+use crate::{
+    app::{TaxYearData, build_registry, load_tax_year_data},
+    config::AppConfig,
+};
 
 // ---------------------------------------------------------------------------
 // Shared repository handle
@@ -23,6 +27,10 @@ impl TaxRepo {
 
     pub fn try_get(cx: &App) -> Option<Self> {
         cx.try_global::<Self>().cloned()
+    }
+
+    pub fn tax_repository(&self) -> &dyn TaxRepository {
+        &*self.0
     }
 
     pub async fn get_tax_year_config(
@@ -62,7 +70,7 @@ pub async fn init_repository(cx: &mut gpui::AsyncApp) -> Result<()> {
 #[derive(Clone, Debug, Default)]
 pub struct ActiveTaxYear {
     pub year: Option<i32>,
-    pub config: Option<TaxYearConfig>,
+    pub tax_year_data: Option<TaxYearData>,
 }
 
 impl Global for ActiveTaxYear {}
@@ -72,10 +80,10 @@ impl ActiveTaxYear {
         cx.global::<Self>()
     }
 
-    pub fn ss_wage_max(cx: &App) -> Option<rust_decimal::Decimal> {
+    pub fn ss_wage_max(cx: &App) -> Option<Decimal> {
         cx.try_global::<Self>()
-            .and_then(|a| a.config.as_ref())
-            .map(|c| c.ss_wage_max)
+            .and_then(|a: &ActiveTaxYear| a.tax_year_data.as_ref())
+            .map(|tyd: &TaxYearData| tyd.config.ss_wage_max)
     }
 
     /// Kick off a fetch for `year`. No-op if already loaded.
@@ -85,7 +93,7 @@ impl ActiveTaxYear {
     ) {
         if cx
             .try_global::<Self>()
-            .map(|a| a.year == Some(year) && a.config.is_some())
+            .map(|a| a.year == Some(year) && a.tax_year_data.is_some())
             .unwrap_or(false)
         {
             tracing::info!("Already have tax year");
@@ -100,17 +108,18 @@ impl ActiveTaxYear {
         tracing::info!("Setting global year {year}");
         cx.set_global(Self {
             year: Some(year),
-            config: None,
+            tax_year_data: None,
         });
 
         cx.spawn(async move |async_cx| {
-            match repo.get_tax_year_config(year).await {
-                Ok(config) => {
+            match load_tax_year_data(repo.tax_repository(), year).await {
+                // match repo.get_tax_year_config(year).await {
+                Ok(tax_year_data) => {
                     let _ = async_cx.update(|cx| {
                         // update_global notifies observe_global subscribers
                         cx.update_global::<Self, _>(|active, _| {
                             active.year = Some(year);
-                            active.config = Some(config);
+                            active.tax_year_data = Some(tax_year_data);
                             tracing::info!("Tax year load: {:#?}", active);
                         });
                     });

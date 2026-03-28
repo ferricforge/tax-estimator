@@ -12,9 +12,15 @@ use gpui_component::{
     v_flex,
 };
 use regex::Regex;
+use tax_core::calculations::{
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetInput, EstimatedTaxWorksheetResult,
+};
+use tax_core::{FilingStatusCode, TaxYearConfig};
 
+use crate::app::FilingStatusData;
+use crate::components::ErrorDialog;
+use crate::models::SeWorksheetModel;
 use crate::{
-    app::handle_calculate_se_tax,
     components::{
         SeWorksheetForm, make_button, make_decimal_input, make_header_row, make_input_row,
         make_integer_input, make_select_row,
@@ -36,13 +42,22 @@ pub struct EstimatedIncomeForm {
     expected_wages: Entity<InputState>,
 
     // 1040-ES Worksheet inputs
+    // Line 1: adjusted gross income you expect for the year (see form instructions).
     expected_agi: Entity<InputState>,
+    // Line 2a: deductions (itemized total or standard deduction).
     expected_deduction: Entity<InputState>,
+    // Line 2b: qualified business income deduction, if applicable.
     expected_qbi_deduction: Entity<InputState>,
+    // Line 5: alternative minimum tax from Form 6251.
     expected_amt: Entity<InputState>,
+    // Line 7: credits (do not include withholding on this line).
     expected_credits: Entity<InputState>,
+    // Line 10: other taxes (see worksheet instructions).
     expected_other_taxes: Entity<InputState>,
+    // Line 13: income tax withheld and estimated to be withheld (including pensions,
+    // annuities, certain deferred income, and Additional Medicare Tax withholding).
     expected_withholding: Entity<InputState>,
+    // Line 12b: required annual payment based on prior year's tax (per worksheet instructions).
     prior_year_tax: Entity<InputState>,
     is_tax_year_ready: bool,
 }
@@ -223,6 +238,73 @@ impl EstimatedIncomeForm {
         value.trim().parse::<i32>().ok()
     }
 
+    fn model_from_form_or_show_errors(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<EstimatedIncomeModel> {
+        match self.to_model(cx) {
+            Ok(m) => Some(m),
+            Err(errors) => {
+                for e in &errors {
+                    tracing::warn!(%e, "form error");
+                }
+                ErrorDialog::show("Validation failed", &errors, window, cx);
+                None
+            }
+        }
+    }
+
+    fn call_calculate_tax_estimage(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(form_model) = self.model_from_form_or_show_errors(window, cx) else {
+            return;
+        };
+
+        let mut inputs: EstimatedTaxWorksheetInput = EstimatedTaxWorksheetInput::default();
+        let se_model: &SeWorksheetModel = self.worksheet.read(cx).get_se_model();
+
+        let Some(tax_year_data) = ActiveTaxYear::get(cx).tax_year_data.clone() else {
+            tracing::warn!("No tax year loaded; cannot calculate SE tax");
+            // TODO: Add call to ErrorDialog
+            return;
+        };
+
+        let config: &TaxYearConfig = &tax_year_data.config;
+        let filing_status_id: FilingStatusCode = form_model.filing_status_id;
+        let filing_data: &Vec<FilingStatusData> = &tax_year_data.statuses;
+
+        let Some(filing_status_data) = filing_data
+            .iter()
+            .find(|f: &&FilingStatusData| f.filing_status.status_code == filing_status_id)
+        else {
+            // TODO: Handle this error situation
+            return;
+        };
+
+        inputs.adjusted_gross_income = form_model.expected_agi;
+        inputs.itemized_deduction = form_model.expected_deduction;
+        inputs.standard_deduction = form_model.expected_deduction;
+        inputs.alternative_minimum_tax = form_model.expected_amt.unwrap_or_default();
+        inputs.credits = form_model.expected_credits.unwrap_or_default();
+        inputs.self_employment_tax = se_model.line_10_total_se_tax.unwrap_or_default();
+        inputs.other_taxes = form_model.expected_other_taxes.unwrap_or_default();
+        inputs.refundable_credits = form_model.expected_credits.unwrap_or_default();
+        inputs.prior_year_tax = form_model.prior_year_tax.unwrap_or_default();
+        inputs.withholding = form_model.expected_withholding.unwrap_or_default();
+        inputs.is_farmer_or_fisher = false;
+        inputs.required_payment_threshold = config.min_se_threshold;
+
+        let tax_worksheet: EstimatedTaxWorksheet =
+            EstimatedTaxWorksheet::new(&filing_status_data.tax_brackets);
+        let result: EstimatedTaxWorksheetResult = tax_worksheet.calculate(&inputs).unwrap();
+
+        tracing::info!(%result, "Estimated Taxes");
+    }
+
     fn open_se_worksheet_dialog(
         &self,
         window: &mut Window,
@@ -263,7 +345,7 @@ impl EstimatedIncomeForm {
                 "Calculate SE Tax",
                 true,
                 cx.listener(|this, _click_event, window, cx| {
-                    handle_calculate_se_tax(this, window, cx);
+                    this.call_calculate_tax_estimage(window, cx);
                 }),
             ))
             .child(make_button(
@@ -363,7 +445,7 @@ fn tax_year_is_ready(
 
     is_loadable_tax_year(year)
         && active_tax_year.year == Some(year)
-        && active_tax_year.config.is_some()
+        && active_tax_year.tax_year_data.is_some()
 }
 
 #[cfg(test)]
@@ -378,15 +460,18 @@ mod tests {
     ) -> ActiveTaxYear {
         ActiveTaxYear {
             year,
-            config: has_config.then(|| tax_core::TaxYearConfig {
-                tax_year: year.unwrap_or_default(),
-                ss_wage_max: Decimal::ZERO,
-                ss_tax_rate: Decimal::ZERO,
-                medicare_tax_rate: Decimal::ZERO,
-                se_tax_deduct_pcnt: Decimal::ZERO,
-                se_deduction_factor: Decimal::ZERO,
-                req_pmnt_threshold: Decimal::ZERO,
-                min_se_threshold: Decimal::ZERO,
+            tax_year_data: has_config.then(|| TaxYearData {
+                config: TaxYearConfig {
+                    tax_year: year.unwrap_or_default(),
+                    ss_wage_max: Decimal::ZERO,
+                    ss_tax_rate: Decimal::ZERO,
+                    medicare_tax_rate: Decimal::ZERO,
+                    se_tax_deduct_pcnt: Decimal::ZERO,
+                    se_deduction_factor: Decimal::ZERO,
+                    req_pmnt_threshold: Decimal::ZERO,
+                    min_se_threshold: Decimal::ZERO,
+                },
+                statuses: Vec::new(),
             }),
         }
     }

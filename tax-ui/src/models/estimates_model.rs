@@ -19,13 +19,30 @@ pub struct EstimatedIncomeModel {
     pub expected_wages: Option<Decimal>,
 
     // User-provided values (1040-ES Worksheet inputs)
+    /// 2025 Estimated Tax Worksheet, line 1: adjusted gross income
+    /// you expect for the year (see form instructions).
     pub expected_agi: Decimal,
+    /// 2025 Estimated Tax Worksheet, line 2a: deductions
+    /// (estimated itemized deductions or standard deduction).
     pub expected_deduction: Decimal,
+    /// 2025 Estimated Tax Worksheet, line 2b: qualified
+    /// business income deduction, if applicable.
     pub expected_qbi_deduction: Option<Decimal>,
+    /// 2025 Estimated Tax Worksheet, line 5: alternative minimum tax
+    /// from Form 6251.
     pub expected_amt: Option<Decimal>,
+    /// 2025 Estimated Tax Worksheet, line 7: credits
+    /// (do not include income tax withholding on this line).
     pub expected_credits: Option<Decimal>,
+    /// 2025 Estimated Tax Worksheet, line 10: other taxes
+    /// (see worksheet instructions).
     pub expected_other_taxes: Option<Decimal>,
+    /// 2025 Estimated Tax Worksheet, line 13: income tax withheld and estimated
+    /// to be withheld (including withholding on pensions, annuities, certain
+    /// deferred income, and Additional Medicare Tax withholding).
     pub expected_withholding: Option<Decimal>,
+    /// 2025 Estimated Tax Worksheet, line 12b: required annual payment based
+    /// on prior year's tax (as figured per worksheet instructions).
     pub prior_year_tax: Option<Decimal>,
 }
 

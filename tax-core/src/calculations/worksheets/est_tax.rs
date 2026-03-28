@@ -89,6 +89,8 @@
 //! assert!(result.estimated_payments_required);
 //! ```
 
+use std::fmt::{self, Display};
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -112,7 +114,7 @@ pub enum EstimatedTaxWorksheetError {
 ///
 /// These values are typically provided by the user and correspond to the
 /// input fields on Form 1040-ES.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EstimatedTaxWorksheetInput {
     /// Adjusted gross income expected for the tax year.
     pub adjusted_gross_income: Decimal,
@@ -187,6 +189,52 @@ pub struct EstimatedTaxWorksheetResult {
     /// Indicates whether estimated tax payments are required.
     /// False if withholding covers the requirement or if under the threshold.
     pub estimated_payments_required: bool,
+}
+
+impl Display for EstimatedTaxWorksheetResult {
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        writeln!(f, "EstimatedTaxWorksheetResult {{")?;
+        writeln!(
+            f,
+            "    taxable_income              : ${}",
+            self.taxable_income.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    calculated_tax              : ${}",
+            self.calculated_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    total_estimated_tax         : ${}",
+            self.total_estimated_tax.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    required_annual_payment     : ${}",
+            self.required_annual_payment.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    underpayment                : ${}",
+            self.underpayment.round_dp(2)
+        )?;
+        writeln!(
+            f,
+            "    used_itemized_deduction     : {}",
+            self.used_itemized_deduction
+        )?;
+        writeln!(
+            f,
+            "    estimated_payments_required : {}",
+            self.estimated_payments_required
+        )?;
+        write!(f, "}}")?;
+        Ok(())
+    }
 }
 
 /// Calculator for the Estimated Tax Worksheet.
@@ -527,6 +575,29 @@ mod tests {
             is_farmer_or_fisher: false,
             required_payment_threshold: dec!(1000.00),
         }
+    }
+
+    #[test]
+    fn estimated_tax_worksheet_result_display() {
+        let result = EstimatedTaxWorksheetResult {
+            taxable_income: dec!(85000.00),
+            calculated_tax: dec!(10000.00),
+            total_estimated_tax: dec!(12000.00),
+            required_annual_payment: dec!(11000.00),
+            underpayment: dec!(5000.00),
+            used_itemized_deduction: true,
+            estimated_payments_required: true,
+        };
+        let expected = "EstimatedTaxWorksheetResult {
+    taxable_income              : $85000.00
+    calculated_tax              : $10000.00
+    total_estimated_tax         : $12000.00
+    required_annual_payment     : $11000.00
+    underpayment                : $5000.00
+    used_itemized_deduction     : true
+    estimated_payments_required : true
+}";
+        assert_eq!(format!("{result}"), expected);
     }
 
     // =========================================================================

@@ -168,40 +168,6 @@ fn run_se_worksheet(
         })
 }
 
-pub fn handle_calculate_se_tax(
-    form: &EstimatedIncomeForm,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let Some(form_model) = model_from_form_or_show_errors(form, window, cx) else {
-        return;
-    };
-    tracing::info!(%form_model, "Form validated\n");
-    // cx.spawn(async move |_cx| {
-    //     if let Err(e) = make_se_estimate(&form_model).await {
-    //         tracing::warn!(%e, "Calculate SE Tax failed");
-    //     }
-    // })
-    // .detach();
-}
-
-fn model_from_form_or_show_errors(
-    form: &EstimatedIncomeForm,
-    window: &mut Window,
-    cx: &mut App,
-) -> Option<EstimatedIncomeModel> {
-    match form.to_model(cx) {
-        Ok(m) => Some(m),
-        Err(errors) => {
-            for e in &errors {
-                tracing::warn!(%e, "form error");
-            }
-            ErrorDialog::show("Validation failed", &errors, window, cx);
-            None
-        }
-    }
-}
-
 // ─── tests ───────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {

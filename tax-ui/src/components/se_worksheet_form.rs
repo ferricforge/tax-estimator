@@ -87,16 +87,12 @@ impl SeWorksheetForm {
         self.model = values;
     }
 
-    pub fn total_se_tax(&self) -> Option<Decimal> {
-        self.model.line_10_total_se_tax
-    }
-
-    pub fn deductible_se_tax(&self) -> Option<Decimal> {
-        self.model.line_11_deductible_se_tax
+    pub fn get_se_model(&self) -> &SeWorksheetModel {
+        &self.model
     }
 
     /// Copies parsed inputs into lines 1a, 1b, 6, and line 2 (1a − 1b). Does not run full SE formulas.
-    pub fn calculate_se(
+    fn calculate_se(
         &mut self,
         cx: &mut Context<'_, SeWorksheetForm>,
     ) -> Result<()> {
@@ -117,7 +113,7 @@ impl SeWorksheetForm {
         Ok(())
     }
 
-    pub fn clear(
+    fn clear(
         &mut self,
         window: &mut Window,
         app_cx: &mut App,
@@ -239,10 +235,12 @@ fn call_calculator(
     worksheet: Entity<SeWorksheetForm>,
     app_cx: &mut App,
 ) {
-    let Some(config) = ActiveTaxYear::get(app_cx).config.clone() else {
+    let Some(tax_year_data) = ActiveTaxYear::get(app_cx).tax_year_data.clone() else {
         tracing::warn!("No tax year loaded; cannot calculate SE tax");
         return;
     };
+
+    let config: TaxYearConfig = tax_year_data.config.clone();
 
     app_cx
         .spawn(async move |async_cx| {
@@ -250,7 +248,7 @@ fn call_calculator(
                 .update(|cx| worksheet.read(cx).model.clone())
                 .unwrap();
 
-            match make_se_estimate(config, model) {
+            match make_se_estimate(&config, model) {
                 Ok(result) => {
                     async_cx
                         .update(|cx: &mut App| {
@@ -270,11 +268,11 @@ fn call_calculator(
 }
 
 fn make_se_estimate(
-    config: TaxYearConfig,
+    config: &TaxYearConfig,
     model: SeWorksheetModel,
 ) -> Result<SeWorksheetResult> {
     let se_income = model.line_1a_expected_se_income.unwrap_or_default();
     let crp_payments = model.line_1b_expected_crp_payments.unwrap_or_default();
     let wages = model.line_6_expected_wages.unwrap_or_default();
-    se_tax_estimate(&config, se_income, crp_payments, wages)
+    se_tax_estimate(config, se_income, crp_payments, wages)
 }
