@@ -452,6 +452,8 @@ fn tax_year_is_ready(
 mod tests {
     use rust_decimal::Decimal;
 
+    use crate::app::TaxYearData;
+
     use super::*;
 
     fn active_tax_year(
