@@ -54,8 +54,8 @@ impl FilingStatusCode {
     /// ---------------------------------------------------------------------------
     /// This mirrors the IDs established by 01_filing_status.sql.  If the seed
     /// data ever changes the mapping lives in exactly one place.
-    pub fn filing_status_to_id(code: FilingStatusCode) -> i32 {
-        match code {
+    pub fn filing_status_to_id(&self) -> i32 {
+        match self {
             FilingStatusCode::Single => SINGLE,
             FilingStatusCode::MarriedFilingJointly => MFJ,
             FilingStatusCode::MarriedFilingSeparately => MFS,
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn test_filing_status_to_id_single() {
         assert_eq!(
-            FilingStatusCode::filing_status_to_id(FilingStatusCode::Single),
+            FilingStatusCode::Single.filing_status_to_id(),
             SINGLE
         );
     }
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn test_filing_status_to_id_married_joint() {
         assert_eq!(
-            FilingStatusCode::filing_status_to_id(FilingStatusCode::MarriedFilingJointly),
+            FilingStatusCode::MarriedFilingJointly.filing_status_to_id(),
             MFJ
         );
     }
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn test_filing_status_to_id_married_separate() {
         assert_eq!(
-            FilingStatusCode::filing_status_to_id(FilingStatusCode::MarriedFilingSeparately),
+            FilingStatusCode::MarriedFilingSeparately.filing_status_to_id(),
             MFS
         );
     }
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn test_filing_status_to_id_head_of_household() {
         assert_eq!(
-            FilingStatusCode::filing_status_to_id(FilingStatusCode::HeadOfHousehold),
+            FilingStatusCode::HeadOfHousehold.filing_status_to_id(),
             HOH
         );
     }
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn test_filing_status_to_id_qualifying() {
         assert_eq!(
-            FilingStatusCode::filing_status_to_id(FilingStatusCode::QualifyingSurvivingSpouse),
+            FilingStatusCode::QualifyingSurvivingSpouse.filing_status_to_id(),
             QSS
         );
     }

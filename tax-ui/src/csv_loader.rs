@@ -109,7 +109,7 @@ fn convert_row(
 
     Ok(NewTaxEstimate {
         tax_year: row.tax_year,
-        filing_status_id: FilingStatusCode::filing_status_to_id(code),
+        filing_status_id: code.filing_status_to_id(),
         se_income: row.se_income,
         expected_crp_payments: row.expected_crp_payments,
         expected_wages: row.expected_wages,

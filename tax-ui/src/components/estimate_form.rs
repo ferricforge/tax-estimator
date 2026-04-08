@@ -15,7 +15,7 @@ use regex::Regex;
 use tax_core::calculations::{
     EstimatedTaxWorksheet, EstimatedTaxWorksheetInput, EstimatedTaxWorksheetResult,
 };
-use tax_core::{FilingStatusCode, TaxYearConfig};
+use tax_core::{FilingStatusCode, NewTaxEstimate, TaxYearConfig};
 
 use crate::app::FilingStatusData;
 use crate::components::ErrorDialog;
@@ -255,7 +255,7 @@ impl EstimatedIncomeForm {
         }
     }
 
-    fn call_calculate_tax_estimage(
+    fn call_calculate_tax_estimate(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -303,9 +303,25 @@ impl EstimatedIncomeForm {
         let result: EstimatedTaxWorksheetResult = tax_worksheet.calculate(&inputs).unwrap();
 
         tracing::info!(%result, "Estimated Taxes");
+
+        let new_estimate: NewTaxEstimate = NewTaxEstimate::new(
+            tax_year_data.config.tax_year,
+            filing_status_id.filing_status_to_id(),
+        )
+        .with_se_income(se_model.line_1a_expected_se_income.unwrap_or_default())
+        .with_expected_crp_payments(se_model.line_1b_expected_crp_payments.unwrap_or_default())
+        .with_expected_wages(se_model.line_6_expected_wages.unwrap_or_default())
+        .with_expected_agi(inputs.adjusted_gross_income)
+        .with_expected_deduction(inputs.standard_deduction)
+        .with_expected_qbi_deduction(inputs.qbi_deduction)
+        .with_expected_amt(inputs.alternative_minimum_tax)
+        .with_expected_credits(inputs.refundable_credits)
+        .with_expected_other_taxes(inputs.other_taxes)
+        .with_expected_withholding(inputs.withholding)
+        .with_prior_year_tax(inputs.prior_year_tax);
     }
 
-    fn open_se_worksheet_dialog(
+    fn call_se_worksheet_dialog(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -345,7 +361,7 @@ impl EstimatedIncomeForm {
                 "Calculate SE Tax",
                 true,
                 cx.listener(|this, _click_event, window, cx| {
-                    this.call_calculate_tax_estimage(window, cx);
+                    this.call_calculate_tax_estimate(window, cx);
                 }),
             ))
             .child(make_button(
@@ -353,7 +369,7 @@ impl EstimatedIncomeForm {
                 "SE Worksheet",
                 self.is_tax_year_ready,
                 cx.listener(|this, _ev, window, cx| {
-                    this.open_se_worksheet_dialog(window, cx);
+                    this.call_se_worksheet_dialog(window, cx);
                 }),
             ))
     }

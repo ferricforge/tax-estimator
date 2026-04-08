@@ -102,7 +102,7 @@ impl EstimatedIncomeModel {
     pub fn to_new_tax_estimate(&self) -> NewTaxEstimate {
         NewTaxEstimate {
             tax_year: self.tax_year,
-            filing_status_id: FilingStatusCode::filing_status_to_id(self.filing_status_id),
+            filing_status_id: self.filing_status_id.filing_status_to_id(),
             se_income: self.se_income,
             expected_crp_payments: self.expected_crp_payments,
             expected_wages: self.expected_wages,

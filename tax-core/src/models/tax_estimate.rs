@@ -37,7 +37,7 @@ pub struct TaxEstimate {
 }
 
 /// For creating new estimates (no id or timestamps)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewTaxEstimate {
     pub tax_year: i32,
     pub filing_status_id: i32,
@@ -56,13 +56,104 @@ pub struct NewTaxEstimate {
     pub prior_year_tax: Option<Decimal>,
 }
 
-fn fmt_opt_decimal(
-    f: &mut impl Write,
-    value: Option<&Decimal>,
-) -> fmt::Result {
-    match value {
-        Some(d) => write!(f, "{}", d),
-        None => write!(f, "—"),
+impl NewTaxEstimate {
+    pub fn new(
+        tax_year: i32,
+        filing_status_id: i32,
+    ) -> Self {
+        Self {
+            tax_year,
+            filing_status_id,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_se_income(
+        mut self,
+        income: Decimal,
+    ) -> Self {
+        self.se_income = Some(income);
+        self
+    }
+
+    pub fn with_expected_crp_payments(
+        mut self,
+        crp_payments: Decimal,
+    ) -> Self {
+        self.expected_crp_payments = Some(crp_payments);
+        self
+    }
+
+    pub fn with_expected_wages(
+        mut self,
+        expected_wages: Decimal,
+    ) -> Self {
+        self.expected_wages = Some(expected_wages);
+        self
+    }
+
+    pub fn with_expected_agi(
+        mut self,
+        expected_agi: Decimal,
+    ) -> Self {
+        self.expected_agi = expected_agi;
+        self
+    }
+
+    pub fn with_expected_deduction(
+        mut self,
+        expected_deduction: Decimal,
+    ) -> Self {
+        self.expected_deduction = expected_deduction;
+        self
+    }
+
+    pub fn with_expected_qbi_deduction(
+        mut self,
+        expected_qbi_deduction: Decimal,
+    ) -> Self {
+        self.expected_qbi_deduction = Some(expected_qbi_deduction);
+        self
+    }
+
+    pub fn with_expected_amt(
+        mut self,
+        expected_amt: Decimal,
+    ) -> Self {
+        self.expected_amt = Some(expected_amt);
+        self
+    }
+
+    pub fn with_expected_credits(
+        mut self,
+        expected_credits: Decimal,
+    ) -> Self {
+        self.expected_credits = Some(expected_credits);
+        self
+    }
+
+    pub fn with_expected_other_taxes(
+        mut self,
+        expected_other_taxes: Decimal,
+    ) -> Self {
+        self.expected_other_taxes = Some(expected_other_taxes);
+        self
+    }
+
+    pub fn with_expected_withholding(
+        mut self,
+        expected_withholding: Decimal,
+    ) -> Self {
+        self.expected_withholding = Some(expected_withholding);
+        self
+    }
+
+    pub fn with_prior_year_tax(
+        mut self,
+        prior_year_tax: Decimal,
+    ) -> Self {
+        self.prior_year_tax = Some(prior_year_tax);
+        self
     }
 }
 
@@ -100,6 +191,16 @@ impl Display for NewTaxEstimate {
         write!(f, ", prior_year_tax: ")?;
         fmt_opt_decimal(f, self.prior_year_tax.as_ref())?;
         Ok(())
+    }
+}
+
+fn fmt_opt_decimal(
+    f: &mut impl Write,
+    value: Option<&Decimal>,
+) -> fmt::Result {
+    match value {
+        Some(d) => write!(f, "{}", d),
+        None => write!(f, "—"),
     }
 }
 
