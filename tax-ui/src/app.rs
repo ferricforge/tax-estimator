@@ -6,7 +6,6 @@ use gpui::{App, ParentElement, Window, px};
 use gpui_component::WindowExt;
 use gpui_component::dialog::DialogButtonProps;
 use rust_decimal::Decimal;
-use tax_core::NewTaxEstimate;
 use tax_core::calculations::{SeWorksheet, SeWorksheetConfig, SeWorksheetResult};
 use tracing::debug;
 
@@ -15,7 +14,6 @@ use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket, TaxYearConfi
 use tax_db_sqlite::SqliteRepositoryFactory;
 
 use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
-use crate::models::{EstimatedIncomeModel, SeWorksheetModel};
 use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────

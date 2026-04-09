@@ -123,7 +123,7 @@ mod tests {
     use async_trait::async_trait;
 
     use crate::models::{
-        FilingStatus, NewTaxEstimate, StandardDeduction, TaxBracket, TaxEstimate, TaxYearConfig,
+        FilingStatus, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput, TaxYearConfig,
     };
 
     use super::{DbConfig, RepositoryError, RepositoryFactory, RepositoryRegistry, TaxRepository};
@@ -196,7 +196,7 @@ mod tests {
         }
         async fn create_estimate(
             &self,
-            _estimate: NewTaxEstimate,
+            _estimate: TaxEstimateInput,
         ) -> Result<TaxEstimate, RepositoryError> {
             unimplemented!()
         }

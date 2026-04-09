@@ -7,7 +7,7 @@ pub mod common;
 pub mod worksheets;
 
 pub use worksheets::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetError, EstimatedTaxWorksheetInput,
-    EstimatedTaxWorksheetResult, SeWorksheet, SeWorksheetConfig, SeWorksheetError,
-    SeWorksheetResult,
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetError,
+    EstimatedTaxWorksheetInput, EstimatedTaxWorksheetResult, SeWorksheet, SeWorksheetConfig,
+    SeWorksheetError, SeWorksheetResult,
 };

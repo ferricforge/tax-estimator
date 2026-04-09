@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use pretty_assertions::assert_eq;
 use rust_decimal_macros::dec;
+use tax_core::{FilingStatusCode, TaxEstimateInput};
 use tax_ui::csv_loader;
 
 /// Path to the sample CSV shipped with the test fixtures.
@@ -20,7 +21,7 @@ fn fixture_path() -> PathBuf {
 
 #[test]
 fn test_load_fixture_file_succeeds() {
-    let estimates = csv_loader::load_from_file(&fixture_path())
+    let estimates: Vec<TaxEstimateInput> = csv_loader::load_from_file(&fixture_path())
         .expect("fixture file should load without error");
 
     // The fixture has exactly 3 rows.
@@ -29,11 +30,11 @@ fn test_load_fixture_file_succeeds() {
 
 #[test]
 fn test_load_fixture_first_row_single() {
-    let estimates = csv_loader::load_from_file(&fixture_path()).unwrap();
-    let e = &estimates[0];
+    let estimates: Vec<TaxEstimateInput> = csv_loader::load_from_file(&fixture_path()).unwrap();
+    let e: &TaxEstimateInput = &estimates[0];
 
     assert_eq!(e.tax_year, 2025);
-    assert_eq!(e.filing_status_id, 1); // Single
+    assert_eq!(e.filing_status, FilingStatusCode::Single);
     assert_eq!(e.expected_agi, dec!(75000.00));
     assert_eq!(e.expected_deduction, dec!(14600.00));
 
@@ -53,10 +54,11 @@ fn test_load_fixture_first_row_single() {
 
 #[test]
 fn test_load_fixture_second_row_mfj() {
-    let estimates = csv_loader::load_from_file(&fixture_path()).unwrap();
-    let e = &estimates[1];
+    let estimates: Vec<TaxEstimateInput> = csv_loader::load_from_file(&fixture_path()).unwrap();
+    let e: &TaxEstimateInput = &estimates[1];
 
-    assert_eq!(e.filing_status_id, 2); // MFJ
+    assert_eq!(e.filing_status, FilingStatusCode::MarriedFilingJointly);
+    assert_eq!(e.expected_deduction, dec!(29200.00));
     assert_eq!(e.expected_qbi_deduction, Some(dec!(5000.00)));
     assert_eq!(e.expected_credits, Some(dec!(500.00)));
     assert_eq!(e.expected_wages, Some(dec!(180000.00)));
@@ -65,10 +67,10 @@ fn test_load_fixture_second_row_mfj() {
 
 #[test]
 fn test_load_fixture_third_row_hoh() {
-    let estimates = csv_loader::load_from_file(&fixture_path()).unwrap();
-    let e = &estimates[2];
+    let estimates: Vec<TaxEstimateInput> = csv_loader::load_from_file(&fixture_path()).unwrap();
+    let e: &TaxEstimateInput = &estimates[2];
 
-    assert_eq!(e.filing_status_id, 4); // HOH
+    assert_eq!(e.filing_status, FilingStatusCode::HeadOfHousehold);
     assert_eq!(e.expected_agi, dec!(58000.00));
     assert_eq!(e.expected_deduction, dec!(21900.00));
     assert_eq!(e.prior_year_tax, Some(dec!(11000.00)));
@@ -79,7 +81,8 @@ fn test_load_fixture_third_row_hoh() {
 
 #[test]
 fn test_load_nonexistent_file_returns_err() {
-    let bad_path = PathBuf::from("/this/path/does/not/exist.csv");
-    let result = csv_loader::load_from_file(&bad_path);
+    let bad_path: PathBuf = PathBuf::from("/this/path/does/not/exist.csv");
+    let result: Result<Vec<TaxEstimateInput>, Box<dyn std::error::Error>> =
+        csv_loader::load_from_file(&bad_path);
     assert!(result.is_err());
 }

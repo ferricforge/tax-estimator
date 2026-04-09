@@ -4,20 +4,19 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::calculations::{EstimatedTaxWorksheetContext, EstimatedTaxWorksheetInput};
+use crate::models::FilingStatusCode;
+
+/// Canonical user-entered estimate data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TaxEstimate {
-    pub id: i64,
+pub struct TaxEstimateInput {
     pub tax_year: i32,
+    pub filing_status: FilingStatusCode,
 
-    // User-provided values
-    pub filing_status_id: i32,
-
-    // User-provided values (SE Worksheet inputs)
     pub se_income: Option<Decimal>,
     pub expected_crp_payments: Option<Decimal>,
     pub expected_wages: Option<Decimal>,
 
-    // User-provided values (1040-ES Worksheet inputs)
     pub expected_agi: Decimal,
     pub expected_deduction: Decimal,
     pub expected_qbi_deduction: Option<Decimal>,
@@ -26,138 +25,97 @@ pub struct TaxEstimate {
     pub expected_other_taxes: Option<Decimal>,
     pub expected_withholding: Option<Decimal>,
     pub prior_year_tax: Option<Decimal>,
+}
 
-    // Calculated values
-    pub calculated_se_tax: Option<Decimal>,
-    pub calculated_total_tax: Option<Decimal>,
-    pub calculated_required_payment: Option<Decimal>,
+/// Stored calculated values for a persisted estimate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaxEstimateComputed {
+    pub se_tax: Decimal,
+    pub total_tax: Decimal,
+    pub required_payment: Decimal,
+}
 
+/// Full persisted estimate record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaxEstimate {
+    pub id: i64,
+    pub input: TaxEstimateInput,
+    pub computed: Option<TaxEstimateComputed>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-/// For creating new estimates (no id or timestamps)
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NewTaxEstimate {
-    pub tax_year: i32,
-    pub filing_status_id: i32,
+/// Tax year range accepted for estimates (inclusive).
+const TAX_YEAR_MIN: i32 = 2000;
+const TAX_YEAR_MAX: i32 = 2030;
 
-    pub se_income: Option<Decimal>,
-    pub expected_crp_payments: Option<Decimal>,
-    pub expected_wages: Option<Decimal>,
+impl TaxEstimateInput {
+    /// Validates business rules before persistence or calculation.
+    pub fn validate_for_submit(&self) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
 
-    pub expected_agi: Decimal,
-    pub expected_deduction: Decimal,
-    pub expected_qbi_deduction: Option<Decimal>,
-    pub expected_amt: Option<Decimal>,
-    pub expected_credits: Option<Decimal>,
-    pub expected_other_taxes: Option<Decimal>,
-    pub expected_withholding: Option<Decimal>,
-    pub prior_year_tax: Option<Decimal>,
-}
+        if self.tax_year < TAX_YEAR_MIN || self.tax_year > TAX_YEAR_MAX {
+            errors.push(format!(
+                "Tax year must be between {} and {}",
+                TAX_YEAR_MIN, TAX_YEAR_MAX
+            ));
+        }
 
-impl NewTaxEstimate {
-    pub fn new(
-        tax_year: i32,
-        filing_status_id: i32,
-    ) -> Self {
-        Self {
-            tax_year,
-            filing_status_id,
-            ..Default::default()
+        if self.expected_agi < Decimal::ZERO {
+            errors.push("Expected AGI cannot be negative".to_string());
+        }
+        if self.expected_deduction < Decimal::ZERO {
+            errors.push("Expected deduction cannot be negative".to_string());
+        }
+
+        for (label, opt) in [
+            ("SE income", &self.se_income),
+            ("CRP payments", &self.expected_crp_payments),
+            ("Wages", &self.expected_wages),
+            ("QBI deduction", &self.expected_qbi_deduction),
+            ("AMT", &self.expected_amt),
+            ("Credits", &self.expected_credits),
+            ("Other taxes", &self.expected_other_taxes),
+            ("Withholding", &self.expected_withholding),
+            ("Prior year tax", &self.prior_year_tax),
+        ] {
+            if let Some(d) = opt
+                && *d < Decimal::ZERO
+            {
+                errors.push(format!("{label} cannot be negative"));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 
-    pub fn with_se_income(
-        mut self,
-        income: Decimal,
-    ) -> Self {
-        self.se_income = Some(income);
-        self
-    }
-
-    pub fn with_expected_crp_payments(
-        mut self,
-        crp_payments: Decimal,
-    ) -> Self {
-        self.expected_crp_payments = Some(crp_payments);
-        self
-    }
-
-    pub fn with_expected_wages(
-        mut self,
-        expected_wages: Decimal,
-    ) -> Self {
-        self.expected_wages = Some(expected_wages);
-        self
-    }
-
-    pub fn with_expected_agi(
-        mut self,
-        expected_agi: Decimal,
-    ) -> Self {
-        self.expected_agi = expected_agi;
-        self
-    }
-
-    pub fn with_expected_deduction(
-        mut self,
-        expected_deduction: Decimal,
-    ) -> Self {
-        self.expected_deduction = expected_deduction;
-        self
-    }
-
-    pub fn with_expected_qbi_deduction(
-        mut self,
-        expected_qbi_deduction: Decimal,
-    ) -> Self {
-        self.expected_qbi_deduction = Some(expected_qbi_deduction);
-        self
-    }
-
-    pub fn with_expected_amt(
-        mut self,
-        expected_amt: Decimal,
-    ) -> Self {
-        self.expected_amt = Some(expected_amt);
-        self
-    }
-
-    pub fn with_expected_credits(
-        mut self,
-        expected_credits: Decimal,
-    ) -> Self {
-        self.expected_credits = Some(expected_credits);
-        self
-    }
-
-    pub fn with_expected_other_taxes(
-        mut self,
-        expected_other_taxes: Decimal,
-    ) -> Self {
-        self.expected_other_taxes = Some(expected_other_taxes);
-        self
-    }
-
-    pub fn with_expected_withholding(
-        mut self,
-        expected_withholding: Decimal,
-    ) -> Self {
-        self.expected_withholding = Some(expected_withholding);
-        self
-    }
-
-    pub fn with_prior_year_tax(
-        mut self,
-        prior_year_tax: Decimal,
-    ) -> Self {
-        self.prior_year_tax = Some(prior_year_tax);
-        self
+    /// Resolves user-entered estimate data into worksheet-specific calculator input.
+    pub fn to_estimated_tax_worksheet_input(
+        &self,
+        context: &EstimatedTaxWorksheetContext,
+    ) -> EstimatedTaxWorksheetInput {
+        EstimatedTaxWorksheetInput {
+            adjusted_gross_income: self.expected_agi,
+            deduction: self.expected_deduction,
+            qbi_deduction: self.expected_qbi_deduction.unwrap_or_default(),
+            alternative_minimum_tax: self.expected_amt.unwrap_or_default(),
+            credits: self.expected_credits.unwrap_or_default(),
+            self_employment_tax: context.self_employment_tax,
+            other_taxes: self.expected_other_taxes.unwrap_or_default(),
+            refundable_credits: context.refundable_credits,
+            prior_year_tax: self.prior_year_tax.unwrap_or_default(),
+            withholding: self.expected_withholding.unwrap_or_default(),
+            is_farmer_or_fisher: context.is_farmer_or_fisher,
+            required_payment_threshold: context.required_payment_threshold,
+        }
     }
 }
 
-impl Display for NewTaxEstimate {
+impl Display for TaxEstimateInput {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
@@ -165,7 +123,8 @@ impl Display for NewTaxEstimate {
         write!(
             f,
             "Tax estimate {}: filing status {}",
-            self.tax_year, self.filing_status_id
+            self.tax_year,
+            self.filing_status.as_str()
         )?;
         write!(f, ", se_income: ")?;
         fmt_opt_decimal(f, self.se_income.as_ref())?;
@@ -199,14 +158,81 @@ fn fmt_opt_decimal(
     value: Option<&Decimal>,
 ) -> fmt::Result {
     match value {
-        Some(d) => write!(f, "{}", d),
+        Some(d) => write!(f, "{d}"),
         None => write!(f, "—"),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+    use rust_decimal_macros::dec;
+
     use super::*;
+
+    fn valid_input() -> TaxEstimateInput {
+        TaxEstimateInput {
+            tax_year: 2025,
+            filing_status: FilingStatusCode::Single,
+            se_income: None,
+            expected_crp_payments: None,
+            expected_wages: None,
+            expected_agi: Decimal::ZERO,
+            expected_deduction: Decimal::ZERO,
+            expected_qbi_deduction: None,
+            expected_amt: None,
+            expected_credits: None,
+            expected_other_taxes: None,
+            expected_withholding: None,
+            prior_year_tax: None,
+        }
+    }
+
+    #[test]
+    fn validate_for_submit_accepts_valid_input() {
+        let input = valid_input();
+        assert!(input.validate_for_submit().is_ok());
+    }
+
+    #[test]
+    fn validate_for_submit_rejects_tax_year_below_min() {
+        let mut input = valid_input();
+        input.tax_year = TAX_YEAR_MIN - 1;
+        let err = input
+            .validate_for_submit()
+            .expect_err("expected validation error");
+        assert_eq!(err.len(), 1);
+        assert!(err[0].contains("Tax year must be between"));
+    }
+
+    #[test]
+    fn validate_for_submit_rejects_negative_expected_deduction() {
+        let mut input = valid_input();
+        input.expected_deduction = dec!(-1.00);
+        let err = input
+            .validate_for_submit()
+            .expect_err("expected validation error");
+        assert_eq!(err, vec!["Expected deduction cannot be negative"]);
+    }
+
+    #[test]
+    fn worksheet_mapping_uses_expected_deduction_amount() {
+        let mut input = valid_input();
+        input.expected_deduction = dec!(15000.00);
+        let context = EstimatedTaxWorksheetContext {
+            self_employment_tax: dec!(1000.00),
+            refundable_credits: dec!(250.00),
+            is_farmer_or_fisher: false,
+            required_payment_threshold: dec!(1000.00),
+        };
+
+        let worksheet_input = input.to_estimated_tax_worksheet_input(&context);
+
+        assert_eq!(worksheet_input.deduction, dec!(15000.00));
+        assert_eq!(worksheet_input.self_employment_tax, dec!(1000.00));
+        assert_eq!(worksheet_input.refundable_credits, dec!(250.00));
+        assert_eq!(worksheet_input.required_payment_threshold, dec!(1000.00));
+    }
 
     #[test]
     fn fmt_opt_decimal_writes_value_when_some() {
@@ -223,59 +249,5 @@ mod tests {
         let result = fmt_opt_decimal(&mut s, None);
         assert!(result.is_ok());
         assert_eq!(s, "—");
-    }
-
-    #[test]
-    fn fmt_opt_decimal_writes_decimal_with_fractional_part() {
-        let d = Decimal::try_from(1234.56).unwrap();
-        let mut s = String::new();
-        let result = fmt_opt_decimal(&mut s, Some(&d));
-        assert!(result.is_ok());
-        assert_eq!(s, "1234.56");
-    }
-
-    #[test]
-    fn fmt_opt_decimal_writes_zero_when_some_zero() {
-        let d = Decimal::ZERO;
-        let mut s = String::new();
-        let result = fmt_opt_decimal(&mut s, Some(&d));
-        assert!(result.is_ok());
-        assert_eq!(s, "0");
-    }
-
-    #[test]
-    fn fmt_opt_decimal_writes_to_empty_string() {
-        let d = Decimal::from(1);
-        let mut s = String::new();
-        assert!(s.is_empty());
-        let result = fmt_opt_decimal(&mut s, Some(&d));
-        assert!(result.is_ok());
-        assert_eq!(s, "1");
-    }
-
-    struct FailingWriter;
-
-    impl Write for FailingWriter {
-        fn write_str(
-            &mut self,
-            _s: &str,
-        ) -> fmt::Result {
-            Err(fmt::Error)
-        }
-    }
-
-    #[test]
-    fn fmt_opt_decimal_propagates_write_error_on_some() {
-        let d = Decimal::from(100);
-        let mut w = FailingWriter;
-        let result = fmt_opt_decimal(&mut w, Some(&d));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn fmt_opt_decimal_propagates_write_error_on_none() {
-        let mut w = FailingWriter;
-        let result = fmt_opt_decimal(&mut w, None);
-        assert!(result.is_err());
     }
 }

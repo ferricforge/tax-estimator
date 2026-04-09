@@ -12,10 +12,11 @@ use gpui_component::{
     v_flex,
 };
 use regex::Regex;
+use rust_decimal::Decimal;
 use tax_core::calculations::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetInput, EstimatedTaxWorksheetResult,
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetResult,
 };
-use tax_core::{FilingStatusCode, NewTaxEstimate, TaxYearConfig};
+use tax_core::{FilingStatusCode, TaxEstimateInput, TaxYearConfig};
 
 use crate::app::FilingStatusData;
 use crate::components::ErrorDialog;
@@ -25,7 +26,6 @@ use crate::{
         SeWorksheetForm, make_button, make_decimal_input, make_header_row, make_input_row,
         make_integer_input, make_select_row,
     },
-    models::EstimatedIncomeModel,
     repository::ActiveTaxYear,
     utils::{parse_decimal, parse_optional_decimal},
 };
@@ -36,15 +36,10 @@ pub struct EstimatedIncomeForm {
     tax_year: Entity<InputState>,
     filing_status: Entity<SelectState<Vec<SharedString>>>,
 
-    // SE Worksheet inputs
-    se_income: Entity<InputState>,
-    expected_crp_payments: Entity<InputState>,
-    expected_wages: Entity<InputState>,
-
     // 1040-ES Worksheet inputs
     // Line 1: adjusted gross income you expect for the year (see form instructions).
     expected_agi: Entity<InputState>,
-    // Line 2a: deductions (itemized total or standard deduction).
+    // Line 2a: deductions.
     expected_deduction: Entity<InputState>,
     // Line 2b: qualified business income deduction, if applicable.
     expected_qbi_deduction: Entity<InputState>,
@@ -83,7 +78,9 @@ impl EstimatedIncomeForm {
 
         let tax_year = make_integer_input("Tax Year", window, cx);
         tax_year.update(cx, |input_state, cx| {
-            input_state.set_pattern(Regex::new(r"^\d{0,4}$").unwrap(), window, cx);
+            if let Ok(pattern) = Regex::new(r"^\d{0,4}$") {
+                input_state.set_pattern(pattern, window, cx);
+            }
         });
 
         // React to edits: once a full 4-digit year is entered, fetch its config.
@@ -111,14 +108,10 @@ impl EstimatedIncomeForm {
         .detach();
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
-
         Self {
             worksheet,
             tax_year,
             filing_status,
-            se_income: make_decimal_input("Self-emp income", 2, window, cx),
-            expected_crp_payments: make_decimal_input("Exp CRP payments", 2, window, cx),
-            expected_wages: make_decimal_input("Exp wages", 2, window, cx),
             expected_agi: make_decimal_input("Exp AGI", 2, window, cx),
             expected_deduction: make_decimal_input("Exp deduction", 2, window, cx),
             expected_qbi_deduction: make_decimal_input("Exp QBI deduction", 2, window, cx),
@@ -139,17 +132,18 @@ impl EstimatedIncomeForm {
         self.is_tax_year_ready = tax_year_is_ready(tax_year.as_ref(), ActiveTaxYear::get(cx));
     }
 
-    /// Collects the current form values into an [`EstimatedIncomeModel`].
+    /// Collects the current form values into a [`TaxEstimateInput`].
     ///
     /// Runs parse/required-field checks then business-rule validation. Returns
     /// all errors so the user can see every problem at once.
-    pub fn to_model(
+    pub fn to_input(
         &self,
+        se_model: &SeWorksheetModel,
         cx: &App,
-    ) -> Result<EstimatedIncomeModel, Vec<String>> {
+    ) -> Result<TaxEstimateInput, Vec<String>> {
         let mut errors = Vec::new();
 
-        let filing_status_id = match self.filing_status.read(cx).selected_value() {
+        let filing_status = match self.filing_status.read(cx).selected_value() {
             None => {
                 errors.push("No filing status selected".to_string());
                 None
@@ -185,7 +179,6 @@ impl EstimatedIncomeForm {
                 None
             }
         };
-
         let expected_deduction =
             match parse_decimal(self.expected_deduction.read(cx).value().as_str()) {
                 Ok(d) => Some(d),
@@ -199,16 +192,20 @@ impl EstimatedIncomeForm {
             return Err(errors);
         }
 
-        let model = EstimatedIncomeModel {
-            tax_year: tax_year.unwrap(),
-            filing_status_id: filing_status_id.unwrap(),
-            se_income: parse_optional_decimal(self.se_income.read(cx).value().as_str()),
-            expected_crp_payments: parse_optional_decimal(
-                self.expected_crp_payments.read(cx).value().as_str(),
-            ),
-            expected_wages: parse_optional_decimal(self.expected_wages.read(cx).value().as_str()),
-            expected_agi: expected_agi.unwrap(),
-            expected_deduction: expected_deduction.unwrap(),
+        let (Some(tax_year), Some(filing_status), Some(expected_agi), Some(expected_deduction)) =
+            (tax_year, filing_status, expected_agi, expected_deduction)
+        else {
+            return Err(vec!["Required estimate fields were missing".to_string()]);
+        };
+
+        let input = TaxEstimateInput {
+            tax_year,
+            filing_status,
+            se_income: se_model.line_1a_expected_se_income,
+            expected_crp_payments: se_model.line_1b_expected_crp_payments,
+            expected_wages: se_model.line_6_expected_wages,
+            expected_agi,
+            expected_deduction,
             expected_qbi_deduction: parse_optional_decimal(
                 self.expected_qbi_deduction.read(cx).value().as_str(),
             ),
@@ -225,8 +222,8 @@ impl EstimatedIncomeForm {
             prior_year_tax: parse_optional_decimal(self.prior_year_tax.read(cx).value().as_str()),
         };
 
-        model.validate_for_submit()?;
-        Ok(model)
+        input.validate_for_submit()?;
+        Ok(input)
     }
 
     /// Returns the raw tax year value, parsed if valid.
@@ -238,13 +235,14 @@ impl EstimatedIncomeForm {
         value.trim().parse::<i32>().ok()
     }
 
-    fn model_from_form_or_show_errors(
+    fn input_from_form_or_show_errors(
         &self,
+        se_model: &SeWorksheetModel,
         window: &mut Window,
         cx: &mut App,
-    ) -> Option<EstimatedIncomeModel> {
-        match self.to_model(cx) {
-            Ok(m) => Some(m),
+    ) -> Option<TaxEstimateInput> {
+        match self.to_input(se_model, cx) {
+            Ok(input) => Some(input),
             Err(errors) => {
                 for e in &errors {
                     tracing::warn!(%e, "form error");
@@ -260,12 +258,10 @@ impl EstimatedIncomeForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(form_model) = self.model_from_form_or_show_errors(window, cx) else {
+        let se_model = self.worksheet.read(cx).get_se_model().clone();
+        let Some(form_input) = self.input_from_form_or_show_errors(&se_model, window, cx) else {
             return;
         };
-
-        let mut inputs: EstimatedTaxWorksheetInput = EstimatedTaxWorksheetInput::default();
-        let se_model: &SeWorksheetModel = self.worksheet.read(cx).get_se_model();
 
         let Some(tax_year_data) = ActiveTaxYear::get(cx).tax_year_data.clone() else {
             tracing::warn!("No tax year loaded; cannot calculate SE tax");
@@ -274,51 +270,37 @@ impl EstimatedIncomeForm {
         };
 
         let config: &TaxYearConfig = &tax_year_data.config;
-        let filing_status_id: FilingStatusCode = form_model.filing_status_id;
+        let filing_status: FilingStatusCode = form_input.filing_status;
         let filing_data: &Vec<FilingStatusData> = &tax_year_data.statuses;
 
         let Some(filing_status_data) = filing_data
             .iter()
-            .find(|f: &&FilingStatusData| f.filing_status.status_code == filing_status_id)
+            .find(|f: &&FilingStatusData| f.filing_status.status_code == filing_status)
         else {
             // TODO: Handle this error situation
             return;
         };
 
-        inputs.adjusted_gross_income = form_model.expected_agi;
-        inputs.itemized_deduction = form_model.expected_deduction;
-        inputs.standard_deduction = form_model.expected_deduction;
-        inputs.alternative_minimum_tax = form_model.expected_amt.unwrap_or_default();
-        inputs.credits = form_model.expected_credits.unwrap_or_default();
-        inputs.self_employment_tax = se_model.line_10_total_se_tax.unwrap_or_default();
-        inputs.other_taxes = form_model.expected_other_taxes.unwrap_or_default();
-        inputs.refundable_credits = form_model.expected_credits.unwrap_or_default();
-        inputs.prior_year_tax = form_model.prior_year_tax.unwrap_or_default();
-        inputs.withholding = form_model.expected_withholding.unwrap_or_default();
-        inputs.is_farmer_or_fisher = false;
-        inputs.required_payment_threshold = config.min_se_threshold;
+        let worksheet_context = EstimatedTaxWorksheetContext {
+            self_employment_tax: se_model.line_10_total_se_tax.unwrap_or_default(),
+            refundable_credits: Decimal::ZERO,
+            is_farmer_or_fisher: false,
+            required_payment_threshold: config.req_pmnt_threshold,
+        };
+        let inputs = form_input.to_estimated_tax_worksheet_input(&worksheet_context);
 
         let tax_worksheet: EstimatedTaxWorksheet =
             EstimatedTaxWorksheet::new(&filing_status_data.tax_brackets);
-        let result: EstimatedTaxWorksheetResult = tax_worksheet.calculate(&inputs).unwrap();
+        let result: EstimatedTaxWorksheetResult = match tax_worksheet.calculate(&inputs) {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(%error, "Estimated tax calculation failed");
+                ErrorDialog::show("Calculation failed", &[error.to_string()], window, cx);
+                return;
+            }
+        };
 
-        tracing::info!(%result, "Estimated Taxes");
-
-        let new_estimate: NewTaxEstimate = NewTaxEstimate::new(
-            tax_year_data.config.tax_year,
-            filing_status_id.filing_status_to_id(),
-        )
-        .with_se_income(se_model.line_1a_expected_se_income.unwrap_or_default())
-        .with_expected_crp_payments(se_model.line_1b_expected_crp_payments.unwrap_or_default())
-        .with_expected_wages(se_model.line_6_expected_wages.unwrap_or_default())
-        .with_expected_agi(inputs.adjusted_gross_income)
-        .with_expected_deduction(inputs.standard_deduction)
-        .with_expected_qbi_deduction(inputs.qbi_deduction)
-        .with_expected_amt(inputs.alternative_minimum_tax)
-        .with_expected_credits(inputs.refundable_credits)
-        .with_expected_other_taxes(inputs.other_taxes)
-        .with_expected_withholding(inputs.withholding)
-        .with_prior_year_tax(inputs.prior_year_tax);
+        tracing::info!(input = %form_input, %result, "Estimated taxes");
     }
 
     fn call_se_worksheet_dialog(

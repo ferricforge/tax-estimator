@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::models::{
-    FilingStatus, NewTaxEstimate, StandardDeduction, TaxBracket, TaxEstimate, TaxYearConfig,
+    FilingStatus, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput, TaxYearConfig,
 };
 
 #[derive(Debug, Error)]
@@ -83,7 +83,7 @@ pub trait TaxRepository: Send + Sync {
     // Tax estimates
     async fn create_estimate(
         &self,
-        estimate: NewTaxEstimate,
+        estimate: TaxEstimateInput,
     ) -> Result<TaxEstimate, RepositoryError>;
 
     async fn get_estimate(
