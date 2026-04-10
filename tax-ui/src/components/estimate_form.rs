@@ -14,13 +14,15 @@ use gpui_component::{
 use regex::Regex;
 use rust_decimal::Decimal;
 use tax_core::calculations::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetResult,
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetInput,
+    EstimatedTaxWorksheetResult,
 };
 use tax_core::{FilingStatusCode, TaxEstimateInput, TaxYearConfig};
 
-use crate::app::FilingStatusData;
-use crate::components::ErrorDialog;
+use crate::app::{FilingStatusData, save_tax_estimate};
+use crate::components::{ErrorDialog, show_err};
 use crate::models::SeWorksheetModel;
+use crate::repository::TaxRepo;
 use crate::{
     components::{
         SeWorksheetForm, make_button, make_decimal_input, make_header_row, make_input_row,
@@ -258,7 +260,7 @@ impl EstimatedIncomeForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let se_model = self.worksheet.read(cx).get_se_model().clone();
+        let se_model: SeWorksheetModel = self.worksheet.read(cx).get_se_model().clone();
         let Some(form_input) = self.input_from_form_or_show_errors(&se_model, window, cx) else {
             return;
         };
@@ -287,7 +289,8 @@ impl EstimatedIncomeForm {
             is_farmer_or_fisher: false,
             required_payment_threshold: config.req_pmnt_threshold,
         };
-        let inputs = form_input.to_estimated_tax_worksheet_input(&worksheet_context);
+        let inputs: EstimatedTaxWorksheetInput =
+            form_input.to_estimated_tax_worksheet_input(&worksheet_context);
 
         let tax_worksheet: EstimatedTaxWorksheet =
             EstimatedTaxWorksheet::new(&filing_status_data.tax_brackets);
@@ -301,6 +304,28 @@ impl EstimatedIncomeForm {
         };
 
         tracing::info!(input = %form_input, %result, "Estimated taxes");
+
+        let window_handle = window.window_handle();
+        cx.spawn(async move |_this, async_cx| {
+            let repo = match async_cx.update(|app_cx: &mut App| {
+                TaxRepo::try_get(app_cx)
+                    .map(|tax_repo| tax_repo.tax_repository_arc())
+                    .ok_or_else(|| anyhow::anyhow!("TaxRepo not initialized for save_tax_estimate"))
+            }) {
+                Ok(Ok(repo)) => repo,
+                Ok(Err(e)) | Err(e) => {
+                    tracing::warn!(error = ?e, "Cannot save tax estimate");
+                    show_err(window_handle, async_cx, e);
+                    return;
+                }
+            };
+
+            if let Err(e) = save_tax_estimate(&form_input, &result, &se_model, repo).await {
+                tracing::error!(error = ?e, "save_tax_estimate failed");
+                show_err(window_handle, async_cx, e);
+            }
+        })
+        .detach();
     }
 
     fn call_se_worksheet_dialog(

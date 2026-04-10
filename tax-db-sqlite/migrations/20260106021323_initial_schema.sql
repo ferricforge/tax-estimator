@@ -5,7 +5,8 @@ CREATE TABLE tax_year_config (
     medicare_tax_rate DECIMAL(5,4) NOT NULL,
     se_tax_deductible_percentage DECIMAL(5,4) NOT NULL,
     se_deduction_factor DECIMAL(5,4) NOT NULL,
-    required_payment_threshold DECIMAL(12,2) NOT NULL
+    required_payment_threshold DECIMAL(12,2) NOT NULL,
+    min_se_threshold DECIMAL(12,2) NOT NULL DEFAULT 400.00
 );
 
 CREATE TABLE filing_status (
@@ -65,3 +66,6 @@ CREATE TABLE tax_estimate (
     FOREIGN KEY (tax_year) REFERENCES tax_year_config(tax_year),
     FOREIGN KEY (filing_status_id) REFERENCES filing_status(id)
 );
+
+CREATE UNIQUE INDEX ux_tax_estimate_tax_year_filing_status
+    ON tax_estimate (tax_year, filing_status_id);
