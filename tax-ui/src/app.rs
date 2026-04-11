@@ -186,9 +186,9 @@ pub async fn save_tax_estimate(
         total_tax: calculated.total_estimated_tax,
         required_payment: calculated.required_annual_payment,
     });
-    
+
     repo.update_estimate(&updated).await?;
-    
+
     Ok(())
 }
 

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{
     Row,
-    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteQueryResult, SqliteRow},
+    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow},
 };
 use tax_core::{
     FilingStatus, FilingStatusCode, RepositoryError, StandardDeduction, TaxBracket, TaxEstimate,
@@ -490,14 +490,31 @@ impl TaxRepository for SqliteRepository {
             .filing_status_id_for_code(estimate.filing_status)
             .await?;
 
-        let result: SqliteQueryResult = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO tax_estimate (
                 tax_year, filing_status_id, expected_agi, expected_deduction,
                 expected_qbi_deduction, expected_amt, expected_credits,
                 expected_other_taxes, expected_withholding, prior_year_tax,
                 se_income, expected_crp_payments, expected_wages,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (tax_year, filing_status_id) DO UPDATE SET
+                expected_agi = excluded.expected_agi,
+                expected_deduction = excluded.expected_deduction,
+                expected_qbi_deduction = excluded.expected_qbi_deduction,
+                expected_amt = excluded.expected_amt,
+                expected_credits = excluded.expected_credits,
+                expected_other_taxes = excluded.expected_other_taxes,
+                expected_withholding = excluded.expected_withholding,
+                prior_year_tax = excluded.prior_year_tax,
+                se_income = excluded.se_income,
+                expected_crp_payments = excluded.expected_crp_payments,
+                expected_wages = excluded.expected_wages,
+                calculated_se_tax = NULL,
+                calculated_total_tax = NULL,
+                calculated_required_payment = NULL,
+                updated_at = excluded.updated_at
+            RETURNING id",
         )
         .bind(estimate.tax_year)
         .bind(filing_status_id)
@@ -514,11 +531,9 @@ impl TaxRepository for SqliteRepository {
         .bind(estimate.expected_wages.map(decimal_to_f64))
         .bind(now)
         .bind(now)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| RepositoryError::Database(e.into()))?;
-
-        let id: i64 = result.last_insert_rowid();
         self.get_estimate(id).await
     }
 
@@ -1314,12 +1329,18 @@ mod tests {
             prior_year_tax: None,
         };
 
-        repo.create_estimate(estimate_8888.clone())
+        let first = repo
+            .create_estimate(estimate_8888.clone())
             .await
             .expect("Should create estimate");
-        repo.create_estimate(estimate_8888)
+        let second = repo
+            .create_estimate(estimate_8888)
             .await
-            .expect("Should create estimate");
+            .expect("Should upsert estimate");
+        assert_eq!(
+            first.id, second.id,
+            "same tax year and filing status should update the existing row"
+        );
         repo.create_estimate(estimate_8887)
             .await
             .expect("Should create estimate");
@@ -1328,13 +1349,13 @@ mod tests {
             .list_estimates(None)
             .await
             .expect("Should list all estimates");
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 2);
 
         let for_8888 = repo
             .list_estimates(Some(8888))
             .await
             .expect("Should list for 8888");
-        assert_eq!(for_8888.len(), 2);
+        assert_eq!(for_8888.len(), 1);
         assert!(for_8888.iter().all(|e| e.input.tax_year == 8888));
 
         let for_8887 = repo
