@@ -49,3 +49,7 @@ alwaysApply: true
 - **DRY**: Extract repeated code into reusable functions.
 - Explain Rust-specific patterns (ownership, borrowing, lifetimes) when suggesting code.
 - Emphasize safety guarantees in explanations.
+
+## Behavior
+- Avoid prepending commands with `cd /full/path/to/directory` just to run commands in the current workspace. Just run the needed command.
+- When changing directory within the current workspace, use relative paths when possible.
