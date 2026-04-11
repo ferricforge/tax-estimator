@@ -1,13 +1,16 @@
 #![allow(unused)]
 use std::fmt;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use gpui::{App, ParentElement, Window, px};
 use gpui_component::WindowExt;
 use gpui_component::dialog::DialogButtonProps;
 use rust_decimal::Decimal;
-use tax_core::NewTaxEstimate;
-use tax_core::calculations::{SeWorksheet, SeWorksheetConfig, SeWorksheetResult};
+use tax_core::calculations::{
+    EstimatedTaxWorksheetResult, SeWorksheet, SeWorksheetConfig, SeWorksheetResult,
+};
+use tax_core::{TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
 use tracing::debug;
 
 use tax_core::db::{DbConfig, RepositoryRegistry, TaxRepository};
@@ -15,7 +18,8 @@ use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket, TaxYearConfi
 use tax_db_sqlite::SqliteRepositoryFactory;
 
 use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
-use crate::models::{EstimatedIncomeModel, SeWorksheetModel};
+use crate::models::SeWorksheetModel;
+use crate::repository::TaxRepo;
 use crate::utils::{currency, percent};
 
 // ─── public data types ───────────────────────────────────────────────────────
@@ -166,6 +170,26 @@ fn run_se_worksheet(
                 "SE worksheet calculation failed (se_income={se_income}, crp_payments={crp_payments}, wages={wages})"
             )
         })
+}
+
+pub async fn save_tax_estimate(
+    form_input: &TaxEstimateInput,
+    calculated: &EstimatedTaxWorksheetResult,
+    se_model: &SeWorksheetModel,
+    repo: Arc<dyn TaxRepository>,
+) -> Result<()> {
+    let created: TaxEstimate = repo.create_estimate(form_input.clone()).await?;
+
+    let mut updated: TaxEstimate = created.clone();
+    updated.computed = Some(TaxEstimateComputed {
+        se_tax: se_model.line_10_total_se_tax.unwrap_or_default(),
+        total_tax: calculated.total_estimated_tax,
+        required_payment: calculated.required_annual_payment,
+    });
+
+    repo.update_estimate(&updated).await?;
+
+    Ok(())
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────

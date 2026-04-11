@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use gpui::{App, BorrowAppContext, Global};
+use gpui::{App, AsyncApp, BorrowAppContext, Global};
 use rust_decimal::Decimal;
 use tax_core::{RepositoryError, TaxRepository, TaxYearConfig, db::DbConfig}; // adjust path as needed
 
@@ -31,6 +31,10 @@ impl TaxRepo {
 
     pub fn tax_repository(&self) -> &dyn TaxRepository {
         &*self.0
+    }
+
+    pub fn tax_repository_arc(&self) -> Arc<dyn TaxRepository> {
+        self.0.clone()
     }
 
     pub async fn get_tax_year_config(
@@ -111,7 +115,7 @@ impl ActiveTaxYear {
             tax_year_data: None,
         });
 
-        cx.spawn(async move |async_cx| {
+        cx.spawn(async move |async_cx: &mut AsyncApp| {
             match load_tax_year_data(repo.tax_repository(), year).await {
                 // match repo.get_tax_year_config(year).await {
                 Ok(tax_year_data) => {

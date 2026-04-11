@@ -8,8 +8,8 @@ mod theme;
 pub mod window;
 
 use gpui::{
-    App, AppContext, Context, Div, Entity, IntoElement, ParentElement, SharedString, TextAlign,
-    Window, div,
+    AnyWindowHandle, App, AppContext, AsyncApp, Context, Div, Entity, IntoElement, ParentElement,
+    SharedString, TextAlign, Window, div,
 };
 use gpui::{ClickEvent, Styled};
 use gpui::{Pixels, Size, px};
@@ -235,4 +235,15 @@ pub fn make_labeled_row_fixed(label: impl Into<SharedString>) -> Div {
             .flex_grow()
             .child(label.into()),
     )
+}
+
+pub fn show_err(
+    handle: AnyWindowHandle,
+    async_cx: &mut AsyncApp,
+    err: anyhow::Error,
+) {
+    let _ = handle.update(async_cx, |_, window, cx| {
+        let lines: Vec<String> = err.chain().map(|c| c.to_string()).collect();
+        ErrorDialog::show("Save failed", &lines, window, cx);
+    });
 }

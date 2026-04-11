@@ -67,8 +67,7 @@
 //!
 //! let input = EstimatedTaxWorksheetInput {
 //!     adjusted_gross_income: dec!(100000.00),
-//!     itemized_deduction: dec!(0.00),
-//!     standard_deduction: dec!(15000.00),
+//!     deduction: dec!(15000.00),
 //!     qbi_deduction: dec!(0.00),
 //!     alternative_minimum_tax: dec!(0.00),
 //!     credits: dec!(0.00),
@@ -114,18 +113,22 @@ pub enum EstimatedTaxWorksheetError {
 ///
 /// These values are typically provided by the user and correspond to the
 /// input fields on Form 1040-ES.
+/// Additional values needed to resolve a canonical estimate into worksheet input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EstimatedTaxWorksheetContext {
+    pub self_employment_tax: Decimal,
+    pub refundable_credits: Decimal,
+    pub is_farmer_or_fisher: bool,
+    pub required_payment_threshold: Decimal,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EstimatedTaxWorksheetInput {
     /// Adjusted gross income expected for the tax year.
     pub adjusted_gross_income: Decimal,
 
-    /// Itemized deduction amount.
-    /// If greater than zero, this will be used instead of standard deduction.
-    pub itemized_deduction: Decimal,
-
-    /// Standard deduction for the filing status.
-    /// Used if itemized deduction is zero or less.
-    pub standard_deduction: Decimal,
+    /// Deduction amount to apply when computing taxable income.
+    pub deduction: Decimal,
 
     /// Qualified business income (QBI) deduction.
     pub qbi_deduction: Decimal,
@@ -183,9 +186,6 @@ pub struct EstimatedTaxWorksheetResult {
     /// This is the required payment minus withholding.
     pub underpayment: Decimal,
 
-    /// Indicates whether itemized deduction was used instead of standard.
-    pub used_itemized_deduction: bool,
-
     /// Indicates whether estimated tax payments are required.
     /// False if withholding covers the requirement or if under the threshold.
     pub estimated_payments_required: bool,
@@ -221,11 +221,6 @@ impl Display for EstimatedTaxWorksheetResult {
             f,
             "    underpayment                : ${}",
             self.underpayment.round_dp(2)
-        )?;
-        writeln!(
-            f,
-            "    used_itemized_deduction     : {}",
-            self.used_itemized_deduction
         )?;
         writeln!(
             f,
@@ -275,8 +270,7 @@ impl<'a> EstimatedTaxWorksheet<'a> {
         }
 
         // Determine deduction (itemized if > 0, else standard)
-        let (deduction, used_itemized) =
-            self.determine_deduction(input.itemized_deduction, input.standard_deduction);
+        let deduction = self.deduction_amount(input.deduction);
 
         // Calculate total deductions
         let total_deductions = self.total_deductions(deduction, input.qbi_deduction);
@@ -327,25 +321,16 @@ impl<'a> EstimatedTaxWorksheet<'a> {
             total_estimated_tax,
             required_annual_payment,
             underpayment,
-            used_itemized_deduction: used_itemized,
             estimated_payments_required,
         })
     }
 
-    /// Determines which deduction to use.
-    ///
-    /// If itemized deduction is greater than zero, uses itemized deduction.
-    /// Otherwise, uses standard deduction.
-    fn determine_deduction(
+    /// Rounds the provided deduction amount to worksheet currency precision.
+    fn deduction_amount(
         &self,
-        itemized: Decimal,
-        standard: Decimal,
-    ) -> (Decimal, bool) {
-        if itemized > Decimal::ZERO {
-            (round_half_up(itemized), true)
-        } else {
-            (round_half_up(standard), false)
-        }
+        deduction: Decimal,
+    ) -> Decimal {
+        round_half_up(deduction)
     }
 
     /// Calculates total deductions.
@@ -562,8 +547,7 @@ mod tests {
     fn test_input() -> EstimatedTaxWorksheetInput {
         EstimatedTaxWorksheetInput {
             adjusted_gross_income: dec!(100000.00),
-            itemized_deduction: dec!(0.00),
-            standard_deduction: dec!(15000.00),
+            deduction: dec!(15000.00),
             qbi_deduction: dec!(0.00),
             alternative_minimum_tax: dec!(0.00),
             credits: dec!(0.00),
@@ -585,7 +569,6 @@ mod tests {
             total_estimated_tax: dec!(12000.00),
             required_annual_payment: dec!(11000.00),
             underpayment: dec!(5000.00),
-            used_itemized_deduction: true,
             estimated_payments_required: true,
         };
         let expected = "EstimatedTaxWorksheetResult {
@@ -594,49 +577,33 @@ mod tests {
     total_estimated_tax         : $12000.00
     required_annual_payment     : $11000.00
     underpayment                : $5000.00
-    used_itemized_deduction     : true
     estimated_payments_required : true
 }";
         assert_eq!(format!("{result}"), expected);
     }
 
     // =========================================================================
-    // determine_deduction tests
+    // deduction_amount tests
     // =========================================================================
 
     #[test]
-    fn determine_deduction_uses_itemized_when_positive() {
+    fn deduction_amount_rounds_positive_value() {
         let brackets = test_brackets_single();
         let worksheet = EstimatedTaxWorksheet::new(&brackets);
 
-        let (deduction, used_itemized) =
-            worksheet.determine_deduction(dec!(20000.00), dec!(15000.00));
+        let deduction = worksheet.deduction_amount(dec!(20000.00));
 
         assert_eq!(deduction, dec!(20000.00));
-        assert!(used_itemized);
     }
 
     #[test]
-    fn determine_deduction_uses_standard_when_itemized_zero() {
+    fn deduction_amount_rounds_zero_value() {
         let brackets = test_brackets_single();
         let worksheet = EstimatedTaxWorksheet::new(&brackets);
 
-        let (deduction, used_itemized) = worksheet.determine_deduction(dec!(0.00), dec!(15000.00));
+        let deduction = worksheet.deduction_amount(dec!(0.00));
 
-        assert_eq!(deduction, dec!(15000.00));
-        assert!(!used_itemized);
-    }
-
-    #[test]
-    fn determine_deduction_uses_standard_when_itemized_negative() {
-        let brackets = test_brackets_single();
-        let worksheet = EstimatedTaxWorksheet::new(&brackets);
-
-        let (deduction, used_itemized) =
-            worksheet.determine_deduction(dec!(-100.00), dec!(15000.00));
-
-        assert_eq!(deduction, dec!(15000.00));
-        assert!(!used_itemized);
+        assert_eq!(deduction, dec!(0.00));
     }
 
     // =========================================================================
@@ -899,22 +866,20 @@ mod tests {
         assert_eq!(result.required_annual_payment, dec!(12000.00));
         // Underpayment: 12000 - 0 = 12000
         assert_eq!(result.underpayment, dec!(12000.00));
-        assert!(!result.used_itemized_deduction);
         assert!(result.estimated_payments_required);
     }
 
     #[test]
-    fn calculate_with_itemized_deduction() {
+    fn calculate_with_higher_deduction_amount() {
         let brackets = test_brackets_single();
         let worksheet = EstimatedTaxWorksheet::new(&brackets);
         let mut input = test_input();
-        input.itemized_deduction = dec!(20000.00);
+        input.deduction = dec!(20000.00);
 
         let result = worksheet.calculate(&input).unwrap();
 
         // Taxable income: 100000 - 20000 = 80000
         assert_eq!(result.taxable_income, dec!(80000.00));
-        assert!(result.used_itemized_deduction);
     }
 
     #[test]

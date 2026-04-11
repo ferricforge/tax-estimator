@@ -7,7 +7,7 @@ pub mod est_tax;
 pub mod self_emp;
 
 pub use est_tax::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetError, EstimatedTaxWorksheetInput,
-    EstimatedTaxWorksheetResult,
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetError,
+    EstimatedTaxWorksheetInput, EstimatedTaxWorksheetResult,
 };
 pub use self_emp::{SeWorksheet, SeWorksheetConfig, SeWorksheetError, SeWorksheetResult};

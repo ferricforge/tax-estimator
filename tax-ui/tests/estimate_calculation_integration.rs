@@ -1,30 +1,31 @@
-//! Integration test: EstimatedIncomeModel → DbConfig → SE Tax → TaxEstimate.
+//! Integration test: TaxEstimateInput → DbConfig → SE Tax → TaxEstimate.
 //!
-//! Demonstrates building a model, connecting via DbConfig, loading reference
-//! data, running tax-core SE and Estimated Tax worksheet calculations, and
-//! persisting the final TaxEstimate with calculated fields.
+//! Demonstrates building canonical estimate input, loading reference data,
+//! running both worksheets, and persisting the resulting estimate record.
 
 use rust_decimal::Decimal;
-use tax_core::FilingStatusCode;
 use tax_core::calculations::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetInput, SeWorksheet, SeWorksheetConfig,
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetResult, SeWorksheet,
+    SeWorksheetConfig, SeWorksheetResult,
 };
-use tax_core::db::DbConfig;
+use tax_core::db::{DbConfig, RepositoryRegistry};
+use tax_core::{
+    FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput, TaxRepository,
+};
 use tax_ui::app::{FilingStatusData, TaxYearData, build_registry, load_tax_year_data};
-use tax_ui::models::EstimatedIncomeModel;
 
 use pretty_assertions::assert_eq;
 use rust_decimal_macros::dec;
 
-fn make_model() -> EstimatedIncomeModel {
-    EstimatedIncomeModel {
+fn make_input() -> TaxEstimateInput {
+    TaxEstimateInput {
         tax_year: 2025,
-        filing_status_id: FilingStatusCode::Single,
+        filing_status: FilingStatusCode::Single,
         se_income: Some(dec!(100_000.00)),
         expected_crp_payments: None,
         expected_wages: Some(dec!(50_000.00)),
         expected_agi: dec!(175_000.00),
-        expected_deduction: dec!(0), // use standard from repo
+        expected_deduction: dec!(15_000.00),
         expected_qbi_deduction: None,
         expected_amt: None,
         expected_credits: None,
@@ -34,13 +35,13 @@ fn make_model() -> EstimatedIncomeModel {
     }
 }
 
-fn status_data_for_filing_status_id(
+fn status_data_for_filing_status(
     data: &TaxYearData,
-    filing_status_id: i32,
+    filing_status: FilingStatusCode,
 ) -> Option<&FilingStatusData> {
     data.statuses
         .iter()
-        .find(|s| s.filing_status.id == filing_status_id)
+        .find(|s| s.filing_status.status_code == filing_status)
 }
 
 fn run_se_worksheet(
@@ -58,101 +59,88 @@ fn run_se_worksheet(
 
 fn run_estimated_tax_worksheet(
     status_data: &FilingStatusData,
-    model: &EstimatedIncomeModel,
+    input: &TaxEstimateInput,
     se_self_employment_tax: Decimal,
     config: &tax_core::TaxYearConfig,
 ) -> tax_core::calculations::EstimatedTaxWorksheetResult {
-    let input = EstimatedTaxWorksheetInput {
-        adjusted_gross_income: model.expected_agi,
-        itemized_deduction: model.expected_deduction,
-        standard_deduction: status_data.standard_deduction.amount,
-        qbi_deduction: model.expected_qbi_deduction.unwrap_or(Decimal::ZERO),
-        alternative_minimum_tax: model.expected_amt.unwrap_or(Decimal::ZERO),
-        credits: model.expected_credits.unwrap_or(Decimal::ZERO),
+    let worksheet_input = input.to_estimated_tax_worksheet_input(&EstimatedTaxWorksheetContext {
         self_employment_tax: se_self_employment_tax,
-        other_taxes: model.expected_other_taxes.unwrap_or(Decimal::ZERO),
         refundable_credits: Decimal::ZERO,
-        prior_year_tax: model.prior_year_tax.unwrap_or(Decimal::ZERO),
-        withholding: model.expected_withholding.unwrap_or(Decimal::ZERO),
         is_farmer_or_fisher: false,
         required_payment_threshold: config.req_pmnt_threshold,
-    };
+    });
     let worksheet = EstimatedTaxWorksheet::new(&status_data.tax_brackets);
     worksheet
-        .calculate(&input)
+        .calculate(&worksheet_input)
         .expect("Estimated tax worksheet calculation should succeed")
 }
 
 #[tokio::test]
-async fn estimate_model_through_db_and_calculations_to_tax_estimate() {
-    let model = make_model();
-    let new_est = model.to_new_tax_estimate();
+async fn estimate_input_through_db_and_calculations_to_tax_estimate() {
+    let input = make_input();
 
     let db_config = DbConfig {
         backend: "sqlite".to_string(),
         connection_string: ":memory:".to_string(),
     };
-    let registry = build_registry();
-    let repo = registry
+    let registry: RepositoryRegistry = build_registry();
+    let repo: Box<dyn TaxRepository> = registry
         .create(&db_config)
         .await
         .expect("repository creation should succeed");
 
-    let year_data = load_tax_year_data(&*repo, model.tax_year)
+    let year_data: TaxYearData = load_tax_year_data(&*repo, input.tax_year)
         .await
         .expect("load_tax_year_data should succeed");
 
-    let status_data = status_data_for_filing_status_id(&year_data, new_est.filing_status_id)
-        .expect("seeded DB should have filing status for estimate");
+    let status_data: &FilingStatusData =
+        status_data_for_filing_status(&year_data, input.filing_status)
+            .expect("seeded DB should have filing status for estimate");
 
-    let se_income = model.se_income.unwrap_or(Decimal::ZERO);
-    let crp = model.expected_crp_payments.unwrap_or(Decimal::ZERO);
-    let wages = model.expected_wages.unwrap_or(Decimal::ZERO);
-    let se_result = run_se_worksheet(&year_data.config, se_income, crp, wages);
+    let se_income: Decimal = input.se_income.unwrap_or(Decimal::ZERO);
+    let crp: Decimal = input.expected_crp_payments.unwrap_or(Decimal::ZERO);
+    let wages: Decimal = input.expected_wages.unwrap_or(Decimal::ZERO);
+    let se_result: SeWorksheetResult = run_se_worksheet(&year_data.config, se_income, crp, wages);
 
-    let est_result = run_estimated_tax_worksheet(
+    let est_result: EstimatedTaxWorksheetResult = run_estimated_tax_worksheet(
         status_data,
-        &model,
+        &input,
         se_result.self_employment_tax,
         &year_data.config,
     );
 
-    let created = repo
-        .create_estimate(new_est.clone())
+    let created: TaxEstimate = repo
+        .create_estimate(input.clone())
         .await
         .expect("create_estimate should succeed");
 
-    let mut updated = created.clone();
-    updated.calculated_se_tax = Some(se_result.self_employment_tax);
-    updated.calculated_total_tax = Some(est_result.total_estimated_tax);
-    updated.calculated_required_payment = Some(est_result.required_annual_payment);
+    let mut updated: TaxEstimate = created.clone();
+    updated.computed = Some(TaxEstimateComputed {
+        se_tax: se_result.self_employment_tax,
+        total_tax: est_result.total_estimated_tax,
+        required_payment: est_result.required_annual_payment,
+    });
 
     repo.update_estimate(&updated)
         .await
         .expect("update_estimate should succeed");
 
-    let fetched = repo
+    let fetched: TaxEstimate = repo
         .get_estimate(created.id)
         .await
         .expect("get_estimate should succeed");
 
     assert_eq!(
-        fetched.calculated_se_tax,
-        Some(se_result.self_employment_tax),
-        "calculated_se_tax should match SE worksheet"
+        fetched.computed,
+        Some(TaxEstimateComputed {
+            se_tax: se_result.self_employment_tax,
+            total_tax: est_result.total_estimated_tax,
+            required_payment: est_result.required_annual_payment,
+        }),
+        "computed tax values should match both worksheets"
     );
-    assert_eq!(
-        fetched.calculated_total_tax,
-        Some(est_result.total_estimated_tax),
-        "calculated_total_tax should match estimated tax worksheet"
-    );
-    assert_eq!(
-        fetched.calculated_required_payment,
-        Some(est_result.required_annual_payment),
-        "calculated_required_payment should match estimated tax worksheet"
-    );
-    assert_eq!(fetched.tax_year, model.tax_year);
-    assert_eq!(fetched.filing_status_id, new_est.filing_status_id);
-    assert_eq!(fetched.expected_agi, model.expected_agi);
-    assert_eq!(fetched.expected_deduction, model.expected_deduction);
+    assert_eq!(fetched.input.tax_year, input.tax_year);
+    assert_eq!(fetched.input.filing_status, input.filing_status);
+    assert_eq!(fetched.input.expected_agi, input.expected_agi);
+    assert_eq!(fetched.input.expected_deduction, input.expected_deduction);
 }

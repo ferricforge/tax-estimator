@@ -94,10 +94,7 @@ mod tests {
 
     #[test]
     fn test_filing_status_to_id_single() {
-        assert_eq!(
-            FilingStatusCode::Single.filing_status_to_id(),
-            SINGLE
-        );
+        assert_eq!(FilingStatusCode::Single.filing_status_to_id(), SINGLE);
     }
 
     #[test]
@@ -118,10 +115,7 @@ mod tests {
 
     #[test]
     fn test_filing_status_to_id_head_of_household() {
-        assert_eq!(
-            FilingStatusCode::HeadOfHousehold.filing_status_to_id(),
-            HOH
-        );
+        assert_eq!(FilingStatusCode::HeadOfHousehold.filing_status_to_id(), HOH);
     }
 
     #[test]

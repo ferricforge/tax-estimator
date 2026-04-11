@@ -5,11 +5,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{
     Row,
-    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteQueryResult, SqliteRow},
+    sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow},
 };
 use tax_core::{
-    FilingStatus, FilingStatusCode, NewTaxEstimate, RepositoryError, StandardDeduction, TaxBracket,
-    TaxEstimate, TaxRepository, TaxYearConfig,
+    FilingStatus, FilingStatusCode, RepositoryError, StandardDeduction, TaxBracket, TaxEstimate,
+    TaxEstimateComputed, TaxEstimateInput, TaxRepository, TaxYearConfig,
 };
 
 use crate::decimal::{decimal_to_f64, get_decimal, get_optional_decimal};
@@ -46,6 +46,7 @@ impl SqliteRepository {
         Self { pool }
     }
 
+    /// Apply embedded SQLx migrations to the configured database.
     pub async fn run_migrations(&self) -> Result<()> {
         sqlx::migrate!("./migrations")
             .run(&self.pool)
@@ -90,33 +91,65 @@ impl SqliteRepository {
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
+
+    async fn filing_status_id_for_code(
+        &self,
+        code: FilingStatusCode,
+    ) -> Result<i32, RepositoryError> {
+        Ok(self.get_filing_status_by_code(code.as_str()).await?.id)
+    }
 }
 
 fn row_to_tax_estimate(row: &SqliteRow) -> Result<TaxEstimate, RepositoryError> {
+    let filing_status_code: String = row
+        .try_get("filing_status_code")
+        .map_err(|e| RepositoryError::Database(e.into()))?;
+    let filing_status = FilingStatusCode::parse(&filing_status_code).ok_or_else(|| {
+        RepositoryError::InvalidData(format!(
+            "Invalid filing status code on tax_estimate row: {filing_status_code}"
+        ))
+    })?;
+
+    let computed = match (
+        get_optional_decimal(row, "calculated_se_tax")?,
+        get_optional_decimal(row, "calculated_total_tax")?,
+        get_optional_decimal(row, "calculated_required_payment")?,
+    ) {
+        (None, None, None) => None,
+        (Some(se_tax), Some(total_tax), Some(required_payment)) => Some(TaxEstimateComputed {
+            se_tax,
+            total_tax,
+            required_payment,
+        }),
+        _ => {
+            return Err(RepositoryError::InvalidData(
+                "tax_estimate row has partially populated calculated fields".to_string(),
+            ));
+        }
+    };
+
     Ok(TaxEstimate {
         id: row
             .try_get("id")
             .map_err(|e| RepositoryError::Database(e.into()))?,
-        tax_year: row
-            .try_get("tax_year")
-            .map_err(|e| RepositoryError::Database(e.into()))?,
-        filing_status_id: row
-            .try_get("filing_status_id")
-            .map_err(|e| RepositoryError::Database(e.into()))?,
-        se_income: get_optional_decimal(row, "se_income")?,
-        expected_crp_payments: get_optional_decimal(row, "expected_crp_payments")?,
-        expected_wages: get_optional_decimal(row, "expected_wages")?,
-        expected_agi: get_decimal(row, "expected_agi")?,
-        expected_deduction: get_decimal(row, "expected_deduction")?,
-        expected_qbi_deduction: get_optional_decimal(row, "expected_qbi_deduction")?,
-        expected_amt: get_optional_decimal(row, "expected_amt")?,
-        expected_credits: get_optional_decimal(row, "expected_credits")?,
-        expected_other_taxes: get_optional_decimal(row, "expected_other_taxes")?,
-        expected_withholding: get_optional_decimal(row, "expected_withholding")?,
-        prior_year_tax: get_optional_decimal(row, "prior_year_tax")?,
-        calculated_se_tax: get_optional_decimal(row, "calculated_se_tax")?,
-        calculated_total_tax: get_optional_decimal(row, "calculated_total_tax")?,
-        calculated_required_payment: get_optional_decimal(row, "calculated_required_payment")?,
+        input: TaxEstimateInput {
+            tax_year: row
+                .try_get("tax_year")
+                .map_err(|e| RepositoryError::Database(e.into()))?,
+            filing_status,
+            se_income: get_optional_decimal(row, "se_income")?,
+            expected_crp_payments: get_optional_decimal(row, "expected_crp_payments")?,
+            expected_wages: get_optional_decimal(row, "expected_wages")?,
+            expected_agi: get_decimal(row, "expected_agi")?,
+            expected_deduction: get_decimal(row, "expected_deduction")?,
+            expected_qbi_deduction: get_optional_decimal(row, "expected_qbi_deduction")?,
+            expected_amt: get_optional_decimal(row, "expected_amt")?,
+            expected_credits: get_optional_decimal(row, "expected_credits")?,
+            expected_other_taxes: get_optional_decimal(row, "expected_other_taxes")?,
+            expected_withholding: get_optional_decimal(row, "expected_withholding")?,
+            prior_year_tax: get_optional_decimal(row, "prior_year_tax")?,
+        },
+        computed,
         created_at: row.try_get::<DateTime<Utc>, _>("created_at").map_err(|e| {
             RepositoryError::Database(anyhow::anyhow!("Failed to get created_at: {}", e))
         })?,
@@ -450,21 +483,41 @@ impl TaxRepository for SqliteRepository {
 
     async fn create_estimate(
         &self,
-        estimate: NewTaxEstimate,
+        estimate: TaxEstimateInput,
     ) -> Result<TaxEstimate, RepositoryError> {
         let now: DateTime<Utc> = Utc::now();
+        let filing_status_id = self
+            .filing_status_id_for_code(estimate.filing_status)
+            .await?;
 
-        let result: SqliteQueryResult = sqlx::query(
+        let id: i64 = sqlx::query_scalar(
             "INSERT INTO tax_estimate (
                 tax_year, filing_status_id, expected_agi, expected_deduction,
                 expected_qbi_deduction, expected_amt, expected_credits,
                 expected_other_taxes, expected_withholding, prior_year_tax,
                 se_income, expected_crp_payments, expected_wages,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (tax_year, filing_status_id) DO UPDATE SET
+                expected_agi = excluded.expected_agi,
+                expected_deduction = excluded.expected_deduction,
+                expected_qbi_deduction = excluded.expected_qbi_deduction,
+                expected_amt = excluded.expected_amt,
+                expected_credits = excluded.expected_credits,
+                expected_other_taxes = excluded.expected_other_taxes,
+                expected_withholding = excluded.expected_withholding,
+                prior_year_tax = excluded.prior_year_tax,
+                se_income = excluded.se_income,
+                expected_crp_payments = excluded.expected_crp_payments,
+                expected_wages = excluded.expected_wages,
+                calculated_se_tax = NULL,
+                calculated_total_tax = NULL,
+                calculated_required_payment = NULL,
+                updated_at = excluded.updated_at
+            RETURNING id",
         )
         .bind(estimate.tax_year)
-        .bind(estimate.filing_status_id)
+        .bind(filing_status_id)
         .bind(decimal_to_f64(estimate.expected_agi))
         .bind(decimal_to_f64(estimate.expected_deduction))
         .bind(estimate.expected_qbi_deduction.map(decimal_to_f64))
@@ -478,11 +531,9 @@ impl TaxRepository for SqliteRepository {
         .bind(estimate.expected_wages.map(decimal_to_f64))
         .bind(now)
         .bind(now)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| RepositoryError::Database(e.into()))?;
-
-        let id: i64 = result.last_insert_rowid();
         self.get_estimate(id).await
     }
 
@@ -491,13 +542,15 @@ impl TaxRepository for SqliteRepository {
         id: i64,
     ) -> Result<TaxEstimate, RepositoryError> {
         let row = sqlx::query(
-            "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
-                    expected_qbi_deduction, expected_amt, expected_credits,
-                    expected_other_taxes, expected_withholding, prior_year_tax,
-                    se_income, expected_crp_payments, expected_wages,
-                    calculated_se_tax, calculated_total_tax, calculated_required_payment,
-                    created_at, updated_at
-             FROM tax_estimate WHERE id = ?",
+            "SELECT te.id, te.tax_year, te.expected_agi, te.expected_deduction,
+                    te.expected_qbi_deduction, te.expected_amt, te.expected_credits,
+                    te.expected_other_taxes, te.expected_withholding, te.prior_year_tax,
+                    te.se_income, te.expected_crp_payments, te.expected_wages,
+                    te.calculated_se_tax, te.calculated_total_tax, te.calculated_required_payment,
+                    te.created_at, te.updated_at, fs.status_code AS filing_status_code
+             FROM tax_estimate te
+             JOIN filing_status fs ON fs.id = te.filing_status_id
+             WHERE te.id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -513,6 +566,18 @@ impl TaxRepository for SqliteRepository {
         estimate: &TaxEstimate,
     ) -> Result<(), RepositoryError> {
         let now = Utc::now();
+        let filing_status_id = self
+            .filing_status_id_for_code(estimate.input.filing_status)
+            .await?;
+        let (calculated_se_tax, calculated_total_tax, calculated_required_payment) =
+            match &estimate.computed {
+                Some(computed) => (
+                    Some(decimal_to_f64(computed.se_tax)),
+                    Some(decimal_to_f64(computed.total_tax)),
+                    Some(decimal_to_f64(computed.required_payment)),
+                ),
+                None => (None, None, None),
+            };
 
         let result = sqlx::query(
             "UPDATE tax_estimate SET
@@ -524,22 +589,22 @@ impl TaxRepository for SqliteRepository {
                 updated_at = ?
              WHERE id = ?",
         )
-        .bind(estimate.tax_year)
-        .bind(estimate.filing_status_id)
-        .bind(decimal_to_f64(estimate.expected_agi))
-        .bind(decimal_to_f64(estimate.expected_deduction))
-        .bind(estimate.expected_qbi_deduction.map(decimal_to_f64))
-        .bind(estimate.expected_amt.map(decimal_to_f64))
-        .bind(estimate.expected_credits.map(decimal_to_f64))
-        .bind(estimate.expected_other_taxes.map(decimal_to_f64))
-        .bind(estimate.expected_withholding.map(decimal_to_f64))
-        .bind(estimate.prior_year_tax.map(decimal_to_f64))
-        .bind(estimate.se_income.map(decimal_to_f64))
-        .bind(estimate.expected_crp_payments.map(decimal_to_f64))
-        .bind(estimate.expected_wages.map(decimal_to_f64))
-        .bind(estimate.calculated_se_tax.map(decimal_to_f64))
-        .bind(estimate.calculated_total_tax.map(decimal_to_f64))
-        .bind(estimate.calculated_required_payment.map(decimal_to_f64))
+        .bind(estimate.input.tax_year)
+        .bind(filing_status_id)
+        .bind(decimal_to_f64(estimate.input.expected_agi))
+        .bind(decimal_to_f64(estimate.input.expected_deduction))
+        .bind(estimate.input.expected_qbi_deduction.map(decimal_to_f64))
+        .bind(estimate.input.expected_amt.map(decimal_to_f64))
+        .bind(estimate.input.expected_credits.map(decimal_to_f64))
+        .bind(estimate.input.expected_other_taxes.map(decimal_to_f64))
+        .bind(estimate.input.expected_withholding.map(decimal_to_f64))
+        .bind(estimate.input.prior_year_tax.map(decimal_to_f64))
+        .bind(estimate.input.se_income.map(decimal_to_f64))
+        .bind(estimate.input.expected_crp_payments.map(decimal_to_f64))
+        .bind(estimate.input.expected_wages.map(decimal_to_f64))
+        .bind(calculated_se_tax)
+        .bind(calculated_total_tax)
+        .bind(calculated_required_payment)
         .bind(now)
         .bind(estimate.id)
         .execute(&self.pool)
@@ -575,18 +640,19 @@ impl TaxRepository for SqliteRepository {
         tax_year: Option<i32>,
     ) -> Result<Vec<TaxEstimate>, RepositoryError> {
         const BASE_QUERY: &str =
-            "SELECT id, tax_year, filing_status_id, expected_agi, expected_deduction,
-                expected_qbi_deduction, expected_amt, expected_credits,
-                expected_other_taxes, expected_withholding, prior_year_tax,
-                se_income, expected_crp_payments, expected_wages,
-                calculated_se_tax, calculated_total_tax, calculated_required_payment,
-                created_at, updated_at
-         FROM tax_estimate";
+            "SELECT te.id, te.tax_year, te.expected_agi, te.expected_deduction,
+                te.expected_qbi_deduction, te.expected_amt, te.expected_credits,
+                te.expected_other_taxes, te.expected_withholding, te.prior_year_tax,
+                te.se_income, te.expected_crp_payments, te.expected_wages,
+                te.calculated_se_tax, te.calculated_total_tax, te.calculated_required_payment,
+                te.created_at, te.updated_at, fs.status_code AS filing_status_code
+         FROM tax_estimate te
+         JOIN filing_status fs ON fs.id = te.filing_status_id";
 
         let rows = match tax_year {
             Some(year) => {
                 sqlx::query(&format!(
-                    "{} WHERE tax_year = ? ORDER BY updated_at DESC",
+                    "{} WHERE te.tax_year = ? ORDER BY te.updated_at DESC",
                     BASE_QUERY
                 ))
                 .bind(year)
@@ -594,7 +660,7 @@ impl TaxRepository for SqliteRepository {
                 .await
             }
             None => {
-                sqlx::query(&format!("{} ORDER BY updated_at DESC", BASE_QUERY))
+                sqlx::query(&format!("{} ORDER BY te.updated_at DESC", BASE_QUERY))
                     .fetch_all(&self.pool)
                     .await
             }
@@ -744,10 +810,10 @@ mod tests {
         .expect("Failed to insert test filing status");
     }
 
-    fn create_test_estimate() -> NewTaxEstimate {
-        NewTaxEstimate {
+    fn create_test_estimate() -> TaxEstimateInput {
+        TaxEstimateInput {
             tax_year: 8888,
-            filing_status_id: 50,
+            filing_status: FilingStatusCode::Single,
             se_income: Some(dec!(50000.00)),
             expected_crp_payments: None,
             expected_wages: Some(dec!(50000.00)),
@@ -762,10 +828,10 @@ mod tests {
         }
     }
 
-    fn create_minimal_test_estimate() -> NewTaxEstimate {
-        NewTaxEstimate {
+    fn create_minimal_test_estimate() -> TaxEstimateInput {
+        TaxEstimateInput {
             tax_year: 8888,
-            filing_status_id: 50,
+            filing_status: FilingStatusCode::Single,
             se_income: None,
             expected_crp_payments: None,
             expected_wages: None,
@@ -1107,29 +1173,27 @@ mod tests {
             .expect("Should create estimate");
 
         assert!(created.id > 0);
-        assert_eq!(created.tax_year, 8888);
-        assert_eq!(created.filing_status_id, 50);
-        assert_eq!(created.expected_agi, dec!(100000.00));
-        assert_eq!(created.expected_deduction, dec!(15000.00));
-        assert_eq!(created.expected_qbi_deduction, Some(dec!(5000.00)));
-        assert_eq!(created.expected_amt, None);
-        assert_eq!(created.expected_credits, Some(dec!(2000.00)));
-        assert_eq!(created.expected_other_taxes, None);
-        assert_eq!(created.expected_withholding, Some(dec!(8000.00)));
-        assert_eq!(created.prior_year_tax, Some(dec!(12000.00)));
-        assert_eq!(created.se_income, Some(dec!(50000.00)));
-        assert_eq!(created.expected_crp_payments, None);
-        assert_eq!(created.expected_wages, Some(dec!(50000.00)));
-        assert_eq!(created.calculated_se_tax, None);
-        assert_eq!(created.calculated_total_tax, None);
-        assert_eq!(created.calculated_required_payment, None);
+        assert_eq!(created.input.tax_year, 8888);
+        assert_eq!(created.input.filing_status, FilingStatusCode::Single);
+        assert_eq!(created.input.expected_agi, dec!(100000.00));
+        assert_eq!(created.input.expected_deduction, dec!(15000.00));
+        assert_eq!(created.input.expected_qbi_deduction, Some(dec!(5000.00)));
+        assert_eq!(created.input.expected_amt, None);
+        assert_eq!(created.input.expected_credits, Some(dec!(2000.00)));
+        assert_eq!(created.input.expected_other_taxes, None);
+        assert_eq!(created.input.expected_withholding, Some(dec!(8000.00)));
+        assert_eq!(created.input.prior_year_tax, Some(dec!(12000.00)));
+        assert_eq!(created.input.se_income, Some(dec!(50000.00)));
+        assert_eq!(created.input.expected_crp_payments, None);
+        assert_eq!(created.input.expected_wages, Some(dec!(50000.00)));
+        assert_eq!(created.computed, None);
 
         let fetched = repo
             .get_estimate(created.id)
             .await
             .expect("Should fetch estimate");
         assert_eq!(fetched.id, created.id);
-        assert_eq!(fetched.expected_agi, dec!(100000.00));
+        assert_eq!(fetched.input.expected_agi, dec!(100000.00));
     }
 
     #[tokio::test]
@@ -1152,10 +1216,13 @@ mod tests {
             .await
             .expect("Should create estimate");
 
-        created.expected_agi = dec!(150000.00);
-        created.calculated_total_tax = Some(dec!(25000.00));
-        created.calculated_se_tax = Some(dec!(7500.00));
-        created.calculated_required_payment = Some(dec!(4000.00));
+        created.input.expected_agi = dec!(150000.00);
+        created.input.expected_deduction = dec!(18000.00);
+        created.computed = Some(TaxEstimateComputed {
+            se_tax: dec!(7500.00),
+            total_tax: dec!(25000.00),
+            required_payment: dec!(4000.00),
+        });
 
         repo.update_estimate(&created)
             .await
@@ -1166,10 +1233,16 @@ mod tests {
             .await
             .expect("Should fetch estimate");
 
-        assert_eq!(fetched.expected_agi, dec!(150000.00));
-        assert_eq!(fetched.calculated_total_tax, Some(dec!(25000.00)));
-        assert_eq!(fetched.calculated_se_tax, Some(dec!(7500.00)));
-        assert_eq!(fetched.calculated_required_payment, Some(dec!(4000.00)));
+        assert_eq!(fetched.input.expected_agi, dec!(150000.00));
+        assert_eq!(fetched.input.expected_deduction, dec!(18000.00));
+        assert_eq!(
+            fetched.computed,
+            Some(TaxEstimateComputed {
+                se_tax: dec!(7500.00),
+                total_tax: dec!(25000.00),
+                required_payment: dec!(4000.00),
+            })
+        );
     }
 
     #[tokio::test]
@@ -1224,9 +1297,9 @@ mod tests {
         let repo = setup_test_db().await;
         setup_test_data_for_estimates(&repo).await;
 
-        let estimate_8888 = NewTaxEstimate {
+        let estimate_8888 = TaxEstimateInput {
             tax_year: 8888,
-            filing_status_id: 50,
+            filing_status: FilingStatusCode::Single,
             se_income: None,
             expected_crp_payments: None,
             expected_wages: None,
@@ -1240,9 +1313,9 @@ mod tests {
             prior_year_tax: None,
         };
 
-        let estimate_8887 = NewTaxEstimate {
+        let estimate_8887 = TaxEstimateInput {
             tax_year: 8887,
-            filing_status_id: 50,
+            filing_status: FilingStatusCode::Single,
             se_income: None,
             expected_crp_payments: None,
             expected_wages: None,
@@ -1256,12 +1329,18 @@ mod tests {
             prior_year_tax: None,
         };
 
-        repo.create_estimate(estimate_8888.clone())
+        let first = repo
+            .create_estimate(estimate_8888.clone())
             .await
             .expect("Should create estimate");
-        repo.create_estimate(estimate_8888)
+        let second = repo
+            .create_estimate(estimate_8888)
             .await
-            .expect("Should create estimate");
+            .expect("Should upsert estimate");
+        assert_eq!(
+            first.id, second.id,
+            "same tax year and filing status should update the existing row"
+        );
         repo.create_estimate(estimate_8887)
             .await
             .expect("Should create estimate");
@@ -1270,21 +1349,21 @@ mod tests {
             .list_estimates(None)
             .await
             .expect("Should list all estimates");
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 2);
 
         let for_8888 = repo
             .list_estimates(Some(8888))
             .await
             .expect("Should list for 8888");
-        assert_eq!(for_8888.len(), 2);
-        assert!(for_8888.iter().all(|e| e.tax_year == 8888));
+        assert_eq!(for_8888.len(), 1);
+        assert!(for_8888.iter().all(|e| e.input.tax_year == 8888));
 
         let for_8887 = repo
             .list_estimates(Some(8887))
             .await
             .expect("Should list for 8887");
         assert_eq!(for_8887.len(), 1);
-        assert_eq!(for_8887[0].tax_year, 8887);
+        assert_eq!(for_8887[0].input.tax_year, 8887);
 
         let for_7777 = repo
             .list_estimates(Some(7777))
