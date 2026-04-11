@@ -25,8 +25,8 @@ use crate::models::SeWorksheetModel;
 use crate::repository::TaxRepo;
 use crate::{
     components::{
-        SeWorksheetForm, make_button, make_decimal_input, make_header_row, make_input_row,
-        make_integer_input, make_select_row,
+        ResultForm, SeWorksheetForm, make_button, make_decimal_input, make_header_row,
+        make_input_row, make_integer_input, make_select_row,
     },
     repository::ActiveTaxYear,
     utils::{parse_decimal, parse_optional_decimal},
@@ -57,6 +57,7 @@ pub struct EstimatedIncomeForm {
     // Line 12b: required annual payment based on prior year's tax (per worksheet instructions).
     prior_year_tax: Entity<InputState>,
     is_tax_year_ready: bool,
+    results: Entity<ResultForm>,
 }
 
 impl EstimatedIncomeForm {
@@ -110,6 +111,7 @@ impl EstimatedIncomeForm {
         .detach();
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
+        let results = cx.new(|_| ResultForm::default());
         Self {
             worksheet,
             tax_year,
@@ -123,6 +125,7 @@ impl EstimatedIncomeForm {
             expected_withholding: make_decimal_input("Exp inc tax withheld", 2, window, cx),
             prior_year_tax: make_decimal_input("Prior year tax liability", 2, window, cx),
             is_tax_year_ready: false,
+            results,
         }
     }
 
@@ -303,6 +306,13 @@ impl EstimatedIncomeForm {
             }
         };
 
+        let se_tax = se_model.line_10_total_se_tax.unwrap_or_default();
+        self.results.update(cx, |rf, cx| {
+            rf.set_from_calculation(se_tax, &result);
+            cx.notify();
+        });
+        cx.notify();
+
         tracing::info!(input = %form_input, %result, "Estimated taxes");
 
         let window_handle = window.window_handle();
@@ -351,6 +361,17 @@ impl EstimatedIncomeForm {
                 .button_props(DialogButtonProps::default().cancel_text("Close"))
                 .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
         });
+    }
+
+    fn render_results(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        if self.results.read(cx).has_results() {
+            div().child(self.results.clone())
+        } else {
+            div()
+        }
     }
 
     fn render_toolbar(
@@ -449,6 +470,7 @@ impl Render for EstimatedIncomeForm {
                         .child(self.render_right_side(window, cx)),
                 ),
             )
+            .child(self.render_results(cx))
             .child(self.render_toolbar(cx))
     }
 }

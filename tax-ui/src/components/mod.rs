@@ -19,6 +19,7 @@ use gpui_component::{Disableable, Sizable, h_flex};
 
 pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
+pub use results_form::ResultForm;
 
 pub use file_menu::{
     CloseProject, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,

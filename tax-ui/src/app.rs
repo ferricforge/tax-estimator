@@ -151,7 +151,7 @@ pub fn se_tax_estimate(
     wages: Decimal,
 ) -> Result<SeWorksheetResult> {
     let estimate = run_se_worksheet(config, se_income, crp_payments, wages)?;
-    tracing::info!("Estimate Result=\n{}", estimate);
+    tracing::debug!("Estimate Result=\n{}", estimate);
     Ok(estimate)
 }
 
