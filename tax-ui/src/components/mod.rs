@@ -1,11 +1,12 @@
-pub mod dialogs;
+mod dialogs;
 mod estimate_form;
 mod file_menu;
-pub mod file_picker;
-pub mod filters;
+mod file_picker;
+mod filters;
+mod results_form;
 mod se_worksheet_form;
 mod theme;
-pub mod window;
+mod window;
 
 use gpui::{
     AnyWindowHandle, App, AppContext, AsyncApp, Context, Div, Entity, IntoElement, ParentElement,

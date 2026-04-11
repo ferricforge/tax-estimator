@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 /// Convert borrowed filter definitions into owned `String` values.
 ///
 /// This is useful when filter data needs to be moved into an `async move`
