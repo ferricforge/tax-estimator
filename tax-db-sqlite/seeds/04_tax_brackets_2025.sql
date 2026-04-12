@@ -47,3 +47,53 @@ INSERT OR IGNORE INTO tax_brackets (tax_year, filing_status_id, min_income, max_
 (2025, 5, 394600, 501050, 0.32, 80398),
 (2025, 5, 501050, 751600, 0.35, 114462),
 (2025, 5, 751600, NULL, 0.37, 202154.50);
+
+-- Seed 2026 tax brackets (Schedule X - Single)
+INSERT OR IGNORE INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax) VALUES
+(2026, 1, 0, 12400, 0.10, 0),
+(2026, 1, 12400, 50400, 0.12, 1240.00),
+(2026, 1, 50400, 105700, 0.22, 5800.00),
+(2026, 1, 105700, 201775, 0.24, 17966.00),
+(2026, 1, 201775, 256225, 0.32, 41024.00),
+(2026, 1, 256225, 640600, 0.35, 58448.00),
+(2026, 1, 640600, NULL, 0.37, 192979.25);
+
+-- Seed 2026 tax brackets (Schedule Y-1 - Married Filing Jointly)
+INSERT OR IGNORE INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax) VALUES
+(2026, 2, 0, 24800, 0.10, 0),
+(2026, 2, 24800, 100800, 0.12, 2480.00),
+(2026, 2, 100800, 211400, 0.22, 11600.00),
+(2026, 2, 211400, 403550, 0.24, 35932.00),
+(2026, 2, 403550, 512450, 0.32, 82048.00),
+(2026, 2, 512450, 768700, 0.35, 116896.00),
+(2026, 2, 768700, NULL, 0.37, 206583.50);
+
+-- Seed 2026 tax brackets (Schedule Y-2 - Married Filing Separately)
+INSERT OR IGNORE INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax) VALUES
+(2026, 3, 0, 12400, 0.10, 0),
+(2026, 3, 12400, 50400, 0.12, 1240.00),
+(2026, 3, 50400, 105700, 0.22, 5800.00),
+(2026, 3, 105700, 201775, 0.24, 17966.00),
+(2026, 3, 201775, 256225, 0.32, 41024.00),
+(2026, 3, 256225, 384350, 0.35, 58448.00),
+(2026, 3, 384350, NULL, 0.37, 103291.75);
+
+-- Seed 2026 tax brackets (Schedule Z - Head of Household)
+INSERT OR IGNORE INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax) VALUES
+(2026, 4, 0, 17700, 0.10, 0),
+(2026, 4, 17700, 67450, 0.12, 1770.00),
+(2026, 4, 67450, 105700, 0.22, 7740.00),
+(2026, 4, 105700, 201750, 0.24, 16155.00),
+(2026, 4, 201750, 256200, 0.32, 39207.00),
+(2026, 4, 256200, 640600, 0.35, 56631.00),
+(2026, 4, 640600, NULL, 0.37, 191171.00);
+
+-- Seed 2026 tax brackets (QSS - uses same brackets as Schedule Y-1)
+INSERT OR IGNORE INTO tax_brackets (tax_year, filing_status_id, min_income, max_income, tax_rate, base_tax) VALUES
+(2026, 5, 0, 24800, 0.10, 0),
+(2026, 5, 24800, 100800, 0.12, 2480.00),
+(2026, 5, 100800, 211400, 0.22, 11600.00),
+(2026, 5, 211400, 403550, 0.24, 35932.00),
+(2026, 5, 403550, 512450, 0.32, 82048.00),
+(2026, 5, 512450, 768700, 0.35, 116896.00),
+(2026, 5, 768700, NULL, 0.37, 206583.50);
