@@ -18,7 +18,9 @@ use gpui::{ClickEvent, Styled};
 use gpui::{Pixels, Size};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::tooltip::Tooltip;
-use gpui_component::{Disableable, Sizable, StyledExt, h_flex, v_flex};
+use gpui_component::{
+    ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt, h_flex, v_flex,
+};
 
 pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
@@ -156,7 +158,9 @@ pub(crate) fn make_input_row_with_help(
     label: impl Into<SharedString>,
     help: Option<FieldHelp>,
 ) -> Div {
-    make_labeled_row_with_help(label, help).child(Input::new(state).flex_grow())
+    make_labeled_row_with_help(label, None)
+        .child(Input::new(state).flex_grow())
+        .when_some(help, |this, help| this.child(build_help_icon(help)))
 }
 
 /// A labeled row containing a [`Select`] or any other already-rendered element.
@@ -174,7 +178,9 @@ pub(crate) fn make_select_row_with_help(
     element: impl IntoElement,
     help: Option<FieldHelp>,
 ) -> Div {
-    make_labeled_row_with_help(label, help).child(element)
+    make_labeled_row_with_help(label, None)
+        .child(element)
+        .when_some(help, |this, help| this.child(build_help_icon(help)))
 }
 
 /// Base row: right-aligned label with a minimum width, border, and gap.
@@ -186,7 +192,7 @@ pub fn make_labeled_row(label: impl Into<SharedString>) -> Div {
 /// Base row: right-aligned label with optional help tooltip.
 pub(crate) fn make_labeled_row_with_help(
     label: impl Into<SharedString>,
-    help: Option<FieldHelp>,
+    _help: Option<FieldHelp>,
 ) -> Div {
     h_flex()
         .items_center()
@@ -198,7 +204,7 @@ pub(crate) fn make_labeled_row_with_help(
             div()
                 .min_w(px(150.))
                 .text_align(TextAlign::Right)
-                .child(build_label_content(label.into(), help)),
+                .child(build_label_content(label.into())),
         )
 }
 
@@ -240,7 +246,9 @@ pub(crate) fn make_input_row_fixed_with_help(
     label: impl Into<SharedString>,
     help: Option<FieldHelp>,
 ) -> Div {
-    make_labeled_row_fixed_with_help(label, help).child(Input::new(state).w(px(SE_FIELD_WIDTH)))
+    make_labeled_row_fixed_with_help(label, None)
+        .child(Input::new(state).w(px(SE_FIELD_WIDTH)))
+        .when_some(help, |this, help| this.child(build_help_icon(help)))
 }
 
 /// A labeled row containing a read-only calculated value, fixed width.
@@ -263,19 +271,21 @@ pub(crate) fn make_display_row_with_help(
         .map(|d| format!("${d:.2}"))
         .unwrap_or_else(|| "—".to_string());
 
-    make_labeled_row_fixed_with_help(label, help).child(
-        div()
-            .w(px(SE_FIELD_WIDTH))
-            .px_2()
-            .py_1()
-            .rounded_md()
-            .border_1()
-            .border_color(theme::DISPLAY_FIELD_BORDER)
-            .bg(theme::DISPLAY_FIELD_BG)
-            .text_color(theme::DISPLAY_FIELD_TEXT)
-            .text_align(TextAlign::Right)
-            .child(display),
-    )
+    make_labeled_row_fixed_with_help(label, None)
+        .child(
+            div()
+                .w(px(SE_FIELD_WIDTH))
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .border_1()
+                .border_color(theme::DISPLAY_FIELD_BORDER)
+                .bg(theme::DISPLAY_FIELD_BG)
+                .text_color(theme::DISPLAY_FIELD_TEXT)
+                .text_align(TextAlign::Right)
+                .child(display),
+        )
+        .when_some(help, |this, help| this.child(build_help_icon(help)))
 }
 
 /// Base row for fixed-layout dialogs: fixed-width right-aligned label,
@@ -287,21 +297,18 @@ pub fn make_labeled_row_fixed(label: impl Into<SharedString>) -> Div {
 /// Base row for fixed-layout dialogs with optional help tooltip.
 pub(crate) fn make_labeled_row_fixed_with_help(
     label: impl Into<SharedString>,
-    help: Option<FieldHelp>,
+    _help: Option<FieldHelp>,
 ) -> Div {
     h_flex().items_center().gap_2().p(px(2.)).child(
         div()
             .w(px(SE_LABEL_WIDTH))
             .text_align(TextAlign::Right)
             .flex_grow()
-            .child(build_label_content(label.into(), help)),
+            .child(build_label_content(label.into())),
     )
 }
 
-fn build_label_content(
-    label: SharedString,
-    help: Option<FieldHelp>,
-) -> impl IntoElement {
+fn build_label_content(label: SharedString) -> impl IntoElement {
     let tooltip_id = SharedString::from(format!(
         "field-help-{}",
         label
@@ -314,22 +321,33 @@ fn build_label_content(
             .collect::<String>()
     ));
 
-    let label_row = h_flex()
+    h_flex()
         .id(tooltip_id)
         .items_center()
         .justify_end()
-        .gap_1()
         .child(div().child(label))
-        .when(help.is_some(), |this| {
-            this.child(div().px_1().rounded_full().border_1().text_xs().child("?"))
-        });
+}
 
-    match help {
-        Some(help) => {
-            label_row.tooltip(move |window, cx| build_field_help_tooltip(&help, window, cx))
-        }
-        None => label_row,
-    }
+fn build_help_icon(help: FieldHelp) -> impl IntoElement {
+    let tooltip_id = SharedString::from(format!(
+        "field-help-icon-{}",
+        help.label
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            })
+            .collect::<String>()
+    ));
+
+    div()
+        .id(tooltip_id)
+        .flex_none()
+        .ml_1()
+        .py_0p5()
+        .child(Icon::new(IconName::Info).size_4())
+        .tooltip(move |window, cx| build_field_help_tooltip(&help, window, cx))
 }
 
 fn build_field_help_tooltip(
@@ -360,6 +378,7 @@ fn build_field_help_tooltip(
                     .child(paragraph)
             }))
     })
+    .border_color(cx.theme().warning)
     .build(window, cx)
 }
 
