@@ -21,12 +21,13 @@ use tax_core::{FilingStatusCode, TaxEstimateInput, TaxYearConfig};
 
 use crate::app::{FilingStatusData, save_tax_estimate};
 use crate::components::{ErrorDialog, show_err};
+use crate::instructions::{UiInstructionField, help_for_field};
 use crate::models::SeWorksheetModel;
 use crate::repository::TaxRepo;
 use crate::{
     components::{
         ResultForm, SeWorksheetForm, make_button, make_decimal_input, make_header_row,
-        make_input_row, make_integer_input, make_select_row,
+        make_input_row, make_input_row_with_help, make_integer_input, make_select_row,
     },
     repository::ActiveTaxYear,
     utils::{parse_decimal, parse_optional_decimal},
@@ -423,31 +424,52 @@ impl EstimatedIncomeForm {
     fn render_right_side(
         &self,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let selected_year = self.tax_year(cx);
+
         self.render_side_base()
-            // .child(make_header_row("SE Worksheet Inputs:"))
-            // .child(make_input_row(&self.se_income, "SE income: $"))
-            // .child(make_input_row(
-            //     &self.expected_crp_payments,
-            //     "CRP payments: $",
-            // ))
-            // .child(make_input_row(&self.expected_wages, "Wages: $"))
             .child(make_header_row("1040-ES Worksheet Inputs:"))
-            .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
-            .child(make_input_row(
+            .child(make_input_row_with_help(
+                &self.expected_agi,
+                "Expected AGI: $",
+                help_for_field(UiInstructionField::ExpectedAgi, selected_year),
+            ))
+            .child(make_input_row_with_help(
                 &self.expected_deduction,
                 "Exp. deduction: $",
+                help_for_field(UiInstructionField::ExpectedDeduction, selected_year),
             ))
-            .child(make_input_row(
+            .child(make_input_row_with_help(
                 &self.expected_qbi_deduction,
                 "QBI deduction: $",
+                help_for_field(UiInstructionField::ExpectedQbiDeduction, selected_year),
             ))
-            .child(make_input_row(&self.expected_amt, "AMT: $"))
-            .child(make_input_row(&self.expected_credits, "Credits: $"))
-            .child(make_input_row(&self.expected_other_taxes, "Other taxes: $"))
-            .child(make_input_row(&self.expected_withholding, "Withholding: $"))
-            .child(make_input_row(&self.prior_year_tax, "Prior year tax: $"))
+            .child(make_input_row_with_help(
+                &self.expected_amt,
+                "AMT: $",
+                help_for_field(UiInstructionField::ExpectedAmt, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.expected_credits,
+                "Credits: $",
+                help_for_field(UiInstructionField::ExpectedCredits, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.expected_other_taxes,
+                "Other taxes: $",
+                help_for_field(UiInstructionField::ExpectedOtherTaxes, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.expected_withholding,
+                "Withholding: $",
+                help_for_field(UiInstructionField::ExpectedWithholding, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.prior_year_tax,
+                "Prior year tax: $",
+                help_for_field(UiInstructionField::PriorYearTax, selected_year),
+            ))
     }
 }
 

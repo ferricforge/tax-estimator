@@ -2,6 +2,7 @@ pub mod app;
 pub mod components;
 pub mod config;
 pub mod csv_loader;
+mod instructions;
 pub mod logging;
 pub mod models;
 pub mod repository;

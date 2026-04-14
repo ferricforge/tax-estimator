@@ -8,14 +8,17 @@ mod se_worksheet_form;
 mod theme;
 mod window;
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyWindowHandle, App, AppContext, AsyncApp, Context, Div, Entity, IntoElement, ParentElement,
-    SharedString, TextAlign, Window, div,
+    AnyWindowHandle, App, AppContext, AsyncApp, Context, Div, Entity, InteractiveElement as _,
+    IntoElement, ParentElement, SharedString, StatefulInteractiveElement as _, TextAlign, Window,
+    div, px, relative,
 };
 use gpui::{ClickEvent, Styled};
-use gpui::{Pixels, Size, px};
+use gpui::{Pixels, Size};
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::{Disableable, Sizable, h_flex};
+use gpui_component::tooltip::Tooltip;
+use gpui_component::{Disableable, Sizable, StyledExt, h_flex, v_flex};
 
 pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
@@ -30,6 +33,8 @@ use rust_decimal::Decimal;
 pub use se_worksheet_form::SeWorksheetForm;
 pub use theme::init_theme_colors;
 pub use window::AppWindow;
+
+use crate::instructions::FieldHelp;
 
 #[derive(Debug, Clone, Copy)]
 pub struct WindowPreferences {
@@ -142,7 +147,16 @@ pub fn make_input_row(
     state: &Entity<InputState>,
     label: impl Into<SharedString>,
 ) -> Div {
-    make_labeled_row(label).child(Input::new(state).flex_grow())
+    make_input_row_with_help(state, label, None)
+}
+
+/// A labeled row with a flexible-width input and optional help tooltip.
+pub(crate) fn make_input_row_with_help(
+    state: &Entity<InputState>,
+    label: impl Into<SharedString>,
+    help: Option<FieldHelp>,
+) -> Div {
+    make_labeled_row_with_help(label, help).child(Input::new(state).flex_grow())
 }
 
 /// A labeled row containing a [`Select`] or any other already-rendered element.
@@ -150,12 +164,30 @@ pub fn make_select_row(
     label: impl Into<SharedString>,
     element: impl IntoElement,
 ) -> Div {
-    make_labeled_row(label).child(element)
+    make_select_row_with_help(label, element, None)
+}
+
+/// A labeled row containing a [`Select`] or any other already-rendered element,
+/// with optional help tooltip on the label.
+pub(crate) fn make_select_row_with_help(
+    label: impl Into<SharedString>,
+    element: impl IntoElement,
+    help: Option<FieldHelp>,
+) -> Div {
+    make_labeled_row_with_help(label, help).child(element)
 }
 
 /// Base row: right-aligned label with a minimum width, border, and gap.
 /// Matches the original EstimatedIncomeForm row style exactly.
 pub fn make_labeled_row(label: impl Into<SharedString>) -> Div {
+    make_labeled_row_with_help(label, None)
+}
+
+/// Base row: right-aligned label with optional help tooltip.
+pub(crate) fn make_labeled_row_with_help(
+    label: impl Into<SharedString>,
+    help: Option<FieldHelp>,
+) -> Div {
     h_flex()
         .items_center()
         .gap_5()
@@ -166,7 +198,7 @@ pub fn make_labeled_row(label: impl Into<SharedString>) -> Div {
             div()
                 .min_w(px(150.))
                 .text_align(TextAlign::Right)
-                .child(label.into()),
+                .child(build_label_content(label.into(), help)),
         )
 }
 
@@ -199,7 +231,16 @@ pub fn make_input_row_fixed(
     state: &Entity<InputState>,
     label: impl Into<SharedString>,
 ) -> Div {
-    make_labeled_row_fixed(label).child(Input::new(state).w(px(SE_FIELD_WIDTH)))
+    make_input_row_fixed_with_help(state, label, None)
+}
+
+/// A labeled row with a fixed-width input and optional help tooltip.
+pub(crate) fn make_input_row_fixed_with_help(
+    state: &Entity<InputState>,
+    label: impl Into<SharedString>,
+    help: Option<FieldHelp>,
+) -> Div {
+    make_labeled_row_fixed_with_help(label, help).child(Input::new(state).w(px(SE_FIELD_WIDTH)))
 }
 
 /// A labeled row containing a read-only calculated value, fixed width.
@@ -208,11 +249,21 @@ pub fn make_display_row(
     label: impl Into<SharedString>,
     value: Option<Decimal>,
 ) -> Div {
+    make_display_row_with_help(label, value, None)
+}
+
+/// A labeled row containing a read-only calculated value, fixed width, with
+/// optional help tooltip on the label.
+pub(crate) fn make_display_row_with_help(
+    label: impl Into<SharedString>,
+    value: Option<Decimal>,
+    help: Option<FieldHelp>,
+) -> Div {
     let display = value
         .map(|d| format!("${d:.2}"))
         .unwrap_or_else(|| "—".to_string());
 
-    make_labeled_row_fixed(label).child(
+    make_labeled_row_fixed_with_help(label, help).child(
         div()
             .w(px(SE_FIELD_WIDTH))
             .px_2()
@@ -230,13 +281,86 @@ pub fn make_display_row(
 /// Base row for fixed-layout dialogs: fixed-width right-aligned label,
 /// no outer border (the individual fields carry their own borders).
 pub fn make_labeled_row_fixed(label: impl Into<SharedString>) -> Div {
+    make_labeled_row_fixed_with_help(label, None)
+}
+
+/// Base row for fixed-layout dialogs with optional help tooltip.
+pub(crate) fn make_labeled_row_fixed_with_help(
+    label: impl Into<SharedString>,
+    help: Option<FieldHelp>,
+) -> Div {
     h_flex().items_center().gap_2().p(px(2.)).child(
         div()
             .w(px(SE_LABEL_WIDTH))
             .text_align(TextAlign::Right)
             .flex_grow()
-            .child(label.into()),
+            .child(build_label_content(label.into(), help)),
     )
+}
+
+fn build_label_content(
+    label: SharedString,
+    help: Option<FieldHelp>,
+) -> impl IntoElement {
+    let tooltip_id = SharedString::from(format!(
+        "field-help-{}",
+        label
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            })
+            .collect::<String>()
+    ));
+
+    let label_row = h_flex()
+        .id(tooltip_id)
+        .items_center()
+        .justify_end()
+        .gap_1()
+        .child(div().child(label))
+        .when(help.is_some(), |this| {
+            this.child(div().px_1().rounded_full().border_1().text_xs().child("?"))
+        });
+
+    match help {
+        Some(help) => {
+            label_row.tooltip(move |window, cx| build_field_help_tooltip(&help, window, cx))
+        }
+        None => label_row,
+    }
+}
+
+fn build_field_help_tooltip(
+    help: &FieldHelp,
+    window: &mut Window,
+    cx: &mut App,
+) -> gpui::AnyView {
+    let title = help.label.clone();
+    let paragraphs = help.paragraphs.clone();
+
+    Tooltip::element(move |_window, _cx| {
+        v_flex()
+            .gap_3()
+            .w(px(420.))
+            .child(
+                div()
+                    .w_full()
+                    .font_semibold()
+                    .whitespace_normal()
+                    .line_height(relative(1.1))
+                    .child(title.clone()),
+            )
+            .children(paragraphs.iter().cloned().map(|paragraph| {
+                div()
+                    .w_full()
+                    .whitespace_normal()
+                    .line_height(relative(1.25))
+                    .child(paragraph)
+            }))
+    })
+    .build(window, cx)
 }
 
 pub fn show_err(
