@@ -1,0 +1,474 @@
+[[forms]]
+id = "1040-es"
+title = "Form 1040-ES"
+
+  [[forms.years]]
+  year = 2025
+
+    [[forms.years.fields]]
+    key = "expected_agi"
+    label = "Expected AGI"
+    summary = "Adjusted gross income you expect in 2025."
+    detail = """When figuring the adjusted gross income you expect in 2025, consider the current-year items called out in the form instructions. If you are self-employed, subtract the deductible part of self-employment tax by using the 2025 Self-Employment Tax and Deduction Worksheet."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 5
+      section = "Line 1"
+
+    [[forms.years.fields]]
+    key = "expected_deduction"
+    label = "Expected deduction"
+    summary = "Deductions."
+    detail = """If you plan to itemize deductions, enter the estimated total of your itemized deductions. If you do not plan to itemize deductions, enter your standard deduction."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 8
+      section = "Line 2a"
+
+    [[forms.years.fields]]
+    key = "expected_qbi_deduction"
+    label = "QBI deduction"
+    summary = "If you can take the qualified business income deduction, enter the estimated amount of the deduction."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 8
+      section = "Line 2b"
+
+    [[forms.years.fields]]
+    key = "expected_amt"
+    label = "AMT"
+    summary = "Alternative minimum tax from Form 6251."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 8
+      section = "Line 5"
+
+    [[forms.years.fields]]
+    key = "expected_credits"
+    label = "Credits"
+    summary = "Credits. Do not include any income tax withholding on this line."
+    detail = """See the 2024 Form 1040 or 1040-SR, line 19, Schedule 3 (Form 1040), lines 1 through 6z, and the related instructions for the types of credits allowed."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 5
+      section = "Line 7"
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 8
+      section = "Line 7"
+
+    [[forms.years.fields]]
+    key = "expected_other_taxes"
+    label = "Other taxes"
+    summary = "Other taxes."
+    detail = """Use the 2024 Instructions for Form 1040 to determine whether you expect to owe taxes that would have been entered on 2024 Schedule 2 (Form 1040), line 8 through 12, 14 through 17z, and line 19. Include household employment taxes on this line only if you will also have withholding from other income or would still need estimated payments without the household employment taxes. Do not include taxes that are not due until the return due date, such as uncollected Social Security or Medicare tax on tips, certain recapture and excise taxes, or look-back interest."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 5
+      section = "Line 10"
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Additional Medicare Tax / NIIT"
+
+    [[forms.years.fields]]
+    key = "expected_withholding"
+    label = "Withholding"
+    summary = "Income tax withheld and estimated to be withheld during 2025, including withholding on pensions, annuities, certain deferred income, and Additional Medicare Tax withholding."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 8
+      section = "Line 13"
+
+    [[forms.years.fields]]
+    key = "prior_year_tax"
+    label = "Prior year tax"
+    summary = "Required annual payment based on prior year's tax."
+    detail = """Enter the 2024 tax figured under the form instructions unless an exception applies. If the AGI shown on your 2024 return is more than $150,000, or more than $75,000 if married filing separately for 2025, use 110% of your 2024 tax instead. If you did not file a 2024 return or the 2024 tax year was less than 12 full months, do not complete line 12b and use line 12a on line 12c instead. The instructions also explain how to adjust prior-year tax if your joint-filing status changes."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 12b"
+
+  [[forms.years]]
+  year = 2026
+
+    [[forms.years.fields]]
+    key = "expected_agi"
+    label = "Expected AGI"
+    summary = "Adjusted gross income you expect in 2026."
+    detail = """When figuring the adjusted gross income you expect in 2026, consider the current-year items called out in the form instructions. If you are self-employed, subtract the deductible part of self-employment tax by using the 2026 Self-Employment Tax and Deduction Worksheet."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 7
+      section = "Line 1"
+
+    [[forms.years.fields]]
+    key = "expected_deduction"
+    label = "Expected deduction"
+    summary = "Deductions."
+    detail = """If you plan to itemize deductions, enter the estimated total of your itemized deductions. If you do not plan to itemize deductions, enter your standard deduction plus up to $1,000, or $2,000 if married filing jointly, for charitable contributions made by cash or check."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 12
+      section = "Line 2a"
+
+    [[forms.years.fields]]
+    key = "expected_qbi_deduction"
+    label = "QBI deduction"
+    summary = "If you can take the qualified business income deduction, enter the estimated amount of the deduction."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 12
+      section = "Line 2b"
+
+    [[forms.years.fields]]
+    key = "expected_amt"
+    label = "AMT"
+    summary = "Alternative minimum tax from Form 6251."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 12
+      section = "Line 5"
+
+    [[forms.years.fields]]
+    key = "expected_credits"
+    label = "Credits"
+    summary = "Credits. Do not include any income tax withholding on this line."
+    detail = """See the 2025 Form 1040 or 1040-SR, line 19, Schedule 3 (Form 1040), lines 1 through 6z, and the related instructions for the types of credits allowed. The 2026 instructions also note that several clean-energy vehicle and home-energy credits cannot be claimed in 2026, and that the alternative refueling property credit expires for property acquired and placed in service after June 30, 2026."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 8
+      section = "Line 7"
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 12
+      section = "Line 7"
+
+    [[forms.years.fields]]
+    key = "expected_other_taxes"
+    label = "Other taxes"
+    summary = "Other taxes."
+    detail = """Use the 2025 Instructions for Form 1040 to determine whether you expect to owe taxes that would have been entered on 2025 Schedule 2 (Form 1040), line 8 through 12, 14 through 17z, and line 19. Include household employment taxes on this line only if you will also have withholding from other income or would still need estimated payments without the household employment taxes. Do not include taxes that are not due until the return due date, such as uncollected Social Security or Medicare tax on tips, certain recapture and excise taxes, or look-back interest."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 8
+      section = "Line 10"
+
+    [[forms.years.fields]]
+    key = "expected_withholding"
+    label = "Withholding"
+    summary = "Income tax withheld and estimated to be withheld during 2026, including withholding on pensions, annuities, certain deferred income, and Additional Medicare Tax withholding."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 12
+      section = "Line 13"
+
+    [[forms.years.fields]]
+    key = "prior_year_tax"
+    label = "Prior year tax"
+    summary = "Required annual payment based on prior year's tax."
+    detail = """Enter the 2025 tax figured under the form instructions unless an exception applies. If the AGI shown on your 2025 return is more than $150,000, or more than $75,000 if married filing separately for 2026, use 110% of your 2025 tax instead. If you did not file a 2025 return or the 2025 tax year was less than 12 full months, do not complete line 12b and use line 12a on line 12c instead. The instructions also explain how to adjust prior-year tax if your joint-filing status changes."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 8
+      section = "Line 12b"
+
+[[forms]]
+id = "8995"
+title = "Form 8995"
+
+  [[forms.years]]
+  year = 2025
+
+    [[forms.years.fields]]
+    key = "expected_qbi_deduction"
+    label = "QBI deduction"
+    summary = "Use Form 8995 to figure the qualified business income deduction if your taxable income before the deduction is at or below $394,600 for married filing jointly, or $197,300 for all other returns, and you are not a patron of a specified agricultural or horticultural cooperative."
+    detail = """The deduction can be up to 20% of qualified business income from a trade or business, including pass-through income, plus 20% of qualified REIT dividends and qualified publicly traded partnership income, subject to the taxable-income limitation. If your taxable income is above the Form 8995 thresholds, use Form 8995-A instead."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f8995_2025.pdf"
+      page = 1
+      section = "Form header"
+
+      [[forms.years.fields.sources]]
+      file = "docs/i8995_2025.pdf"
+      page = 1
+      section = "Purpose of Form / Who Can Take the Deduction"
+
+[[forms]]
+id = "se-worksheet"
+title = "Self-Employment Tax and Deduction Worksheet"
+
+  [[forms.years]]
+  year = 2025
+
+    [[forms.years.fields]]
+    key = "se_income"
+    label = "Expected SE income"
+    summary = "Enter your expected income and profits subject to self-employment tax."
+    detail = """Your net profit from self-employment is found on Schedule C (Form 1040), line 31; Schedule F (Form 1040), line 34; and Schedule K-1 (Form 1065), box 14, code A."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 1a"
+
+    [[forms.years.fields]]
+    key = "crp_payments"
+    label = "Expected CRP payments"
+    summary = "If you will have farm income and also receive Social Security retirement or disability benefits, enter your expected Conservation Reserve Program payments that will be included on Schedule F (Form 1040) or listed on Schedule K-1 (Form 1065)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 1b"
+
+    [[forms.years.fields]]
+    key = "line_2"
+    label = "Line 2"
+    summary = "Subtract line 1b from line 1a."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 2"
+
+    [[forms.years.fields]]
+    key = "line_3"
+    label = "Line 3"
+    summary = "Multiply line 2 by 92.35% (0.9235)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 3"
+
+    [[forms.years.fields]]
+    key = "line_4"
+    label = "Line 4"
+    summary = "Multiply line 3 by 2.9% (0.029)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 4"
+
+    [[forms.years.fields]]
+    key = "line_5"
+    label = "Line 5"
+    summary = "Social Security tax maximum income: $176,100."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 5"
+
+    [[forms.years.fields]]
+    key = "expected_wages"
+    label = "Expected wages"
+    summary = "Enter your expected wages if they are subject to Social Security tax or the 6.2% portion of tier 1 railroad retirement tax."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 6"
+
+    [[forms.years.fields]]
+    key = "line_7"
+    label = "Line 7"
+    summary = "Subtract line 6 from line 5."
+    detail = """If line 7 is zero or less, enter 0 on line 9 and skip to line 10."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 7 / Note"
+
+    [[forms.years.fields]]
+    key = "line_8"
+    label = "Line 8"
+    summary = "Enter the smaller of line 3 or line 7."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 8"
+
+    [[forms.years.fields]]
+    key = "line_9"
+    label = "Line 9"
+    summary = "Multiply line 8 by 12.4% (0.124)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 9"
+
+    [[forms.years.fields]]
+    key = "line_10"
+    label = "Line 10"
+    summary = "Add lines 4 and 9. Enter the result here and on line 9 of your 2025 Estimated Tax Worksheet."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 10"
+
+    [[forms.years.fields]]
+    key = "line_11"
+    label = "Line 11"
+    summary = "Multiply line 10 by 50% (0.50)."
+    detail = """This is your expected deduction for self-employment tax on Schedule 1 (Form 1040), line 15. Subtract this amount when figuring your expected AGI on line 1 of your 2025 Estimated Tax Worksheet."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2025.pdf"
+      page = 6
+      section = "Line 11"
+
+  [[forms.years]]
+  year = 2026
+
+    [[forms.years.fields]]
+    key = "se_income"
+    label = "Expected SE income"
+    summary = "Enter your expected income and profits subject to self-employment tax."
+    detail = """Your net profit from self-employment is found on Schedule C (Form 1040), line 31; on Schedule F (Form 1040), line 34; and in box 14, code A, of Schedule K-1 (Form 1065)."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 1a"
+
+    [[forms.years.fields]]
+    key = "crp_payments"
+    label = "Expected CRP payments"
+    summary = "If you will have farm income and also receive Social Security retirement or disability benefits, enter your expected Conservation Reserve Program payments that will be included on Schedule F (Form 1040) or listed on Schedule K-1 (Form 1065)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 1b"
+
+    [[forms.years.fields]]
+    key = "line_2"
+    label = "Line 2"
+    summary = "Subtract line 1b from line 1a."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 2"
+
+    [[forms.years.fields]]
+    key = "line_3"
+    label = "Line 3"
+    summary = "Multiply line 2 by 92.35% (0.9235)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 3"
+
+    [[forms.years.fields]]
+    key = "line_4"
+    label = "Line 4"
+    summary = "Multiply line 3 by 2.9% (0.029)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 4"
+
+    [[forms.years.fields]]
+    key = "line_5"
+    label = "Line 5"
+    summary = "Social Security tax maximum income: $184,500."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 5"
+
+    [[forms.years.fields]]
+    key = "expected_wages"
+    label = "Expected wages"
+    summary = "Enter your expected wages if they are subject to Social Security tax or the 6.2% portion of tier 1 railroad retirement tax."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 6"
+
+    [[forms.years.fields]]
+    key = "line_7"
+    label = "Line 7"
+    summary = "Subtract line 6 from line 5."
+    detail = """If line 7 is zero or less, enter 0 on line 9 and skip to line 10."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 7 / Note"
+
+    [[forms.years.fields]]
+    key = "line_8"
+    label = "Line 8"
+    summary = "Enter the smaller of line 3 or line 7."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 8"
+
+    [[forms.years.fields]]
+    key = "line_9"
+    label = "Line 9"
+    summary = "Multiply line 8 by 12.4% (0.124)."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 9"
+
+    [[forms.years.fields]]
+    key = "line_10"
+    label = "Line 10"
+    summary = "Add lines 4 and 9. Enter the result here and on line 9 of your 2026 Estimated Tax Worksheet."
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 10"
+
+    [[forms.years.fields]]
+    key = "line_11"
+    label = "Line 11"
+    summary = "Multiply line 10 by 50% (0.50)."
+    detail = """This is your expected deduction for self-employment tax on Schedule 1 (Form 1040), line 15. Subtract this amount when figuring your expected AGI on line 1 of your 2026 Estimated Tax Worksheet."""
+
+      [[forms.years.fields.sources]]
+      file = "docs/f1040es_2026.pdf"
+      page = 9
+      section = "Line 11"
+

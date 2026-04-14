@@ -8,6 +8,7 @@ Cargo.toml.orig
 # Rust tools and IDE-specific files
 .rustup/
 # .cargo/
+.venv/
 .vscode/
 .idea/
 *.rs.bk

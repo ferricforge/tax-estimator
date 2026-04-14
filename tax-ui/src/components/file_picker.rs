@@ -1,3 +1,4 @@
+#![allow(unused)]
 use rfd::AsyncFileDialog;
 use std::path::PathBuf;
 

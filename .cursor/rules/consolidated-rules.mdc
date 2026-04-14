@@ -51,5 +51,4 @@ alwaysApply: true
 - Emphasize safety guarantees in explanations.
 
 ## Behavior
-- Avoid prepending commands with `cd /full/path/to/directory` just to run commands in the current workspace. Just run the needed command.
-- When changing directory within the current workspace, use relative paths when possible.
+- Always verify your current working directory with `pwd`

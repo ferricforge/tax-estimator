@@ -13,8 +13,10 @@ use tax_core::TaxYearConfig;
 use crate::{
     app::se_tax_estimate,
     components::{
-        make_button, make_decimal_input, make_display_row, make_header_row, make_input_row_fixed,
+        make_button, make_decimal_input, make_display_row_with_help, make_header_row,
+        make_input_row_fixed_with_help,
     },
+    instructions::{UiInstructionField, help_for_field},
     models::SeWorksheetModel,
     repository::ActiveTaxYear,
     utils::parse_optional_decimal,
@@ -150,58 +152,71 @@ impl Render for SeWorksheetForm {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let this = cx.entity().clone();
+        let selected_year = self.model.tax_year;
 
         v_flex()
             .gap_2()
             .p_4()
             .child(make_header_row("SE Worksheet Inputs:"))
-            .child(make_input_row_fixed(
+            .child(make_input_row_fixed_with_help(
                 &self.se_income,
                 "1a. Expected SE income: $",
+                help_for_field(UiInstructionField::SeIncome, selected_year),
             ))
-            .child(make_input_row_fixed(
+            .child(make_input_row_fixed_with_help(
                 &self.crp_payments,
                 "1b. Expected CRP payments: $",
+                help_for_field(UiInstructionField::CrpPayments, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "2. Subtract line 1b from line 1a:",
                 self.model.line_2_subtract_1b_from_1a,
+                help_for_field(UiInstructionField::SeLine2, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "3. Multiply line 2 by 92.35% (0.9235):",
                 self.model.line_3_net_earnings,
+                help_for_field(UiInstructionField::SeLine3, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "4. Multiply line 3 by 2.9% (0.029):",
                 self.model.line_4_medicare_tax,
+                help_for_field(UiInstructionField::SeLine4, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "5. Social security tax maximum income:",
                 self.model.line_5_ss_maximum_income,
+                help_for_field(UiInstructionField::SeLine5, selected_year),
             ))
-            .child(make_input_row_fixed(
+            .child(make_input_row_fixed_with_help(
                 &self.expected_wages,
                 "6. Expected wages (SS / tier 1 RRTA 6.2%): $",
+                help_for_field(UiInstructionField::ExpectedWages, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "7. Subtract line 6 from line 5:",
                 self.model.line_7_remaining_ss_base,
+                help_for_field(UiInstructionField::SeLine7, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "8. Smaller of line 3 or line 7:",
                 self.model.line_8_ss_taxable_earnings,
+                help_for_field(UiInstructionField::SeLine8, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "9. Multiply line 8 by 12.4% (0.124):",
                 self.model.line_9_social_security_tax,
+                help_for_field(UiInstructionField::SeLine9, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "10. Add lines 4 and 9:",
                 self.model.line_10_total_se_tax,
+                help_for_field(UiInstructionField::SeLine10, selected_year),
             ))
-            .child(make_display_row(
+            .child(make_display_row_with_help(
                 "11. Multiply line 10 by 50% (0.50):",
                 self.model.line_11_deductible_se_tax,
+                help_for_field(UiInstructionField::SeLine11, selected_year),
             ))
             .child(
                 h_flex()

@@ -21,12 +21,13 @@ use tax_core::{FilingStatusCode, TaxEstimateInput, TaxYearConfig};
 
 use crate::app::{FilingStatusData, save_tax_estimate};
 use crate::components::{ErrorDialog, show_err};
+use crate::instructions::{UiInstructionField, help_for_field};
 use crate::models::SeWorksheetModel;
 use crate::repository::TaxRepo;
 use crate::{
     components::{
-        SeWorksheetForm, make_button, make_decimal_input, make_header_row, make_input_row,
-        make_integer_input, make_select_row,
+        ResultForm, SeWorksheetForm, make_button, make_decimal_input, make_header_row,
+        make_input_row, make_input_row_with_help, make_integer_input, make_select_row,
     },
     repository::ActiveTaxYear,
     utils::{parse_decimal, parse_optional_decimal},
@@ -57,6 +58,7 @@ pub struct EstimatedIncomeForm {
     // Line 12b: required annual payment based on prior year's tax (per worksheet instructions).
     prior_year_tax: Entity<InputState>,
     is_tax_year_ready: bool,
+    results: Entity<ResultForm>,
 }
 
 impl EstimatedIncomeForm {
@@ -110,6 +112,7 @@ impl EstimatedIncomeForm {
         .detach();
 
         let filing_status = cx.new(|cx| SelectState::new(statuses, initial_index, window, cx));
+        let results = cx.new(|_| ResultForm::default());
         Self {
             worksheet,
             tax_year,
@@ -123,6 +126,7 @@ impl EstimatedIncomeForm {
             expected_withholding: make_decimal_input("Exp inc tax withheld", 2, window, cx),
             prior_year_tax: make_decimal_input("Prior year tax liability", 2, window, cx),
             is_tax_year_ready: false,
+            results,
         }
     }
 
@@ -303,6 +307,13 @@ impl EstimatedIncomeForm {
             }
         };
 
+        let se_tax = se_model.line_10_total_se_tax.unwrap_or_default();
+        self.results.update(cx, |rf, cx| {
+            rf.set_from_calculation(se_tax, &result);
+            cx.notify();
+        });
+        cx.notify();
+
         tracing::info!(input = %form_input, %result, "Estimated taxes");
 
         let window_handle = window.window_handle();
@@ -351,6 +362,17 @@ impl EstimatedIncomeForm {
                 .button_props(DialogButtonProps::default().cancel_text("Close"))
                 .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
         });
+    }
+
+    fn render_results(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        if self.results.read(cx).has_results() {
+            div().child(self.results.clone())
+        } else {
+            div()
+        }
     }
 
     fn render_toolbar(
@@ -402,31 +424,52 @@ impl EstimatedIncomeForm {
     fn render_right_side(
         &self,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let selected_year = self.tax_year(cx);
+
         self.render_side_base()
-            // .child(make_header_row("SE Worksheet Inputs:"))
-            // .child(make_input_row(&self.se_income, "SE income: $"))
-            // .child(make_input_row(
-            //     &self.expected_crp_payments,
-            //     "CRP payments: $",
-            // ))
-            // .child(make_input_row(&self.expected_wages, "Wages: $"))
             .child(make_header_row("1040-ES Worksheet Inputs:"))
-            .child(make_input_row(&self.expected_agi, "Expected AGI: $"))
-            .child(make_input_row(
+            .child(make_input_row_with_help(
+                &self.expected_agi,
+                "Expected AGI: $",
+                help_for_field(UiInstructionField::ExpectedAgi, selected_year),
+            ))
+            .child(make_input_row_with_help(
                 &self.expected_deduction,
                 "Exp. deduction: $",
+                help_for_field(UiInstructionField::ExpectedDeduction, selected_year),
             ))
-            .child(make_input_row(
+            .child(make_input_row_with_help(
                 &self.expected_qbi_deduction,
                 "QBI deduction: $",
+                help_for_field(UiInstructionField::ExpectedQbiDeduction, selected_year),
             ))
-            .child(make_input_row(&self.expected_amt, "AMT: $"))
-            .child(make_input_row(&self.expected_credits, "Credits: $"))
-            .child(make_input_row(&self.expected_other_taxes, "Other taxes: $"))
-            .child(make_input_row(&self.expected_withholding, "Withholding: $"))
-            .child(make_input_row(&self.prior_year_tax, "Prior year tax: $"))
+            .child(make_input_row_with_help(
+                &self.expected_amt,
+                "AMT: $",
+                help_for_field(UiInstructionField::ExpectedAmt, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.expected_credits,
+                "Credits: $",
+                help_for_field(UiInstructionField::ExpectedCredits, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.expected_other_taxes,
+                "Other taxes: $",
+                help_for_field(UiInstructionField::ExpectedOtherTaxes, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.expected_withholding,
+                "Withholding: $",
+                help_for_field(UiInstructionField::ExpectedWithholding, selected_year),
+            ))
+            .child(make_input_row_with_help(
+                &self.prior_year_tax,
+                "Prior year tax: $",
+                help_for_field(UiInstructionField::PriorYearTax, selected_year),
+            ))
     }
 }
 
@@ -449,6 +492,7 @@ impl Render for EstimatedIncomeForm {
                         .child(self.render_right_side(window, cx)),
                 ),
             )
+            .child(self.render_results(cx))
             .child(self.render_toolbar(cx))
     }
 }

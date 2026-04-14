@@ -124,7 +124,7 @@ impl ActiveTaxYear {
                         cx.update_global::<Self, _>(|active, _| {
                             active.year = Some(year);
                             active.tax_year_data = Some(tax_year_data);
-                            tracing::info!("Tax year load: {:#?}", active);
+                            tracing::trace!("Tax year load: {:#?}", active);
                         });
                     });
                 }
