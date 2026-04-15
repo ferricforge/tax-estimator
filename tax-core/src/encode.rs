@@ -1,3 +1,4 @@
+use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, TypeInfo, ValueRef};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
@@ -10,7 +11,7 @@ pub fn decimal_as_f64(d: &Decimal) -> f64 {
 
 /// Decode: read a column as `f64` from a SQLite row and convert to `Decimal`.
 pub fn decimal_from_sql(
-    row: &sqlx::sqlite::SqliteRow,
+    row: &SqliteRow,
     col: &str,
 ) -> Result<Decimal, sqlx::Error> {
     let raw = row.try_get_raw(col)?;
