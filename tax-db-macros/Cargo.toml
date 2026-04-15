@@ -1,0 +1,19 @@
+[package]
+name = "tax-db-macros"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"
+
+[dev-dependencies]
+rust_decimal.workspace = true
+sqlx = { workspace = true }
+tokio = { workspace = true }

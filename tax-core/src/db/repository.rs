@@ -54,6 +54,17 @@ pub trait TaxRepository: Send + Sync {
         filing_status_id: i32,
     ) -> Result<StandardDeduction, RepositoryError>;
 
+    async fn insert_standard_deduction(
+        &self,
+        deduction: &StandardDeduction,
+    ) -> Result<(), RepositoryError>;
+
+    async fn delete_standard_deduction(
+        &self,
+        tax_year: i32,
+        filing_status_id: i32,
+    ) -> Result<(), RepositoryError>;
+
     /// Fetch every filing status together with its standard deduction and tax
     /// brackets for `year` via a single three-way JOIN, ordered by filing
     /// status id then bracket min income.

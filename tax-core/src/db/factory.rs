@@ -167,6 +167,19 @@ mod tests {
         ) -> Result<StandardDeduction, RepositoryError> {
             unimplemented!()
         }
+        async fn insert_standard_deduction(
+            &self,
+            _deduction: &StandardDeduction,
+        ) -> Result<(), RepositoryError> {
+            unimplemented!()
+        }
+        async fn delete_standard_deduction(
+            &self,
+            _tax_year: i32,
+            _filing_status_id: i32,
+        ) -> Result<(), RepositoryError> {
+            unimplemented!()
+        }
         async fn get_filing_status_data(
             &self,
             _year: i32,

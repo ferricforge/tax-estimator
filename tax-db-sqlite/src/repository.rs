@@ -300,27 +300,35 @@ impl TaxRepository for SqliteRepository {
         tax_year: i32,
         filing_status_id: i32,
     ) -> Result<StandardDeduction, RepositoryError> {
-        let row = sqlx::query(
-            "SELECT tax_year, filing_status_id, amount
-             FROM standard_deductions
-             WHERE tax_year = ? AND filing_status_id = ?",
-        )
-        .bind(tax_year)
-        .bind(filing_status_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| RepositoryError::Database(e.into()))?
-        .ok_or(RepositoryError::NotFound)?;
+        StandardDeduction::find(&self.pool, &tax_year, &filing_status_id)
+            .await
+            .map_err(|e| RepositoryError::Database(e.into()))?
+            .ok_or(RepositoryError::NotFound)
+    }
 
-        Ok(StandardDeduction {
-            tax_year: row
-                .try_get("tax_year")
-                .map_err(|e| RepositoryError::Database(e.into()))?,
-            filing_status_id: row
-                .try_get("filing_status_id")
-                .map_err(|e| RepositoryError::Database(e.into()))?,
-            amount: get_decimal(&row, "amount")?,
-        })
+    async fn insert_standard_deduction(
+        &self,
+        deduction: &StandardDeduction,
+    ) -> Result<(), RepositoryError> {
+        deduction
+            .insert(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Database(e.into()))?;
+        Ok(())
+    }
+
+    async fn delete_standard_deduction(
+        &self,
+        tax_year: i32,
+        filing_status_id: i32,
+    ) -> Result<(), RepositoryError> {
+        let result = StandardDeduction::delete_by_pk(&self.pool, &tax_year, &filing_status_id)
+            .await
+            .map_err(|e| RepositoryError::Database(e.into()))?;
+        if result.rows_affected() == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
     }
 
     async fn get_filing_status_data(

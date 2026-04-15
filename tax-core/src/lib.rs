@@ -1,5 +1,6 @@
 pub mod calculations;
 pub mod db;
+pub mod encode;
 pub mod models;
 
 pub use db::repository::{RepositoryError, TaxRepository};

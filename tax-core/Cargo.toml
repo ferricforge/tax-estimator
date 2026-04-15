@@ -11,6 +11,8 @@ rust_decimal.workspace = true
 chrono.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
+sqlx = { workspace = true }
+tax-db-macros = { version = "0.1.0", path = "../tax-db-macros" }
 
 [dev-dependencies]
 rust_decimal_macros.workspace = true
