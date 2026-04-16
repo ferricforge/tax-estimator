@@ -2,36 +2,60 @@
 
 ## Goal
 
-Move persistence details out of `tax-core` domain models and into backend crates such as `tax-db-sqlite`, with a layout that also works for a future `tax-db-mysql`.
+Use `main` as the clean starting point for a backend-owned persistence design.
 
-The target outcome is:
+The target architecture is:
 
 - `tax-core` owns domain models and domain-facing repository traits.
-- Each backend crate owns its own persisted row models.
-- Backend crates convert between persisted rows and domain models with `From`/`TryFrom` where that conversion is self-contained.
-- Repository methods remain domain-oriented instead of collapsing into a universal table CRUD abstraction.
+- `tax-db-sqlite` owns SQLite row models, SQL, and mapping code.
+- a future `tax-db-mysql` would own its own row models and mapping code, following the same pattern.
+- repository methods stay domain-oriented instead of becoming a generic table CRUD layer.
 
-This document is written against the `features/proc_macros` branch as a migration starting point.
+This document assumes the current `main` branch, where persistence is still implemented with hand-written SQLx code in `tax-db-sqlite`.
 
-## Why Change
+## Current Baseline on `main`
 
-The current experiment proves that auto-generated persistence can work for simple row-shaped types, but it also exposes the main boundary problem:
+Today the codebase already has the right high-level split:
 
-- `tax-core` models currently participate in persistence concerns.
-- The `Entity` derive generates SQLx/SQLite-centric methods on domain models.
-- A generic row CRUD abstraction fits `StandardDeduction` better than it fits richer types like `TaxEstimate`.
-- Collection and aggregate semantics already exist in the repository surface, especially around `TaxBracket` and `TaxEstimate`.
+- `tax-core` defines domain models.
+- `tax-core` defines the `TaxRepository` trait.
+- `tax-db-sqlite` implements that trait.
 
-The architectural issue is not that row-model automation is always wrong. It is that the automation currently lives on the wrong side of the boundary.
+What is still mixed together is the persistence boundary inside `tax-db-sqlite`:
 
-## Migration Principles
+- repository methods query raw SQL
+- decode directly from `SqliteRow`
+- assemble domain models inline
+- bind domain model fields directly into SQL writes
 
-### 1. Domain models stay backend-agnostic
+That works, but it makes the repository implementation responsible for too many concerns at once:
+
+- query logic
+- row decoding
+- storage-to-domain conversion
+- domain-to-storage conversion
+
+The migration in this document is about introducing an explicit storage layer inside backend crates, not about changing the domain trait surface first.
+
+## Core Decision
+
+Backend crates should introduce backend-specific row models and convert between those models and `tax-core` domain types.
+
+That means:
+
+- `tax-core` models stay storage-agnostic
+- backend crates own persisted row structs
+- backend crates implement `From`/`TryFrom` where conversion is local and self-contained
+- repository methods orchestrate queries and conversions, but stop constructing domain values field-by-field inline
+
+## Design Principles
+
+### 1. Domain models are not storage models
 
 `tax-core` should define:
 
 - domain structs
-- validation
+- validation rules
 - calculation logic
 - repository traits expressed in domain terms
 
@@ -39,58 +63,66 @@ The architectural issue is not that row-model automation is always wrong. It is 
 
 - table names
 - SQL strings
-- SQLx row decoding
-- backend-specific `insert/find/delete` helpers
+- SQLx row decoding helpers
+- backend-specific attributes
+- database-only field shapes
 
-### 2. Backends own storage shape
+### 2. Backends own persisted shape
 
-Each backend crate should define the storage representation it needs. That includes:
+Each backend crate should define the storage representation that best matches its schema and query layer.
+
+That includes:
 
 - row structs
-- SQL
-- joins
-- backend-specific IDs or foreign key representations where necessary
-- conversion and mapping code
+- write structs where useful
+- enum/string/int translation details
+- decimal translation details
+- join result translation
 
-### 3. Use `From`/`TryFrom` only for pure shape conversion
+The important boundary is:
+
+- domain types are shared
+- persisted row types are backend-owned
+
+### 3. Repository traits remain domain-oriented
+
+The `TaxRepository` trait in `tax-core` should continue describing domain operations like:
+
+- `get_tax_year_config`
+- `get_standard_deduction`
+- `get_tax_brackets`
+- `delete_tax_brackets`
+- `create_estimate`
+- `update_estimate`
+
+Do not try to force the whole repository into `save/get/delete/list` just because some row types are table-shaped.
+
+### 4. Use `From` and `TryFrom` selectively
 
 Use `From` when:
 
+- conversion is structural
 - conversion is lossless
-- no database lookup is needed
-- no runtime validation beyond structural conversion is needed
+- no I/O or lookup is required
 
 Use `TryFrom` when:
 
-- database values may be invalid
-- decoding may fail due to enum parsing, decimal conversion, nullability, or partial row state
+- storage contents may be invalid
+- enum parsing can fail
+- decimal conversion can fail
+- nullability or partial row state needs validation
 
-Do not force `From`/`TryFrom` when:
+Do not force `From` or `TryFrom` when:
 
 - conversion depends on repository lookups
-- conversion spans multiple joined tables
-- conversion is really an aggregate assembly step rather than a row mapping step
-
-### 4. Repository traits remain domain-oriented
-
-Keep domain operations explicit even if some of them are implemented with backend row models under the hood.
-
-Good repository operations:
-
-- `get_tax_year_config(year)`
-- `get_standard_deduction(year, filing_status_id)`
-- `get_tax_brackets(year, filing_status_id)`
-- `delete_tax_brackets(year, filing_status_id)`
-- `create_estimate(input)`
-- `update_estimate(&estimate)`
-
-Avoid making the repository API pretend that everything is generic row CRUD when the domain does not behave that way.
+- a domain object is assembled from multiple joined rows
+- the repository method is really about aggregate semantics rather than a single row
 
 ## Target Module Layout
 
 ### `tax-core`
 
-No backend row types live here.
+Keep `tax-core` focused on domain code.
 
 Recommended shape:
 
@@ -110,16 +142,13 @@ tax-core/
       tax_year_config.rs
 ```
 
-Notes:
-
-- `tax-core::db::repository` remains the home of `TaxRepository`.
-- If the proc-macro experiment is retired, `tax-core` should eventually stop depending on `tax-db-macros`.
+No backend row models should live here.
 
 ### `tax-db-sqlite`
 
-Add a backend-owned `models` module for persisted row shapes and mapping helpers.
+Add a backend-owned models module.
 
-Recommended shape:
+Recommended first-step shape:
 
 ```text
 tax-db-sqlite/
@@ -137,7 +166,7 @@ tax-db-sqlite/
     repository.rs
 ```
 
-Optional later refinement:
+If the mapping layer grows, a later split can be:
 
 ```text
 tax-db-sqlite/
@@ -148,13 +177,11 @@ tax-db-sqlite/
       mappers/
 ```
 
-That split is only worth it once the number of row structs and mapping helpers grows enough to justify the extra layer.
+That split is optional. The important part is simply getting row types out of `repository.rs`.
 
 ### Future `tax-db-mysql`
 
-Mirror the same idea without sharing persisted row structs across backends.
-
-Recommended shape:
+Mirror the same boundary:
 
 ```text
 tax-db-mysql/
@@ -171,140 +198,103 @@ tax-db-mysql/
     repository.rs
 ```
 
-The domain type is shared. The persisted row shape is not.
+Do not share row structs between SQLite and MySQL. The backend crates should share domain types, not persisted shapes.
 
-## Row Model Responsibilities
-
-### Simple reference data
-
-These domain types are good fits for backend row structs plus `From`/`TryFrom`:
-
-- `StandardDeduction`
-- `TaxYearConfig`
-- `FilingStatus`
-- `TaxBracket`
-
-Each backend row type should:
-
-- match the backend schema directly
-- represent values in the form most natural to the backend query layer
-- convert into the domain type
-
-For example, a SQLite row model may store decimal-backed fields in the shape that best matches the SQLx query output, while the domain model stays on `Decimal`.
-
-### Aggregate and workflow data
-
-`TaxEstimate` should still use backend row models, but it should not be forced into the same pattern as the simpler types.
-
-Why:
-
-- the domain model is nested
-- `filing_status_id` in storage becomes `FilingStatusCode` in the domain type
-- the computed payload is grouped into `TaxEstimateComputed`
-- some conversions are only valid after additional interpretation
-
-That makes `TaxEstimate` a better fit for explicit backend mapping helpers than a pure mechanical row conversion everywhere.
-
-## Recommended Conversion Rules by Type
-
-### `StandardDeduction`
-
-Recommended:
-
-- `impl From<&tax_core::StandardDeduction> for StandardDeductionRow`
-- `impl TryFrom<StandardDeductionRow> for tax_core::StandardDeduction`
-
-Rationale:
-
-- write path is structural
-- read path may need decimal conversion safety
-
-### `TaxYearConfig`
-
-Recommended:
-
-- `impl From<&tax_core::TaxYearConfig> for TaxYearConfigRow`
-- `impl TryFrom<TaxYearConfigRow> for tax_core::TaxYearConfig`
-
-Rationale:
-
-- still a single-table, row-shaped domain type
+## Row Model Strategy by Domain Type
 
 ### `FilingStatus`
 
+Good fit for a backend row model.
+
 Recommended:
 
+- `FilingStatusRow`
 - `impl From<&tax_core::FilingStatus> for FilingStatusRow`
 - `impl TryFrom<FilingStatusRow> for tax_core::FilingStatus`
 
-Rationale:
+Why:
 
-- `status_code` parsing can fail if the database contents drift from expectations
+- database contents might contain an invalid status code
+- that makes read conversion fallible
 
-### `TaxBracket`
+### `TaxYearConfig`
+
+Good fit for a backend row model.
 
 Recommended:
 
+- `TaxYearConfigRow`
+- `impl From<&tax_core::TaxYearConfig> for TaxYearConfigRow`
+- `impl TryFrom<TaxYearConfigRow> for tax_core::TaxYearConfig`
+
+Why:
+
+- it is a simple single-row, single-table domain type
+
+### `StandardDeduction`
+
+Good fit for a backend row model.
+
+Recommended:
+
+- `StandardDeductionRow`
+- `impl From<&tax_core::StandardDeduction> for StandardDeductionRow`
+- `impl TryFrom<StandardDeductionRow> for tax_core::StandardDeduction`
+
+Why:
+
+- it is simple
+- it maps directly to one table row
+
+### `TaxBracket`
+
+Use a backend row model, but keep repository semantics explicit.
+
+Recommended:
+
+- `TaxBracketRow`
 - `impl From<&tax_core::TaxBracket> for TaxBracketRow`
 - `impl TryFrom<TaxBracketRow> for tax_core::TaxBracket`
 
 Important caveat:
 
-- row conversion is fine
-- repository semantics should still keep collection operations explicit
+- row mapping is fine
+- repository semantics are not purely row CRUD
 
-Do not replace:
+The current contract includes:
 
-- `delete_tax_brackets(year, filing_status_id)`
+- `get_tax_brackets(tax_year, filing_status_id)`
+- `delete_tax_brackets(tax_year, filing_status_id)`
 
-with:
-
-- `delete::<TaxBracket>(key)`
-
-unless the domain contract is intentionally changed.
+That is a grouped operation, not a single-row delete API, and the migration should preserve that.
 
 ### `TaxEstimate`
 
-Recommended:
+Use backend row models, but do not force the same pattern as the simpler types.
 
-- backend row struct for the flattened persisted row
-- explicit mapping helpers instead of insisting on `From` everywhere
+Why `TaxEstimate` is different:
 
-Possible shape:
+- the domain object is nested
+- stored values are flattened
+- the domain uses `FilingStatusCode`
+- storage uses a filing status foreign key and joins to reconstruct the code
+- computed values are grouped under `TaxEstimateComputed`
 
-```rust
-struct TaxEstimateRow {
-    id: i64,
-    tax_year: i32,
-    filing_status_code: String,
-    expected_agi: f64,
-    expected_deduction: f64,
-    expected_qbi_deduction: Option<f64>,
-    expected_amt: Option<f64>,
-    expected_credits: Option<f64>,
-    expected_other_taxes: Option<f64>,
-    expected_withholding: Option<f64>,
-    prior_year_tax: Option<f64>,
-    se_income: Option<f64>,
-    expected_crp_payments: Option<f64>,
-    expected_wages: Option<f64>,
-    calculated_se_tax: Option<f64>,
-    calculated_total_tax: Option<f64>,
-    calculated_required_payment: Option<f64>,
-    created_at: chrono::DateTime<chrono::Utc>,
-    updated_at: chrono::DateTime<chrono::Utc>,
-}
-```
+Recommended approach:
 
-Recommended mapping functions:
+- introduce a `TaxEstimateRow` for the flattened read shape
+- optionally introduce a separate write struct if that makes create/update logic clearer
+- use explicit mapping helpers for read and write conversion
+
+For example:
 
 - `fn try_into_domain(self) -> Result<TaxEstimate, RepositoryError>`
 - `fn from_domain_input(...) -> Result<TaxEstimateWriteRow, RepositoryError>`
 - `fn from_domain_estimate(...) -> Result<TaxEstimateWriteRow, RepositoryError>`
 
-This keeps the complicated mapping explicit and readable.
+This is clearer than trying to make every `TaxEstimate` conversion fit a single blanket trait pattern.
 
-## Example Backend Model Pattern
+## Example Pattern
 
 Illustrative shape only:
 
@@ -344,44 +334,50 @@ impl TryFrom<StandardDeductionRow> for tax_core::StandardDeduction {
 
 The repository then becomes responsible for:
 
-- querying backend rows
-- converting backend rows to domain models
-- converting domain models to backend rows before writes
+1. querying backend rows
+2. mapping backend rows into domain models
+3. mapping domain models into backend write rows before writes
+
+That is the right level of responsibility for the repository implementation.
 
 ## Repository Refactor Shape
 
-The repository implementation should progressively move from inline row assembly to backend row models.
-
-### Current pattern
+### Current pattern on `main`
 
 Repository methods often do this directly:
 
-- query raw SQL
-- pull each field out of `SqliteRow`
-- construct the domain model inline
+1. run SQL
+2. pull each field out of `SqliteRow`
+3. assemble the domain model inline
+
+For writes they often:
+
+1. take a domain model
+2. bind domain fields directly into SQL
+3. execute
 
 ### Target pattern
 
-Repository methods should instead do:
+Repository methods should move to:
 
-1. query
-2. decode into backend row model
-3. convert backend row model into domain model
+1. run SQL
+2. decode into a backend row model
+3. convert the backend row model into a domain model
 4. return the domain model
 
 For writes:
 
-1. convert domain model into backend write row
-2. bind row values
-3. execute SQL
+1. convert the domain model into a backend row or write struct
+2. bind storage values from that backend type
+3. execute
 
-This makes the persistence boundary visible and testable.
+That change makes the storage boundary explicit and testable without changing the domain repository API.
 
-## Recommended Rollout Phases
+## Migration Phases from `main`
 
-### Phase 1: Introduce backend row modules without behavior change
+### Phase 1: Introduce backend row modules with no behavior change
 
-On `features/proc_macros`, add the `tax-db-sqlite/src/models/` module and backend row structs for:
+Add `tax-db-sqlite/src/models/` and create row structs for:
 
 - `FilingStatus`
 - `StandardDeduction`
@@ -391,18 +387,19 @@ On `features/proc_macros`, add the `tax-db-sqlite/src/models/` module and backen
 
 In this phase:
 
-- keep the current repository trait unchanged
-- keep query SQL unchanged
-- only move row decoding and mapping into backend models/helpers
+- do not change `TaxRepository`
+- do not change SQL queries yet
+- do not try to redesign the domain model
+- just create the backend-owned types and mapping helpers
 
 Success criteria:
 
-- all existing tests still pass
-- repository methods become thinner
+- repository behavior stays identical
+- repository methods get thinner over time
 
-### Phase 2: Refactor simple repository methods to use row models
+### Phase 2: Move read mapping out of `repository.rs`
 
-Start with:
+Refactor the simplest reads first:
 
 - `get_tax_year_config`
 - `get_filing_status`
@@ -411,26 +408,29 @@ Start with:
 - `get_standard_deduction`
 - `get_tax_brackets`
 
-These are the best first candidates because they are read-oriented and straightforward.
+Why these first:
 
-### Phase 3: Refactor write paths for simple row-shaped types
+- they are straightforward
+- they exercise the row-to-domain conversion layer
+- they reduce the amount of inline row parsing in the repository quickly
 
-Next move:
+### Phase 3: Move simple write mapping out of `repository.rs`
 
-- `insert_standard_deduction`
+Next refactor:
+
 - `insert_tax_bracket`
 
-For these methods, convert the domain model into backend row models before binding values.
+If `StandardDeduction` gains a write path again later, handle it the same way:
 
-This establishes the write-side pattern without changing repository semantics.
+- domain model in
+- backend write row out
+- bind storage values from the backend write type
 
-### Phase 4: Refactor `TaxEstimate` using explicit backend mapping
+### Phase 4: Refactor `TaxEstimate` with explicit mapping helpers
 
-Move `TaxEstimate` off inline row construction and into dedicated backend mapping helpers.
+Handle `TaxEstimate` separately.
 
-Do not force a generic CRUD shape here.
-
-Keep:
+Keep the domain repository surface explicit:
 
 - `create_estimate`
 - `get_estimate`
@@ -438,91 +438,99 @@ Keep:
 - `delete_estimate`
 - `list_estimates`
 
-as explicit domain operations.
+Do not try to flatten this into a generic row CRUD abstraction.
 
-### Phase 5: Retire proc-macro persistence from `tax-core`
+The right goal here is:
 
-After backend row models fully own persistence concerns:
+- clearer read mapping
+- clearer write mapping
+- repository methods that are easier to reason about
 
-- remove `tax-db-macros` usage from domain structs
-- remove generated persistence methods from domain types
-- remove any generic entity abstraction that no longer serves a clear domain purpose
+### Phase 5: Evaluate whether any generic persistence helper is still needed
 
-This is the point where `tax-core` becomes cleanly backend-neutral again.
+Starting from `main`, there is no need to introduce a proc-macro or generic entity layer first.
 
-## Suggested File Ownership During Migration
+After the backend row model split is in place, reassess:
+
+- whether a small helper trait would reduce duplication
+- whether duplication is low enough that explicit code is better
+
+The default recommendation is to stay explicit unless a pattern is truly repetitive and stable.
+
+## File Ownership Rules
 
 ### `tax-core`
 
-Allowed changes:
+Owns:
 
-- repository trait adjustments only if they are domain-motivated
-- error types
-- domain models only for domain reasons
+- domain models
+- repository traits
+- repository error types
+- calculation logic
 
-Avoid:
+Should avoid:
 
-- adding backend row metadata
-- adding table names
-- adding storage attributes
+- backend storage metadata
+- backend row structs
+- SQL binding concerns
 
 ### `tax-db-sqlite`
 
 Owns:
 
-- row structs
-- `TryFrom`/`From` conversions for backend rows
-- SQL
-- SQLx result decoding
-- backend mapping helpers
+- SQLite row structs
+- SQLite-to-domain conversions
+- domain-to-SQLite write conversions
+- SQLx query details
+- SQLx decoding details
 
 ### Future `tax-db-mysql`
 
-Will own:
+Owns:
 
-- different row structs where needed
-- MySQL-specific conversion details
-- its own repository implementation that targets the same domain trait
+- MySQL row structs
+- MySQL conversion details
+- MySQL-specific query behavior
 
 ## Testing Strategy
 
-### Unit tests for backend row conversions
+### Unit tests for row conversion
 
-Add focused tests for:
+Add focused tests for backend row models:
 
 - valid `FilingStatusRow -> FilingStatus`
-- invalid status code handling
+- invalid filing status code handling
 - decimal conversion edge cases
-- partial computed field handling for `TaxEstimate`
+- partial computed field validation for `TaxEstimate`
 
-### Repository tests stay domain-facing
+### Repository tests remain domain-facing
 
-Keep repository integration tests asserting domain behavior:
+Existing repository tests should continue asserting:
 
 - repository methods return domain models
-- deletes preserve current semantics
+- grouped operations like `delete_tax_brackets` keep their current semantics
 - `TaxEstimate` behavior remains unchanged
 
 ### Migration guardrail
 
-Before deleting any proc-macro-based persistence code, make sure all repository tests pass without relying on domain-model SQL helpers.
+Do not remove any inline mapping path until the equivalent backend row mapping is covered by tests and used successfully by repository methods.
 
 ## What Not To Do
 
-- Do not replace the whole repository trait with generic `save/get/delete/list` methods.
-- Do not share backend row structs between SQLite and MySQL.
-- Do not move domain validation into backend row models.
-- Do not require `TaxEstimate` to fit the same conversion pattern as `StandardDeduction`.
-- Do not use `Default::default()` to silently fabricate skipped domain fields during read mapping.
+- Do not redesign `TaxRepository` around generic CRUD as a first step.
+- Do not put backend row structs into `tax-core`.
+- Do not share SQLite row structs with a future MySQL backend.
+- Do not force `TaxEstimate` to look like a simple table row abstraction.
+- Do not introduce a proc-macro layer unless explicit backend mapping proves too repetitive later.
 
 ## Decision Summary
 
-The recommended migration is:
+Starting from `main`, the recommended path is:
 
-- backend row models live in backend crates
-- domain models stay in `tax-core`
-- `From`/`TryFrom` is used for simple, local conversions
-- explicit mapping helpers are used where conversion requires interpretation or grouping
-- repository traits stay domain-oriented
+- keep `tax-core` as the domain layer
+- introduce backend-owned row models in `tax-db-sqlite`
+- use `From` and `TryFrom` for simple local conversions
+- use explicit mapping helpers for `TaxEstimate` and other richer cases
+- keep repository traits domain-oriented
 
-This keeps the project open to future backends without making the domain layer carry SQLite-specific behavior.
+That gives you a clean foundation for starting over without bringing the proc-macro experiment forward into the new design.
