@@ -1,122 +1,137 @@
 # Tax Estimator
 
-A Rust application for calculating estimated federal income taxes based on IRS Form 1040-ES. Designed for U.S. residents of the 50 states.
+Rust application for calculating U.S. federal estimated tax using IRS Form 1040-ES worksheets.
 
-## Overview
+## What This Project Is
 
-This workspace provides a modular architecture for estimating quarterly tax payments, supporting:
+This application is a multi-crate Rust workspace with:
 
-- Self-employment tax calculations (SE Worksheet)
-- Progressive income tax computation using IRS tax brackets
-- Multiple filing statuses (Single, MFJ, MFS, HOH, QSS)
-- Year-specific tax parameters stored in a database
+- A **desktop UI** built with GPUI (`tax-ui`)
+- A **domain + calculation layer** (`tax-core`)
+- A **SQLite backend** reference implementation of the repository trait (`tax-db-sqlite`)
+- A **CSV data-loading utility** for tax brackets (`tax-data`)
 
-## Project Structure
+The app currently supports:
 
-```
+- SE Tax and Deduction Worksheet calculations
+- Estimated Tax Worksheet calculations (including filing-status-specific tax brackets)
+- Persisting estimate inputs and computed results to SQLite
+- Filing statuses: `S`, `MFJ`, `MFS`, `HOH`, `QSS`
+
+## Workspace Layout
+
+```text
 tax-estimator/
-├── tax-core/          # Core domain models and repository traits
-├── tax-db-sqlite/     # SQLite database implementation
-└── tax-ui/            # User interface (in development)
+├── tax-core/           # Domain models, repository interfaces, worksheet calculations
+├── tax-db-sqlite/      # SQLx/SQLite repository implementation + migrations + seed SQL
+├── tax-data/           # CSV-to-database loader CLI for tax bracket schedules
+├── tax-ui/             # GPUI desktop application
+├── docs/               # Design/roadmap documents
+├── Cargo.toml          # Workspace manifest
+└── rustfmt.toml
 ```
 
-### Crates
+## Crates
 
-| Crate | Description |
-|-------|-------------|
-| `tax-core` | Domain models (`TaxYearConfig`, `TaxBracket`, `FilingStatus`, etc.) and the `TaxRepository` trait for data access abstraction |
-| `tax-db-sqlite` | SQLite implementation of `TaxRepository` with migrations and seed data for tax year 2025 |
-| `tax-ui` | Terminal-based user interface (placeholder) |
+| Crate | Purpose |
+|---|---|
+| `tax-core` | Core domain models (`TaxEstimateInput`, `TaxEstimate`, `TaxYearConfig`, etc.), repository traits, and worksheet calculation engines |
+| `tax-db-sqlite` | `TaxRepository` reference implementation using SQLite + SQLx migrations/seeds |
+| `tax-data` | CLI for loading IRS tax bracket CSV data into a repository-backed database |
+| `tax-ui` | Desktop UI that loads tax-year data, computes worksheet values, and saves estimates |
 
-## Data Model
+## Runtime Architecture
 
-### Tax Year Configuration (`TaxYearConfig`)
+1. `tax-ui` initializes app configuration (`database_backend`, `database_url`).
+2. A repository is created through `RepositoryRegistry` (currently `sqlite` backend).
+3. SQLite migrations and seed SQL are applied automatically during repository initialization.
+4. UI loads tax-year data (`TaxYearConfig`, filing statuses, standard deductions, tax brackets).
+5. User enters worksheet values, calculations run in `tax-core`.
+6. Persist flow writes:
+   - `create_estimate(TaxEstimateInput)`
+   - then `update_estimate(TaxEstimate { computed: Some(TaxEstimateComputed { ... }) })`
 
-Stores year-specific constants:
+## Configuration
 
-| Field | Description | 2025 Value |
-|-------|-------------|------------|
-| `ss_wage_max` | Social Security wage base limit | $176,100 |
-| `ss_tax_rate` | Combined SS tax rate for SE | 12.4% |
-| `medicare_tax_rate` | Combined Medicare tax rate for SE | 2.9% |
-| `se_tax_deductible_percentage` | Net earnings factor (line 3 of SE worksheet) | 92.35% |
-| `se_deduction_factor` | Deductible portion of SE tax | 50% |
-| `required_payment_threshold` | Minimum estimated tax due to require payments | $1,000 |
+`tax-ui` uses a TOML config file. Defaults:
 
-### Tax Brackets (`TaxBracket`)
+- `database_backend = "sqlite"`
+- `database_url = "taxes.db"` (in current working directory if relative)
 
-Progressive tax rate schedule by filing status, including:
-- Income thresholds (`min_income`, `max_income`)
-- Marginal rate (`tax_rate`)
-- Cumulative base tax (`base_tax`)
+Default config location:
 
-### Filing Statuses
+- Linux: `$XDG_CONFIG_HOME/TaxEstimator/config.toml` (or `~/.config/TaxEstimator/config.toml`)
+- macOS: `~/Library/Application Support/TaxEstimator/config.toml`
+- Windows: `%APPDATA%\TaxEstimator\config.toml`
 
-- Single (S)
-- Married Filing Jointly (MFJ)
-- Married Filing Separately (MFS)
-- Head of Household (HOH)
-- Qualifying Surviving Spouse (QSS)
-
-### Estimated Tax Calculation (`EstimatedTaxCalculation`)
-
-Captures user inputs and calculated results for a tax estimate.
-
-## User Input Fields
-
-### SE Worksheet (Self-Employment Tax)
-
-- Income subject to SE tax
-- Expected Conservation Reserve Program (CRP) payments
-- Expected wages (affects SS tax calculation)
-
-### 1040-ES Worksheet (Estimated Tax)
-
-- AGI (Adjusted Gross Income) estimate
-- Deduction amount (Standard or Itemized)
-- Qualified Business Income (QBI) deduction estimate
-- Alternative Minimum Tax (AMT) estimate
-- Credits estimate
-- Other taxes estimate
-- Prior year tax liability
-- Income tax withheld estimate
-
-## Current Limitations
-
-The following tax scenarios are not currently supported:
-
-- **Additional Medicare Tax**: The 0.9% surtax on wages/SE income exceeding $200k (Single/HOH) or $250k (MFJ) is not calculated
-- **Net Investment Income Tax (NIIT)**: The 3.8% tax on investment income for high earners is not modeled
-- **Safe Harbor 110% Rule**: For prior year AGI > $150k, safe harbor is 110% of prior year tax (not 100%); this distinction is not enforced
-- **Farm vs. Non-Farm SE Income**: The SE Worksheet lines 1a/1b distinction is combined into a single field
-- **Quarterly Payment Tracking**: Due dates and individual quarterly payments are not tracked
-
-See [EVALUATION.md](EVALUATION.md) for detailed analysis and recommendations.
-
-## Development
+## Quick Start
 
 ### Prerequisites
 
-- Rust (edition 2024)
-- SQLx CLI (for migrations): `cargo install sqlx-cli`
+- Rust toolchain (edition 2024 workspace)
 
-### Building
+### Build
 
-```powershell
-cargo build
+```bash
+cargo build --workspace
 ```
 
-### Running Tests
+### Run the desktop app
 
-```powershell
-cargo test
+```bash
+cargo run -p tax-ui --bin TaxEstimator
 ```
 
-Tests use an in-memory SQLite database with automatic migration.
+### Run tests
 
-### Database Migrations
+```bash
+cargo test --workspace
+```
 
-The SQLite database schema and seed data are managed via SQLx migrations in `tax-db-sqlite/migrations/`.
+## Loading Tax Brackets from CSV
+
+The `tax-data` crate provides a loader CLI:
+
+```bash
+cargo run -p tax-data --bin tax-data-loader -- \
+  --file tax-data/test-data/tax_brackets_2025.csv \
+  --database taxes.db \
+  --migrate \
+  --seeds tax-db-sqlite/seeds
+```
+
+CSV schedule mappings:
+
+- `X` -> `S`
+- `Y-1` -> `MFJ` and `QSS`
+- `Y-2` -> `MFS`
+- `Z` -> `HOH`
+
+## Database Notes
+
+- Schema migration lives in `tax-db-sqlite/migrations/`.
+- Seed SQL lives in `tax-db-sqlite/seeds/`.
+- `tax_estimate` enforces one record per `(tax_year, filing_status_id)` via unique index.
+- In-memory mode (`:memory:`) is supported for tests.
+- Seed directory resolution can be overridden with `TAX_DB_SQLITE_SEEDS_DIR`.
+
+## Known Limitations (Current Behavior)
+
+- Additional context values in estimated-tax calculation are currently fixed in UI:
+  - `refundable_credits = 0`
+  - `is_farmer_or_fisher = false`
+- Safe-harbor `110%` prior-year logic is not auto-derived; caller provides prior-year value.
+- Additional Medicare Tax / NIIT are not modeled as dedicated calculators (can be entered via "other taxes" input as an estimate).
+- Quarterly due-date/payment scheduling is out of scope (this app computes annual required payment and underpayment signals).
+
+## Docs
+
+Design and roadmap documents are in `docs/`, including:
+
+- `docs/TaxEstimatePersistencePlan.md`
+- `docs/BackendPersistenceMigration.md`
+- `docs/WASM_Plan.md`
+- `docs/SeWorksheet.md`
 
 ## License
 
