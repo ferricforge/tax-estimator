@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::db::TaxRecord;
+
 const SINGLE: i32 = 1;
 const MFJ: i32 = 2;
 const MFS: i32 = 3;
@@ -85,6 +87,12 @@ pub struct FilingStatus {
     pub id: i32,
     pub status_code: FilingStatusCode,
     pub status_name: String,
+}
+
+impl TaxRecord for FilingStatus {
+    type Key = i32;
+    type Draft = FilingStatus;
+    type Filter = ();
 }
 
 #[cfg(test)]

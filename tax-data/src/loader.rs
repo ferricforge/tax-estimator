@@ -2,7 +2,10 @@ use std::io::Read;
 
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use tax_core::{RepositoryError, TaxBracket, TaxRepository};
+use tax_core::{
+    FilingStatus, FilingStatusCode, Persist, RepositoryError, TaxBracket, TaxBracketFilter,
+    TaxRepository, TaxYearConfig,
+};
 use thiserror::Error;
 
 /// Errors that can occur when loading tax bracket data.
@@ -124,10 +127,13 @@ impl TaxBracketLoader {
     ///
     /// Note: Schedule Y-1 maps to both MFJ and QSS, so those brackets
     /// will be duplicated for both filing statuses.
-    pub async fn load<R: TaxRepository>(
+    pub async fn load<R>(
         repo: &R,
         records: &[TaxBracketRecord],
-    ) -> Result<usize, TaxBracketLoaderError> {
+    ) -> Result<usize, TaxBracketLoaderError>
+    where
+        R: TaxRepository + Persist<TaxYearConfig> + Persist<FilingStatus> + Persist<TaxBracket>,
+    {
         let mut inserted = 0;
 
         // Group records by (tax_year, schedule) to delete and re-insert atomically
@@ -142,43 +148,50 @@ impl TaxBracketLoader {
         }
 
         for ((tax_year, schedule), group_records) in groups {
+            repo.get::<TaxYearConfig>(&tax_year)
+                .await
+                .map_err(|e| match e {
+                    RepositoryError::NotFound => TaxBracketLoaderError::TaxYearNotFound(tax_year),
+                    other => TaxBracketLoaderError::Repository(other),
+                })?;
+
             // Map schedule to filing status codes
             let filing_status_codes = schedule_to_filing_status_codes(&schedule)?;
 
             for status_code in filing_status_codes {
-                // Look up the filing status ID
-                let filing_status =
-                    repo.get_filing_status_by_code(status_code)
-                        .await
-                        .map_err(|e| match e {
-                            RepositoryError::NotFound => {
-                                TaxBracketLoaderError::FilingStatusNotFound(status_code.to_string())
-                            }
-                            other => TaxBracketLoaderError::Repository(other),
-                        })?;
+                let filing_status_code = FilingStatusCode::parse(status_code).ok_or_else(|| {
+                    TaxBracketLoaderError::FilingStatusNotFound(status_code.to_string())
+                })?;
+                let filing_status_id = filing_status_code.filing_status_to_id();
+
+                repo.get::<FilingStatus>(&filing_status_id)
+                    .await
+                    .map_err(|e| match e {
+                        RepositoryError::NotFound => {
+                            TaxBracketLoaderError::FilingStatusNotFound(status_code.to_string())
+                        }
+                        other => TaxBracketLoaderError::Repository(other),
+                    })?;
 
                 // Delete existing brackets for this year/status
-                repo.delete_tax_brackets(tax_year, filing_status.id).await?;
+                repo.delete_matching::<TaxBracket>(&TaxBracketFilter {
+                    tax_year,
+                    filing_status_id,
+                })
+                .await?;
 
                 // Insert new brackets
                 for record in &group_records {
                     let bracket = TaxBracket {
                         tax_year: record.tax_year,
-                        filing_status_id: filing_status.id,
+                        filing_status_id,
                         min_income: record.min_income,
                         max_income: record.max_income,
                         tax_rate: record.rate,
                         base_tax: record.base_tax,
                     };
 
-                    repo.insert_tax_bracket(&bracket).await.map_err(|e| {
-                        if let RepositoryError::Database(ref inner) = e
-                            && inner.to_string().contains("FOREIGN KEY constraint failed")
-                        {
-                            return TaxBracketLoaderError::TaxYearNotFound(record.tax_year);
-                        }
-                        TaxBracketLoaderError::Repository(e)
-                    })?;
+                    TaxRepository::create::<TaxBracket>(repo, bracket).await?;
                     inserted += 1;
                 }
             }

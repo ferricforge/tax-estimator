@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::calculations::{EstimatedTaxWorksheetContext, EstimatedTaxWorksheetInput};
+use crate::db::TaxRecord;
 use crate::models::FilingStatusCode;
 
 /// Canonical user-entered estimate data.
@@ -43,6 +44,18 @@ pub struct TaxEstimate {
     pub computed: Option<TaxEstimateComputed>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Filter for listing estimates, optionally narrowed by year.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaxEstimateFilter {
+    pub tax_year: Option<i32>,
+}
+
+impl TaxRecord for TaxEstimate {
+    type Key = i64;
+    type Draft = TaxEstimateInput;
+    type Filter = TaxEstimateFilter;
 }
 
 /// Tax year range accepted for estimates (inclusive).

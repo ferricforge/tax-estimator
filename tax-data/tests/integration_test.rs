@@ -3,11 +3,24 @@
 use pretty_assertions::assert_eq;
 use rust_decimal_macros::dec;
 use sqlx::sqlite::SqlitePoolOptions;
-use tax_core::TaxRepository;
+use tax_core::{TaxBracket, TaxBracketFilter, TaxRepository};
 use tax_data::{TaxBracketLoader, TaxBracketLoaderError};
 use tax_db_sqlite::SqliteRepository;
 
 const TEST_CSV_2025: &str = include_str!("../test-data/tax_brackets_2025.csv");
+
+async fn get_tax_brackets(
+    repo: &SqliteRepository,
+    tax_year: i32,
+    filing_status_id: i32,
+) -> Vec<TaxBracket> {
+    repo.list::<TaxBracket>(&TaxBracketFilter {
+        tax_year,
+        filing_status_id,
+    })
+    .await
+    .expect("Failed to get tax brackets")
+}
 
 /// Sets up a test database with migrations run but NO seed data.
 /// This simulates a user running --migrate without --seeds.
@@ -77,10 +90,7 @@ async fn test_load_and_retrieve_single_brackets() {
         .await
         .expect("Failed to load brackets");
 
-    let brackets = repo
-        .get_tax_brackets(2025, 1)
-        .await
-        .expect("Failed to get Single brackets");
+    let brackets = get_tax_brackets(&repo, 2025, 1).await;
 
     assert_eq!(brackets.len(), 7);
 
@@ -114,10 +124,7 @@ async fn test_load_and_retrieve_mfj_brackets() {
         .await
         .expect("Failed to load brackets");
 
-    let brackets = repo
-        .get_tax_brackets(2025, 2)
-        .await
-        .expect("Failed to get MFJ brackets");
+    let brackets = get_tax_brackets(&repo, 2025, 2).await;
 
     assert_eq!(brackets.len(), 7);
 
@@ -143,10 +150,7 @@ async fn test_load_and_retrieve_mfs_brackets() {
         .await
         .expect("Failed to load brackets");
 
-    let brackets = repo
-        .get_tax_brackets(2025, 3)
-        .await
-        .expect("Failed to get MFS brackets");
+    let brackets = get_tax_brackets(&repo, 2025, 3).await;
 
     assert_eq!(brackets.len(), 7);
 
@@ -169,10 +173,7 @@ async fn test_load_and_retrieve_hoh_brackets() {
         .await
         .expect("Failed to load brackets");
 
-    let brackets = repo
-        .get_tax_brackets(2025, 4)
-        .await
-        .expect("Failed to get HOH brackets");
+    let brackets = get_tax_brackets(&repo, 2025, 4).await;
 
     assert_eq!(brackets.len(), 7);
 
@@ -199,14 +200,8 @@ async fn test_load_and_retrieve_qss_brackets() {
         .await
         .expect("Failed to load brackets");
 
-    let qss_brackets = repo
-        .get_tax_brackets(2025, 5)
-        .await
-        .expect("Failed to get QSS brackets");
-    let mfj_brackets = repo
-        .get_tax_brackets(2025, 2)
-        .await
-        .expect("Failed to get MFJ brackets");
+    let qss_brackets = get_tax_brackets(&repo, 2025, 5).await;
+    let mfj_brackets = get_tax_brackets(&repo, 2025, 2).await;
 
     // QSS should match MFJ (both from Schedule Y-1)
     assert_eq!(qss_brackets.len(), mfj_brackets.len());
@@ -235,10 +230,7 @@ async fn test_load_is_idempotent() {
 
     // Should still have exactly 7 brackets per filing status
     for status_id in 1..=5 {
-        let brackets = repo
-            .get_tax_brackets(2025, status_id)
-            .await
-            .expect("Failed to get brackets");
+        let brackets = get_tax_brackets(&repo, 2025, status_id).await;
         assert_eq!(
             brackets.len(),
             7,
@@ -261,10 +253,7 @@ async fn test_load_replaces_existing_brackets() {
     .await
     .expect("Failed to insert initial bracket");
 
-    let initial_brackets = repo
-        .get_tax_brackets(2025, 1)
-        .await
-        .expect("Failed to get initial brackets");
+    let initial_brackets = get_tax_brackets(&repo, 2025, 1).await;
     assert_eq!(initial_brackets.len(), 1);
     assert_eq!(initial_brackets[0].max_income, Some(dec!(5000)));
 
@@ -275,10 +264,7 @@ async fn test_load_replaces_existing_brackets() {
         .expect("Failed to load brackets");
 
     // Should now have the correct brackets
-    let loaded_brackets = repo
-        .get_tax_brackets(2025, 1)
-        .await
-        .expect("Failed to get loaded brackets");
+    let loaded_brackets = get_tax_brackets(&repo, 2025, 1).await;
     assert_eq!(loaded_brackets.len(), 7);
     assert_eq!(loaded_brackets[0].max_income, Some(dec!(11925)));
 }
@@ -308,17 +294,11 @@ async fn test_load_fails_without_filing_statuses() {
 
     let result = TaxBracketLoader::load(&repo, &records).await;
 
-    // The exact status code depends on which schedule is processed first (HashMap ordering),
-    // but we know it must be one of S, MFJ, MFS, HOH, or QSS
     let err = result.expect_err("Should fail when filing statuses are missing");
-    let TaxBracketLoaderError::FilingStatusNotFound(code) = err else {
-        panic!("Expected FilingStatusNotFound error, got: {:?}", err);
+    let TaxBracketLoaderError::TaxYearNotFound(year) = err else {
+        panic!("Expected TaxYearNotFound error, got: {:?}", err);
     };
-    assert!(
-        ["S", "MFJ", "MFS", "HOH", "QSS"].contains(&code.as_str()),
-        "Expected one of S, MFJ, MFS, HOH, QSS but got: {}",
-        code
-    );
+    assert_eq!(year, 2025);
 }
 
 #[tokio::test]
@@ -379,17 +359,11 @@ async fn test_load_preserves_other_year_brackets() {
         .expect("Failed to load brackets");
 
     // 2024 brackets should still exist
-    let brackets_2024 = repo
-        .get_tax_brackets(2024, 1)
-        .await
-        .expect("Failed to get 2024 brackets");
+    let brackets_2024 = get_tax_brackets(&repo, 2024, 1).await;
     assert_eq!(brackets_2024.len(), 1);
     assert_eq!(brackets_2024[0].max_income, Some(dec!(11000)));
 
     // 2025 brackets should be loaded
-    let brackets_2025 = repo
-        .get_tax_brackets(2025, 1)
-        .await
-        .expect("Failed to get 2025 brackets");
+    let brackets_2025 = get_tax_brackets(&repo, 2025, 1).await;
     assert_eq!(brackets_2025.len(), 7);
 }

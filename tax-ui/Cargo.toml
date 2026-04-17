@@ -16,6 +16,7 @@ rust_decimal.workspace      = true
 serde.workspace             = true
 tax-core                    = { path = "../tax-core" }
 tax-db-sqlite               = { path = "../tax-db-sqlite" }
+tax-db                      = { path = "../tax-db" }
 thiserror.workspace         = true
 tokio.workspace             = true
 toml                        = "0.8"

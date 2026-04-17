@@ -3,19 +3,16 @@
 //! Demonstrates building canonical estimate input, loading reference data,
 //! running both worksheets, and persisting the resulting estimate record.
 
+use pretty_assertions::assert_eq;
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use tax_core::calculations::{
     EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetResult, SeWorksheet,
     SeWorksheetConfig, SeWorksheetResult,
 };
-use tax_core::db::{DbConfig, RepositoryRegistry};
-use tax_core::{
-    FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput, TaxRepository,
-};
-use tax_ui::app::{FilingStatusData, TaxYearData, build_registry, load_tax_year_data};
-
-use pretty_assertions::assert_eq;
-use rust_decimal_macros::dec;
+use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
+use tax_db::{DbConfig, TaxRepository, open};
+use tax_ui::app::{FilingStatusData, TaxYearData, load_tax_year_data};
 
 fn make_input() -> TaxEstimateInput {
     TaxEstimateInput {
@@ -83,13 +80,11 @@ async fn estimate_input_through_db_and_calculations_to_tax_estimate() {
         backend: "sqlite".to_string(),
         connection_string: ":memory:".to_string(),
     };
-    let registry: RepositoryRegistry = build_registry();
-    let repo: Box<dyn TaxRepository> = registry
-        .create(&db_config)
+    let repo = open(&db_config)
         .await
         .expect("repository creation should succeed");
 
-    let year_data: TaxYearData = load_tax_year_data(&*repo, input.tax_year)
+    let year_data: TaxYearData = load_tax_year_data(&repo, input.tax_year)
         .await
         .expect("load_tax_year_data should succeed");
 
@@ -109,10 +104,9 @@ async fn estimate_input_through_db_and_calculations_to_tax_estimate() {
         &year_data.config,
     );
 
-    let created: TaxEstimate = repo
-        .create_estimate(input.clone())
+    let created: TaxEstimate = TaxRepository::create::<TaxEstimate>(&repo, input.clone())
         .await
-        .expect("create_estimate should succeed");
+        .expect("create should succeed");
 
     let mut updated: TaxEstimate = created.clone();
     updated.computed = Some(TaxEstimateComputed {
@@ -121,14 +115,13 @@ async fn estimate_input_through_db_and_calculations_to_tax_estimate() {
         required_payment: est_result.required_annual_payment,
     });
 
-    repo.update_estimate(&updated)
+    TaxRepository::update(&repo, &updated)
         .await
-        .expect("update_estimate should succeed");
+        .expect("update should succeed");
 
-    let fetched: TaxEstimate = repo
-        .get_estimate(created.id)
+    let fetched: TaxEstimate = TaxRepository::get::<TaxEstimate>(&repo, &created.id)
         .await
-        .expect("get_estimate should succeed");
+        .expect("get should succeed");
 
     assert_eq!(
         fetched.computed,

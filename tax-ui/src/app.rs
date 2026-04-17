@@ -10,12 +10,12 @@ use rust_decimal::Decimal;
 use tax_core::calculations::{
     EstimatedTaxWorksheetResult, SeWorksheet, SeWorksheetConfig, SeWorksheetResult,
 };
-use tax_core::{TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
+use tax_core::{TaxBracketFilter, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
+use tax_db::TaxStore;
 use tracing::debug;
 
-use tax_core::db::{DbConfig, RepositoryRegistry, TaxRepository};
+use tax_core::db::{DbConfig, TaxRepository};
 use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket, TaxYearConfig};
-use tax_db_sqlite::SqliteRepositoryFactory;
 
 use crate::components::{ErrorDialog, EstimatedIncomeForm, SeWorksheetForm};
 use crate::models::SeWorksheetModel;
@@ -42,16 +42,6 @@ pub struct TaxYearData {
     pub statuses: Vec<FilingStatusData>,
 }
 
-// ─── registry ────────────────────────────────────────────────────────────────
-
-/// Register every known backend with a fresh [`RepositoryRegistry`].
-/// Adding a new backend later is one line here.
-pub fn build_registry() -> RepositoryRegistry {
-    let mut registry = RepositoryRegistry::new();
-    registry.register(Box::new(SqliteRepositoryFactory));
-    registry
-}
-
 // ─── loading ─────────────────────────────────────────────────────────────────
 
 /// Pull every piece of reference data the calculator needs for `year`:
@@ -61,25 +51,35 @@ pub fn build_registry() -> RepositoryRegistry {
 /// Logs each stage at `debug` level so the caller can trace progress
 /// without cluttering normal output.
 pub async fn load_tax_year_data(
-    repo: &dyn TaxRepository,
+    repo: &TaxStore,
     year: i32,
 ) -> anyhow::Result<TaxYearData> {
     debug!("loading tax-year data for {year}");
-    let (config, status_rows) = tokio::try_join!(
-        repo.get_tax_year_config(year),
-        repo.get_filing_status_data(year),
+    let (config, filing_statuses) = tokio::try_join!(
+        repo.get::<TaxYearConfig>(&year),
+        repo.list::<FilingStatus>(&()),
     )?;
 
-    let statuses = status_rows
-        .into_iter()
-        .map(
-            |(filing_status, standard_deduction, tax_brackets)| FilingStatusData {
-                filing_status,
-                standard_deduction,
-                tax_brackets,
-            },
-        )
-        .collect();
+    let mut statuses = Vec::with_capacity(filing_statuses.len());
+
+    for filing_status in filing_statuses {
+        let standard_deduction = repo
+            .get::<StandardDeduction>(&(year, filing_status.id))
+            .await?;
+
+        let tax_brackets = repo
+            .list::<TaxBracket>(&TaxBracketFilter {
+                tax_year: year,
+                filing_status_id: filing_status.id,
+            })
+            .await?;
+
+        statuses.push(FilingStatusData {
+            filing_status,
+            standard_deduction,
+            tax_brackets,
+        });
+    }
 
     Ok(TaxYearData { config, statuses })
 }
@@ -176,9 +176,9 @@ pub async fn save_tax_estimate(
     form_input: &TaxEstimateInput,
     calculated: &EstimatedTaxWorksheetResult,
     se_model: &SeWorksheetModel,
-    repo: Arc<dyn TaxRepository>,
+    repo: Arc<TaxStore>,
 ) -> Result<()> {
-    let created: TaxEstimate = repo.create_estimate(form_input.clone()).await?;
+    let created: TaxEstimate = repo.create::<TaxEstimate>(form_input.clone()).await?;
 
     let mut updated: TaxEstimate = created.clone();
     updated.computed = Some(TaxEstimateComputed {
@@ -187,7 +187,7 @@ pub async fn save_tax_estimate(
         required_payment: calculated.required_annual_payment,
     });
 
-    repo.update_estimate(&updated).await?;
+    repo.update(&updated).await?;
 
     Ok(())
 }

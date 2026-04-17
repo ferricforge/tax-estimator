@@ -1,6 +1,5 @@
 mod decimal;
-pub mod factory;
+mod records;
 pub mod repository;
 
-pub use factory::SqliteRepositoryFactory;
 pub use repository::SqliteRepository;

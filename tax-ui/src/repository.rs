@@ -3,10 +3,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use gpui::{App, AsyncApp, BorrowAppContext, Global};
 use rust_decimal::Decimal;
-use tax_core::{RepositoryError, TaxRepository, TaxYearConfig, db::DbConfig}; // adjust path as needed
+use tax_core::{RepositoryError, TaxRepository, TaxYearConfig, db::DbConfig};
+use tax_db::{TaxStore, open}; // adjust path as needed
 
 use crate::{
-    app::{TaxYearData, build_registry, load_tax_year_data},
+    app::{TaxYearData, load_tax_year_data},
     config::AppConfig,
 };
 
@@ -16,7 +17,7 @@ use crate::{
 
 /// Process-wide database handle. Cheap to clone; holds an `Arc`.
 #[derive(Clone)]
-pub struct TaxRepo(Arc<dyn TaxRepository>);
+pub struct TaxRepo(Arc<TaxStore>);
 
 impl Global for TaxRepo {}
 
@@ -29,11 +30,11 @@ impl TaxRepo {
         cx.try_global::<Self>().cloned()
     }
 
-    pub fn tax_repository(&self) -> &dyn TaxRepository {
+    pub fn tax_repository(&self) -> &TaxStore {
         &*self.0
     }
 
-    pub fn tax_repository_arc(&self) -> Arc<dyn TaxRepository> {
+    pub fn tax_repository_arc(&self) -> Arc<TaxStore> {
         self.0.clone()
     }
 
@@ -41,7 +42,7 @@ impl TaxRepo {
         &self,
         year: i32,
     ) -> Result<TaxYearConfig, RepositoryError> {
-        self.0.get_tax_year_config(year).await
+        self.0.get::<TaxYearConfig>(&year).await
     }
 
     // Add more delegating methods as you need them.
@@ -49,7 +50,7 @@ impl TaxRepo {
 
 /// Build the repository from `AppConfig` and install it as a global.
 /// Call once during startup, *after* `AppConfig::init`.
-pub async fn init_repository(cx: &mut gpui::AsyncApp) -> Result<()> {
+pub async fn init_repository(cx: &mut AsyncApp) -> Result<()> {
     let (url, backend) = cx.update(|cx| {
         let cfg = AppConfig::get(cx);
         (cfg.database_url.clone(), cfg.database_backend.as_str())
@@ -60,10 +61,8 @@ pub async fn init_repository(cx: &mut gpui::AsyncApp) -> Result<()> {
         connection_string: url,
     };
 
-    let registry = build_registry();
-    let repo = registry.create(&db_config).await?;
-
-    cx.update(|cx| cx.set_global(TaxRepo(repo.into())))?;
+    let repo = open(&db_config).await?;
+    cx.update(|cx| cx.set_global(TaxRepo(Arc::new(repo))))?;
     Ok(())
 }
 

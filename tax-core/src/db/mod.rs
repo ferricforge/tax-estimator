@@ -1,5 +1,7 @@
-pub mod factory;
+pub mod persist;
+pub mod record;
 pub mod repository;
 
-pub use factory::{DbConfig, RepositoryFactory, RepositoryRegistry};
-pub use repository::{RepositoryError, TaxRepository};
+pub use persist::Persist;
+pub use record::TaxRecord;
+pub use repository::{DataStore, DbConfig, RepositoryError, TaxRepository};

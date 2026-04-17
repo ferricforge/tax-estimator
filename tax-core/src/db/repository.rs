@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::models::{
-    FilingStatus, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput, TaxYearConfig,
-};
+use super::persist::Persist;
+use super::record::TaxRecord;
+
+// ── Errors ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
 pub enum RepositoryError {
@@ -16,93 +17,125 @@ pub enum RepositoryError {
     #[error("Connection error")]
     Connection(#[source] anyhow::Error),
 
-    /// Raised by the registry when no factory is registered for the
-    /// requested backend name, or when required configuration is missing.
+    /// Raised when required configuration is missing or a requested
+    /// operation is not supported for a given record type.
     #[error("Configuration error: {0}")]
     Configuration(String),
 
-    /// A value was retrieved from the database but could not be parsed into
-    /// the expected domain type (e.g. an unrecognised filing status code).
+    /// A value was retrieved from the database but could not be parsed
+    /// into the expected domain type.
     #[error("Invalid data: {0}")]
     InvalidData(String),
 }
 
-#[async_trait]
-pub trait TaxRepository: Send + Sync {
-    // Tax year config
-    async fn get_tax_year_config(
-        &self,
-        year: i32,
-    ) -> Result<TaxYearConfig, RepositoryError>;
-    async fn list_tax_years(&self) -> Result<Vec<i32>, RepositoryError>;
+// ── Configuration ───────────────────────────────────────────────────────
 
-    // Filing status
-    async fn get_filing_status(
-        &self,
-        id: i32,
-    ) -> Result<FilingStatus, RepositoryError>;
-    async fn get_filing_status_by_code(
-        &self,
-        code: &str,
-    ) -> Result<FilingStatus, RepositoryError>;
-    async fn list_filing_statuses(&self) -> Result<Vec<FilingStatus>, RepositoryError>;
-
-    // Standard deductions
-    async fn get_standard_deduction(
-        &self,
-        tax_year: i32,
-        filing_status_id: i32,
-    ) -> Result<StandardDeduction, RepositoryError>;
-
-    /// Fetch every filing status together with its standard deduction and tax
-    /// brackets for `year` via a single three-way JOIN, ordered by filing
-    /// status id then bracket min income.
-    async fn get_filing_status_data(
-        &self,
-        year: i32,
-    ) -> Result<Vec<(FilingStatus, StandardDeduction, Vec<TaxBracket>)>, RepositoryError>;
-
-    // Tax brackets
-    async fn get_tax_brackets(
-        &self,
-        tax_year: i32,
-        filing_status_id: i32,
-    ) -> Result<Vec<TaxBracket>, RepositoryError>;
-
-    async fn insert_tax_bracket(
-        &self,
-        bracket: &TaxBracket,
-    ) -> Result<(), RepositoryError>;
-
-    async fn delete_tax_brackets(
-        &self,
-        tax_year: i32,
-        filing_status_id: i32,
-    ) -> Result<(), RepositoryError>;
-
-    // Tax estimates
-    async fn create_estimate(
-        &self,
-        estimate: TaxEstimateInput,
-    ) -> Result<TaxEstimate, RepositoryError>;
-
-    async fn get_estimate(
-        &self,
-        id: i64,
-    ) -> Result<TaxEstimate, RepositoryError>;
-
-    async fn update_estimate(
-        &self,
-        estimate: &TaxEstimate,
-    ) -> Result<(), RepositoryError>;
-
-    async fn delete_estimate(
-        &self,
-        id: i64,
-    ) -> Result<(), RepositoryError>;
-
-    async fn list_estimates(
-        &self,
-        tax_year: Option<i32>,
-    ) -> Result<Vec<TaxEstimate>, RepositoryError>;
+/// Backend-agnostic connection configuration.
+///
+/// | backend  | `connection_string` examples |
+/// |----------|------------------------------|
+/// | `sqlite` | `taxes.db`, `:memory:`       |
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DbConfig {
+    /// Lowercase identifier for the backend (e.g. `"sqlite"`).
+    pub backend: String,
+    /// Opaque value forwarded to the backend's `connect` method.
+    pub connection_string: String,
 }
+
+impl Default for DbConfig {
+    fn default() -> Self {
+        Self {
+            backend: "sqlite".to_string(),
+            connection_string: ":memory:".to_string(),
+        }
+    }
+}
+
+// ── Marker ──────────────────────────────────────────────────────────────
+
+/// Opt-in marker for types that serve as persistence backends.
+///
+/// Implement this on your store type; the blanket impl below then gives
+/// it the full [`TaxRepository`] API for free.
+pub trait DataStore: Send + Sync {}
+
+// ── Generic repository façade ───────────────────────────────────────────
+
+/// Six generic persistence verbs, available on every [`DataStore`].
+///
+/// Individual methods become callable once the store also implements
+/// [`Persist<R>`] for the record type `R` in question.  All methods are
+/// provided — there is nothing to implement.
+///
+/// ```ignore
+/// let brackets = store.list::<TaxBracket>(&filter).await?;
+/// let est      = store.create::<TaxEstimate>(input).await?;
+/// store.update(&est).await?;                          // R inferred
+/// store.delete::<TaxEstimate>(&est.id).await?;
+/// ```
+#[async_trait]
+pub trait TaxRepository: DataStore {
+    async fn get<R: TaxRecord>(
+        &self,
+        key: &R::Key,
+    ) -> Result<R, RepositoryError>
+    where
+        Self: Persist<R>,
+    {
+        <Self as Persist<R>>::fetch(self, key).await
+    }
+
+    async fn list<R: TaxRecord>(
+        &self,
+        filter: &R::Filter,
+    ) -> Result<Vec<R>, RepositoryError>
+    where
+        Self: Persist<R>,
+    {
+        <Self as Persist<R>>::fetch_all(self, filter).await
+    }
+
+    async fn create<R: TaxRecord>(
+        &self,
+        draft: R::Draft,
+    ) -> Result<R, RepositoryError>
+    where
+        Self: Persist<R>,
+    {
+        <Self as Persist<R>>::create(self, draft).await
+    }
+
+    async fn update<R: TaxRecord>(
+        &self,
+        record: &R,
+    ) -> Result<(), RepositoryError>
+    where
+        Self: Persist<R>,
+    {
+        <Self as Persist<R>>::update(self, record).await
+    }
+
+    async fn delete<R: TaxRecord>(
+        &self,
+        key: &R::Key,
+    ) -> Result<(), RepositoryError>
+    where
+        Self: Persist<R>,
+    {
+        <Self as Persist<R>>::delete(self, key).await
+    }
+
+    async fn delete_matching<R: TaxRecord>(
+        &self,
+        filter: &R::Filter,
+    ) -> Result<u64, RepositoryError>
+    where
+        Self: Persist<R>,
+    {
+        <Self as Persist<R>>::delete_all(self, filter).await
+    }
+}
+
+/// Every [`DataStore`] is automatically a [`TaxRepository`].
+impl<S: DataStore> TaxRepository for S {}

@@ -1,0 +1,11 @@
+[package]
+name = "tax-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+tax-core = { path = "../tax-core" }
+tax-db-sqlite = { path = "../tax-db-sqlite" }

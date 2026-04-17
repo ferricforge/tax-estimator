@@ -3,6 +3,8 @@ use std::fmt::Display;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::db::TaxRecord;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaxYearConfig {
     pub tax_year: i32,
@@ -13,6 +15,12 @@ pub struct TaxYearConfig {
     pub se_deduction_factor: Decimal,
     pub req_pmnt_threshold: Decimal,
     pub min_se_threshold: Decimal,
+}
+
+impl TaxRecord for TaxYearConfig {
+    type Key = i32;
+    type Draft = TaxYearConfig;
+    type Filter = ();
 }
 
 impl Display for TaxYearConfig {
