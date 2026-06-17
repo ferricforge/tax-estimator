@@ -1,5 +1,6 @@
 mod dialogs;
 mod estimate_form;
+mod estimate_selector;
 mod file_menu;
 mod file_picker;
 mod filters;
@@ -24,11 +25,12 @@ use gpui_component::{
 
 pub use dialogs::ErrorDialog;
 pub use estimate_form::EstimatedIncomeForm;
+pub use estimate_selector::EstimateSelector;
 pub use results_form::ResultForm;
 
 pub use file_menu::{
-    CloseProject, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
-    build_menu_bar,
+    CloseProject, LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs,
+    bind_menu_keys, build_menu_bar,
 };
 use gpui_component::input::{Input, InputState, MaskPattern};
 use rust_decimal::Decimal;

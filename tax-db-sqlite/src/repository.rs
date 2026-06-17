@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{
-    Row,
+    AssertSqlSafe, Row,
     sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow},
 };
 use tax_core::{
@@ -79,7 +79,7 @@ impl SqliteRepository {
             let sql = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read seed file '{}'", path.display()))?;
 
-            sqlx::raw_sql(&sql)
+            sqlx::raw_sql(AssertSqlSafe(sql))
                 .execute(&self.pool)
                 .await
                 .with_context(|| format!("Failed to execute seed file '{}'", path.display()))?;
@@ -639,34 +639,37 @@ impl TaxRepository for SqliteRepository {
         &self,
         tax_year: Option<i32>,
     ) -> Result<Vec<TaxEstimate>, RepositoryError> {
-        const BASE_QUERY: &str =
-            "SELECT te.id, te.tax_year, te.expected_agi, te.expected_deduction,
-                te.expected_qbi_deduction, te.expected_amt, te.expected_credits,
-                te.expected_other_taxes, te.expected_withholding, te.prior_year_tax,
-                te.se_income, te.expected_crp_payments, te.expected_wages,
-                te.calculated_se_tax, te.calculated_total_tax, te.calculated_required_payment,
-                te.created_at, te.updated_at, fs.status_code AS filing_status_code
-         FROM tax_estimate te
-         JOIN filing_status fs ON fs.id = te.filing_status_id";
-
+        macro_rules! estimates_query {
+            ($suffix:literal) => {
+                concat!(
+                    "SELECT te.id, te.tax_year, te.expected_agi, te.expected_deduction,
+                        te.expected_qbi_deduction, te.expected_amt, te.expected_credits,
+                        te.expected_other_taxes, te.expected_withholding, te.prior_year_tax,
+                        te.se_income, te.expected_crp_payments, te.expected_wages,
+                        te.calculated_se_tax, te.calculated_total_tax, te.calculated_required_payment,
+                        te.created_at, te.updated_at, fs.status_code AS filing_status_code
+                 FROM tax_estimate te
+                 JOIN filing_status fs ON fs.id = te.filing_status_id ",
+                    $suffix
+                )
+            };
+        }
         let rows = match tax_year {
             Some(year) => {
-                sqlx::query(&format!(
-                    "{} WHERE te.tax_year = ? ORDER BY te.updated_at DESC",
-                    BASE_QUERY
+                sqlx::query(estimates_query!(
+                    "WHERE te.tax_year = ? ORDER BY te.updated_at DESC"
                 ))
                 .bind(year)
                 .fetch_all(&self.pool)
                 .await
             }
             None => {
-                sqlx::query(&format!("{} ORDER BY te.updated_at DESC", BASE_QUERY))
+                sqlx::query(estimates_query!("ORDER BY te.updated_at DESC"))
                     .fetch_all(&self.pool)
                     .await
             }
         }
         .map_err(|e| RepositoryError::Database(e.into()))?;
-
         rows.iter().map(row_to_tax_estimate).collect()
     }
 }

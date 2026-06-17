@@ -1,176 +1,130 @@
-# Data Model Evaluation
+# Outstanding Data Model Items
 
-This document evaluates the implemented data model against the documented requirements for the Tax Estimator application.
+This document tracks remaining data model, calculation, and persistence work for
+the Tax Estimator application.
 
-## User Input Field Coverage
+## High Priority
 
-### SE Worksheet — All Fields Present
+### Additional Medicare Tax
 
-| Documented Requirement | Model Field | Status |
-|------------------------|-------------|--------|
-| Income subject to SE tax | `se_income` | ✓ |
-| Expected CRP payments | `expected_crp_payments` | ✓ |
-| Expected wages | `expected_wages` | ✓ |
+Add support for the 0.9% Additional Medicare Tax on wages, railroad retirement
+compensation, and self-employment income above filing-status thresholds.
 
-### 1040-ES Worksheet — All Fields Present
+- **Thresholds**: $200,000 for Single and Head of Household, $250,000 for
+  Married Filing Jointly and Qualifying Surviving Spouse, and $125,000 for
+  Married Filing Separately.
+- **Configuration**: Add tax-year-specific values for
+  `additional_medicare_rate` and the applicable threshold by filing status.
+- **Calculation**: Apply the tax to qualifying wages and self-employment income
+  above the threshold, with tests for mixed wage and self-employment cases.
+- **Persistence/UI**: Store or display the calculated amount separately if users
+  need worksheet-level transparency.
 
-| Documented Requirement | Model Field | Status |
-|------------------------|-------------|--------|
-| AGI estimate | `expected_agi` | ✓ |
-| Deduction (Standard/Itemized) | `expected_deduction` | ✓ |
-| QBI deduction | `expected_qbi_deduction` | ✓ |
-| AMT estimate | `expected_amt` | ✓ |
-| Credits estimate | `expected_credits` | ✓ |
-| Other taxes | `expected_other_taxes` | ✓ |
-| Prior year tax | `prior_year_tax` | ✓ |
-| Withholding estimate | `expected_withholding` | ✓ |
+### Safe Harbor 110% Rule
 
-## TaxYearConfig — Well Designed
+Add automatic support for the high-income safe harbor rule.
 
-The configurable multipliers and thresholds align with the original requirement to store rates rather than computed values:
+- **Input**: Add `prior_year_agi` or an explicit safe-harbor multiplier override.
+- **Rule**: Use 110% of prior-year tax when prior-year AGI exceeds $150,000, or
+  $75,000 for Married Filing Separately; otherwise use 100%.
+- **Calculation**: Apply the adjusted prior-year tax amount before comparing it
+  with the current-year required payment amount.
+- **Tests**: Cover both 100% and 110% safe-harbor cases, including the point
+  where the prior-year tax amount controls the required annual payment.
 
-| Field | Purpose | 2025 Seed Value |
-|-------|---------|-----------------|
-| `ss_wage_max` | SE Worksheet line 5-6 limit | $176,100 |
-| `ss_tax_rate` | Combined SS rate (12.4%) | 0.124 |
-| `medicare_tax_rate` | SE Worksheet line 4 (2.9%) | 0.029 |
-| `se_tax_deductible_percentage` | SE Worksheet line 3 (92.35%) | 0.9235 |
-| `se_deduction_factor` | SE deduction half (50%) | 0.50 |
-| `required_payment_threshold` | 1040-ES line 14c minimum | $1,000 |
-| `min_se_threshold` | Minimum SE income to trigger tax ($400) | $400 |
+## Medium Priority
 
-**Note**: The `min_se_threshold` field was added via migration `20260107000000_add_min_se_threshold.sql` and is actively used in the SE worksheet calculation to determine if SE tax applies.
+### Farm vs. Non-Farm Self-Employment Income
 
-## Migration SQL — Generally Sound
+Track Schedule SE farm and non-farm income as separate worksheet inputs.
 
-### Strengths
+- **Fields**: Add fields such as `se_farm_income` and `se_nonfarm_income`, or
+  align names directly with Schedule SE line 1a and line 2.
+- **CRP payments**: Keep Conservation Reserve Program payments as a separate
+  line 1b input.
+- **Surfaces**: Update persistence, UI forms, CSV import, and worksheet tests.
 
-- Proper foreign key relationships between tables
-- Appropriate decimal precision: `DECIMAL(12,2)` for currency, `DECIMAL(5,4)` for rates
-- Complete seed data for all 5 filing statuses
-- Tax brackets seeded for all schedules (X, Y-1, Y-2, Z, QSS)
-- Nullable `max_income` correctly handles the top bracket (no upper limit)
+### Net Investment Income Tax
 
-### Standard Deduction Seed Values (Verified for 2025)
+Add explicit Net Investment Income Tax support for taxpayers with investment
+income over filing-status thresholds.
 
-| Filing Status | Amount |
-|---------------|--------|
-| Single | $15,000 |
-| Married Filing Jointly | $30,000 |
-| Married Filing Separately | $15,000 |
-| Head of Household | $22,500 |
-| Qualifying Surviving Spouse | $30,000 |
+- **Inputs**: Add net investment income and threshold data by filing status.
+- **Rule**: Apply the 3.8% NIIT calculation for qualifying high-income users.
+- **Integration**: Feed the calculated NIIT into the estimated tax worksheet's
+  other-taxes path, or store it separately when shown in results.
 
-## Identified Gaps
+### Farmer/Fisher Estimated Tax Path
 
-### High Priority
+Expose the farmer/fisher estimated tax rule as a user-controlled input.
 
-#### Additional Medicare Tax
+- **Input**: Add a persisted `is_farmer_or_fisher` field if this status should
+  be user-selectable.
+- **Calculation**: Use the two-thirds current-year factor for qualifying users.
+- **Surfaces**: Include the flag in UI, CSV import/export, and end-to-end tests.
 
-The 0.9% Additional Medicare Tax on wages and self-employment income exceeding threshold amounts is not captured in the current model.
+### Saved Estimate Loading
 
-- **Thresholds**: $200,000 (Single/HOH), $250,000 (MFJ), $125,000 (MFS)
-- **Impact**: Affects many self-employed filers with income over $200k
-- **Recommendation**: Add `additional_medicare_threshold` and `additional_medicare_rate` to `TaxYearConfig`
+Add a UI flow for selecting a persisted estimate and restoring it into the
+current worksheet.
 
-### Medium Priority
+- **Selection**: List saved estimates, optionally filtered by tax year, with
+  enough context to distinguish filing status, update time, and key amounts.
+- **Hydration**: Populate the main 1040-ES form, SE worksheet fields, active tax
+  year state, and filing status from the selected `TaxEstimate`.
+- **Results**: Display saved computed values when present, and make recalculation
+  available after the estimate is loaded.
+- **Tests**: Cover loading an estimate with full optional input values, no
+  optional values, and persisted computed results.
 
-#### Farm vs. Non-Farm SE Income
+## Lower Priority
 
-The SE Worksheet distinguishes between:
-- Line 1a: Net farm profit (Schedule F)
-- Line 1b: Net non-farm profit (Schedule C/SE)
+### Quarterly Payment Schedule
 
-The current model combines these into a single `se_income` field.
+Add support for tracking estimated payments across payment periods.
 
-- **Impact**: Minor for most users; calculation is the same
-- **Recommendation**: Consider splitting into `se_farm_income` and `se_nonfarm_income` for more accurate form representation
+- **Schedule**: Store quarterly due dates and calculated payment amounts.
+- **Payments**: Track payments already made, payment dates, and remaining
+  balance by period.
+- **Reporting**: Show annual and per-quarter totals for planning and review.
 
-#### Safe Harbor 110% Rule
+### Database-Level Validation
 
-For taxpayers with prior year AGI exceeding $150,000 ($75,000 MFS), the safe harbor requirement is 110% of prior year tax rather than 100%.
+Add database constraints for core business rules that should be enforced at the
+storage layer.
 
-- **Impact**: High-income users may underpay if using 100% safe harbor
-- **Recommendation**: Consider storing `prior_year_agi` to determine which safe harbor percentage applies
+- **Nonnegative values**: Add `CHECK` constraints for amounts that should not be
+  negative, such as AGI, deductions, credits, withholding, and prior-year tax.
+- **Rate bounds**: Constrain tax rates and multipliers to valid ranges.
+- **Computed values**: Enforce all-or-none population for calculated result
+  columns such as SE tax, total tax, and required payment.
 
-### Lower Priority
+### Timestamp Storage
 
-#### Net Investment Income Tax (NIIT)
+Normalize timestamp storage so persisted values have unambiguous UTC semantics.
 
-The 3.8% tax on net investment income for high earners (AGI over $200k single, $250k MFJ) is not modeled.
+- **Format**: Consider storing Unix timestamps as integers, or ISO 8601 strings
+  with explicit UTC offsets.
+- **Conversion**: Ensure reads and writes round-trip cleanly through
+  `chrono::DateTime<Utc>`.
+- **Tests**: Add persistence tests around timestamp parsing and ordering.
 
-- **Impact**: Primarily affects users with significant investment income
-- **Recommendation**: Add if target users include investors
+### Query Performance Review
 
-#### Quarterly Payment Schedule
+Review query plans for common lookup and listing paths, then add indexes where
+they provide measurable value.
 
-The model stores `calculated_required_payment` but does not track:
-- Quarterly payment amounts
-- Due dates (April 15, June 15, September 15, January 15)
-- Payments already made
+- **Estimate listing**: Consider an index on `tax_estimate(tax_year, updated_at)`
+  if filtered estimate lists become large.
+- **Lookup paths**: Verify that existing keys cover tax bracket and standard
+  deduction lookups efficiently.
+- **Validation**: Add indexes only after confirming the expected query plans.
 
-- **Recommendation**: Could add a `payment_schedule` table for tracking
+### Audit Trail, Soft Deletes, and Retention
 
-#### Database Indexes
+Add production data-lifecycle features if estimates need long-term management.
 
-No indexes exist beyond primary keys. Queries on `(tax_year, filing_status_id)` could benefit from compound indexes.
-
-- **Affected Tables**: `tax_brackets`, `standard_deductions`
-- **Recommendation**: Add indexes for query performance at scale
-- **Example**: `CREATE INDEX idx_tax_brackets_lookup ON tax_brackets(tax_year, filing_status_id);`
-
-#### Input Validation
-
-The model does not enforce business rules at the database level:
-
-- **Negative values**: No CHECK constraints prevent negative amounts where they shouldn't be allowed (e.g., `expected_agi`, `expected_deduction`)
-- **Required field combinations**: No validation that SE-related fields are provided together when `se_income` is present
-- **Recommendation**: Add CHECK constraints or application-level validation to ensure data integrity
-
-#### Timestamp Handling
-
-The `tax_estimate` table uses SQLite's `TIMESTAMP` type with `CURRENT_TIMESTAMP` defaults, but the Rust model uses `chrono::DateTime<Utc>`:
-
-- **Potential issue**: SQLite TIMESTAMP is stored as text/real, which may cause timezone conversion issues
-- **Recommendation**: Consider using INTEGER for Unix timestamps or ensure consistent UTC handling in application code
-
-## Summary
-
-The core data model is well-aligned with the documented requirements. All user input fields from both the SE Worksheet and 1040-ES Worksheet are present, and the year-specific configuration captures the key multipliers and thresholds.
-
-### What Works Well
-
-- Complete coverage of documented user input fields
-- Clean separation between configuration data and user calculations
-- Flexible year-based configuration allows easy updates for new tax years
-- Repository trait abstraction enables multiple database backends
-- Proper use of `Option<T>` for optional fields in the Rust model
-- Migration system supports schema evolution (e.g., `min_se_threshold` addition)
-- Calculation logic is well-structured with separate worksheet modules
-
-### For a Minimal Viable Implementation
-
-The current model is sufficient to:
-
-1. Calculate self-employment tax using the SE worksheet logic
-2. Compute income tax using progressive brackets
-3. Determine required estimated tax payments
-4. Support all five filing statuses
-
-### For Enhanced Accuracy
-
-Consider adding support for:
-
-1. **Additional Medicare Tax** (high priority for SE filers with income > $200k)
-2. **Safe harbor 110% rule** (important for high-income users)
-3. **Farm/non-farm income distinction** (nice-to-have for accuracy)
-
-### For Production Readiness
-
-Additional improvements to consider:
-
-1. **Database indexes** on frequently queried columns (`tax_year`, `filing_status_id`)
-2. **Input validation** via CHECK constraints or application-level validation
-3. **Audit trail** for tracking changes to tax estimates (who/when/what changed)
-4. **Soft deletes** for `tax_estimate` records (add `deleted_at` timestamp)
-5. **Data retention policy** support (archive old estimates after N years)
+- **Audit trail**: Track when estimates change and, if user accounts are added,
+  who changed them.
+- **Soft deletes**: Add a `deleted_at` timestamp for recoverable deletes.
+- **Retention**: Define archive or purge behavior for old estimates.

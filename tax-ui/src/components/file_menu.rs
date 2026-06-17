@@ -17,7 +17,8 @@ gpui::actions!(
         OpenProject,
         SaveProject,
         SaveProjectAs,
-        CloseProject
+        CloseProject,
+        LoadEstimate
     ]
 );
 
@@ -29,6 +30,7 @@ pub fn bind_menu_keys(cx: &mut App) {
         KeyBinding::new("cmd-s", SaveProject, None),
         KeyBinding::new("cmd-shift-s", SaveProjectAs, None),
         KeyBinding::new("cmd-w", CloseProject, None),
+        KeyBinding::new("cmd-l", LoadEstimate, None),
     ]);
 
     #[cfg(not(target_os = "macos"))]
@@ -38,6 +40,7 @@ pub fn bind_menu_keys(cx: &mut App) {
         KeyBinding::new("ctrl-s", SaveProject, None),
         KeyBinding::new("ctrl-shift-s", SaveProjectAs, None),
         KeyBinding::new("ctrl-w", CloseProject, None),
+        KeyBinding::new("ctrl-l", LoadEstimate, None),
     ]);
 }
 
@@ -51,6 +54,7 @@ pub fn build_menu_bar() -> impl gpui::IntoElement {
             .dropdown_menu(|menu, _window, _cx| {
                 menu.menu_with_icon("New Project", IconName::File, Box::new(NewProject))
                     .menu_with_icon("Open Project", IconName::FolderOpen, Box::new(OpenProject))
+                    .menu("Load Estimate", Box::new(LoadEstimate))
                     .separator()
                     .menu("Save", Box::new(SaveProject))
                     .menu("Save As...", Box::new(SaveProjectAs))

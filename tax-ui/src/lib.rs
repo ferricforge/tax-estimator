@@ -18,8 +18,8 @@ use gpui::{Menu, MenuItem};
 use tracing::info;
 
 use crate::components::{
-    CloseProject, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
-    init_theme_colors,
+    CloseProject, LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs,
+    bind_menu_keys, init_theme_colors,
 };
 use crate::config::{AppConfig, TomlConfigStore};
 use crate::repository::ActiveTaxYear;
@@ -90,6 +90,7 @@ pub fn setup_app(app_cx: &mut App) {
     register_action(app_cx, stub_file_action::<SaveProject>("SaveProject"));
     register_action(app_cx, stub_file_action::<SaveProjectAs>("SaveProjectAs"));
     register_action(app_cx, stub_file_action::<CloseProject>("CloseProject"));
+    register_action(app_cx, stub_file_action::<LoadEstimate>("LoadEstimate"));
 
     bind_menu_keys(app_cx);
 
@@ -105,6 +106,7 @@ pub fn setup_app(app_cx: &mut App) {
             items: vec![
                 MenuItem::action("New Project", NewProject),
                 MenuItem::action("Open Project", OpenProject),
+                MenuItem::action("Load Estimate", LoadEstimate),
                 MenuItem::separator(),
                 MenuItem::action("Save", SaveProject),
                 MenuItem::action("Save As...", SaveProjectAs),

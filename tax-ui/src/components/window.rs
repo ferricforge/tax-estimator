@@ -1,18 +1,23 @@
 // components
 
-use gpui::{App, Context, IntoElement, ParentElement, Render, Styled, Subscription, Window, div};
-use gpui::{AppContext, Entity, px};
-use gpui_component::StyledExt;
-use gpui_component::{Root, v_flex};
+use gpui::{
+    App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement, Render,
+    Styled, Subscription, Window, div, px,
+};
+use gpui_component::dialog::DialogButtonProps;
+use gpui_component::{Root, StyledExt, WindowExt, v_flex};
 use tracing::info;
 
 #[cfg(not(target_os = "linux"))]
 use crate::Quit;
 #[cfg(not(target_os = "macos"))]
 use crate::components::build_menu_bar;
-use crate::components::{EstimatedIncomeForm, SeWorksheetForm};
+use crate::components::{
+    EstimateSelector, EstimatedIncomeForm, LoadEstimate, SeWorksheetForm, show_err,
+};
 #[cfg(not(target_os = "linux"))]
 use crate::quit;
+use crate::repository::TaxRepo;
 
 pub struct AppWindow {
     _window_close_subscription: Subscription,
@@ -40,6 +45,56 @@ impl AppWindow {
             status_message: None,
             form,
         }
+    }
+
+    /// Fetches saved estimates and opens a selector dialog.
+    fn handle_load_estimate(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repo) = TaxRepo::try_get(cx) else {
+            tracing::warn!("TaxRepo not initialised; cannot load estimates");
+            return;
+        };
+
+        tracing::info!("Loading saved estimates");
+        let window_handle = window.window_handle();
+
+        cx.spawn(
+            async move |this, async_cx| match repo.list_estimates(None).await {
+                Ok(estimates) if estimates.is_empty() => {
+                    tracing::info!("No saved estimates found");
+                }
+                Ok(estimates) => {
+                    tracing::info!("Found {} saved estimate(s)", estimates.len());
+                    for estimate in &estimates {
+                        tracing::info!("{}", estimate);
+                    }
+                    let _ = window_handle.update(async_cx, |_, window, cx| {
+                        let _ = this.update(cx, move |_app_window, view_cx| {
+                            let mut estimates_opt = Some(estimates);
+                            let selector = view_cx.new(|sel_cx| {
+                                EstimateSelector::new(estimates_opt.take().unwrap(), window, sel_cx)
+                            });
+                            window.open_dialog(view_cx, move |dialog, _w, _cx| {
+                                dialog
+                                    .title("Load Saved Estimate")
+                                    .w(px(500.0))
+                                    .child(selector.clone())
+                                    .button_props(DialogButtonProps::default().cancel_text("Close"))
+                                    .footer(|_ok, cancel, w, cx| vec![cancel(w, cx)])
+                            });
+                        });
+                    });
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to load estimates");
+                    show_err(window_handle, async_cx, e.into());
+                }
+            },
+        )
+        .detach();
     }
 
     fn main_body(&self) -> impl IntoElement {
@@ -84,6 +139,10 @@ impl Render for AppWindow {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         div()
+            .id("app-window")
+            .on_action(cx.listener(|this, _: &LoadEstimate, window, cx| {
+                this.handle_load_estimate(window, cx);
+            }))
             .v_flex()
             .gap_2()
             .size_full()

@@ -153,6 +153,36 @@ impl Display for TaxEstimateInput {
     }
 }
 
+impl Display for TaxEstimateComputed {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> fmt::Result {
+        write!(
+            f,
+            "se_tax: {}, total_tax: {}, required_payment: {}",
+            self.se_tax, self.total_tax, self.required_payment
+        )
+    }
+}
+
+impl Display for TaxEstimate {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> fmt::Result {
+        write!(f, "[id={}] {}", self.id, self.input)?;
+        if let Some(ref computed) = self.computed {
+            write!(f, ", {computed}")?;
+        }
+        write!(
+            f,
+            ", updated_at: {}",
+            self.updated_at.format("%Y-%m-%d %H:%M:%S UTC")
+        )
+    }
+}
+
 fn fmt_opt_decimal(
     f: &mut impl Write,
     value: Option<&Decimal>,
@@ -165,6 +195,7 @@ fn fmt_opt_decimal(
 
 #[cfg(test)]
 mod tests {
+    use chrono::TimeZone;
     use pretty_assertions::assert_eq;
     use rust_decimal_macros::dec;
 
@@ -249,5 +280,61 @@ mod tests {
         let result = fmt_opt_decimal(&mut s, None);
         assert!(result.is_ok());
         assert_eq!(s, "—");
+    }
+
+    #[test]
+    fn display_tax_estimate_computed_shows_all_fields() {
+        let computed = TaxEstimateComputed {
+            se_tax: dec!(7500.00),
+            total_tax: dec!(25000.00),
+            required_payment: dec!(4000.00),
+        };
+
+        assert_eq!(
+            format!("{computed}"),
+            "se_tax: 7500.00, total_tax: 25000.00, required_payment: 4000.00"
+        );
+    }
+
+    #[test]
+    fn display_tax_estimate_without_computed() {
+        let timestamp = Utc.with_ymd_and_hms(2025, 6, 15, 10, 30, 0).unwrap();
+        let estimate = TaxEstimate {
+            id: 42,
+            input: valid_input(),
+            computed: None,
+            created_at: timestamp,
+            updated_at: timestamp,
+        };
+
+        let input_display = format!("{}", estimate.input);
+        let expected = format!("[id=42] {input_display}, updated_at: 2025-06-15 10:30:00 UTC");
+
+        assert_eq!(format!("{estimate}"), expected);
+    }
+
+    #[test]
+    fn display_tax_estimate_with_computed() {
+        let timestamp = Utc.with_ymd_and_hms(2025, 6, 16, 14, 0, 0).unwrap();
+        let computed = TaxEstimateComputed {
+            se_tax: dec!(1000.00),
+            total_tax: dec!(5000.00),
+            required_payment: dec!(2000.00),
+        };
+        let estimate = TaxEstimate {
+            id: 7,
+            input: valid_input(),
+            computed: Some(computed),
+            created_at: timestamp,
+            updated_at: timestamp,
+        };
+
+        let input_display = format!("{}", estimate.input);
+        let computed_display = format!("{}", estimate.computed.as_ref().unwrap());
+        let expected = format!(
+            "[id=7] {input_display}, {computed_display}, updated_at: 2025-06-16 14:00:00 UTC"
+        );
+
+        assert_eq!(format!("{estimate}"), expected);
     }
 }
