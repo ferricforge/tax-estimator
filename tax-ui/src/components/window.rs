@@ -1,11 +1,13 @@
 // components
 
+use std::rc::Rc;
+
 use gpui::{
     App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement, Render,
     Styled, Subscription, Window, div, px,
 };
-use gpui_component::dialog::DialogButtonProps;
 use gpui_component::{Root, StyledExt, WindowExt, v_flex};
+use tax_core::TaxEstimate;
 use tracing::info;
 
 #[cfg(not(target_os = "linux"))]
@@ -72,18 +74,33 @@ impl AppWindow {
                         tracing::info!("{}", estimate);
                     }
                     let _ = window_handle.update(async_cx, |_, window, cx| {
-                        let _ = this.update(cx, move |_app_window, view_cx| {
+                        let _ = this.update(cx, move |app_window, view_cx| {
                             let mut estimates_opt = Some(estimates);
+                            let form = app_window.form.clone();
+                            let on_select: Rc<dyn Fn(&TaxEstimate, &mut Window, &mut App)> =
+                                Rc::new(move |estimate, window, cx| {
+                                    tracing::info!("Selected estimate: {}", estimate);
+                                    form.update(cx, |form, form_cx| {
+                                        form.populate_from_estimate(
+                                            &estimate.input,
+                                            window,
+                                            form_cx,
+                                        );
+                                    });
+                                });
                             let selector = view_cx.new(|sel_cx| {
-                                EstimateSelector::new(estimates_opt.take().unwrap(), window, sel_cx)
+                                EstimateSelector::new(
+                                    estimates_opt.take().unwrap(),
+                                    on_select,
+                                    window,
+                                    sel_cx,
+                                )
                             });
                             window.open_dialog(view_cx, move |dialog, _w, _cx| {
                                 dialog
                                     .title("Load Saved Estimate")
                                     .w(px(500.0))
                                     .child(selector.clone())
-                                    .button_props(DialogButtonProps::default().cancel_text("Close"))
-                                    .footer(|_ok, cancel, w, cx| vec![cancel(w, cx)])
                             });
                         });
                     });

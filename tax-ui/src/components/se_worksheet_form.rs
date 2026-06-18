@@ -1,5 +1,4 @@
-#[allow(unused_imports)]
-use anyhow::{Context as AnyContext, Result};
+use anyhow::Result;
 use gpui::{
     App, ClickEvent, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
     Window,
@@ -7,8 +6,7 @@ use gpui::{
 use gpui_component::{h_flex, input::InputState, v_flex};
 use rust_decimal::Decimal;
 use tax_core::calculations::SeWorksheetResult;
-
-use tax_core::TaxYearConfig;
+use tax_core::{TaxEstimateInput, TaxYearConfig};
 
 use crate::{
     app::se_tax_estimate,
@@ -89,6 +87,57 @@ impl SeWorksheetForm {
         self.model = values;
     }
 
+    /// Populates the worksheet input fields and model from a saved estimate,
+    /// then runs the SE calculation so the form opens with all lines filled.
+    ///
+    /// Sets lines 1a, 1b, and 6 from the estimate's SE-related fields,
+    /// computes line 2, and preserves line 5 from the active tax year.
+    pub fn populate_from_estimate(
+        &mut self,
+        input: &TaxEstimateInput,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let preserved_line_5 = ActiveTaxYear::ss_wage_max(cx);
+        self.model = SeWorksheetModel::default();
+        self.model.line_5_ss_maximum_income = preserved_line_5;
+
+        self.model.tax_year = Some(input.tax_year);
+        self.model.line_1a_expected_se_income = input.se_income;
+        self.model.line_1b_expected_crp_payments = input.expected_crp_payments;
+        self.model.line_6_expected_wages = input.expected_wages;
+
+        let income = input.se_income.unwrap_or(Decimal::ZERO);
+        let crp = input.expected_crp_payments.unwrap_or(Decimal::ZERO);
+        self.model.line_2_subtract_1b_from_1a = Some(income - crp);
+
+        let se_val =
+            SharedString::from(input.se_income.map_or_else(String::new, |d| d.to_string()));
+        let crp_val = SharedString::from(
+            input
+                .expected_crp_payments
+                .map_or_else(String::new, |d| d.to_string()),
+        );
+        let wages_val = SharedString::from(
+            input
+                .expected_wages
+                .map_or_else(String::new, |d| d.to_string()),
+        );
+
+        self.se_income.update(cx, |state, is_cx| {
+            state.set_value(se_val, window, is_cx);
+        });
+        self.crp_payments.update(cx, |state, is_cx| {
+            state.set_value(crp_val, window, is_cx);
+        });
+        self.expected_wages.update(cx, |state, is_cx| {
+            state.set_value(wages_val, window, is_cx);
+        });
+
+        let _ = self.calculate_se(cx);
+        cx.notify();
+    }
+
     pub fn get_se_model(&self) -> &SeWorksheetModel {
         &self.model
     }
@@ -118,30 +167,33 @@ impl SeWorksheetForm {
     fn clear(
         &mut self,
         window: &mut Window,
-        app_cx: &mut App,
+        cx: &mut Context<Self>,
     ) {
         self.model = SeWorksheetModel::default();
 
         let value = SharedString::new("");
         self.se_income.update(
-            app_cx,
+            cx,
             |state: &mut InputState, is_cx: &mut Context<'_, InputState>| {
                 state.set_value(value.clone(), window, is_cx);
             },
         );
 
         self.expected_wages.update(
-            app_cx,
+            cx,
             |state: &mut InputState, is_cx: &mut Context<'_, InputState>| {
                 state.set_value(value.clone(), window, is_cx);
             },
         );
         self.crp_payments.update(
-            app_cx,
+            cx,
             |state: &mut InputState, is_cx: &mut Context<'_, InputState>| {
                 state.set_value(value, window, is_cx);
             },
         );
+
+        self.model.line_5_ss_maximum_income = ActiveTaxYear::ss_wage_max(cx);
+        cx.notify();
     }
 }
 

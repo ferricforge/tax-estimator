@@ -241,6 +241,41 @@ impl EstimatedIncomeForm {
         value.trim().parse::<i32>().ok()
     }
 
+    /// Populates the form's tax year, filing status, and SE worksheet
+    /// fields from a previously saved [`TaxEstimateInput`].
+    ///
+    /// Triggers [`ActiveTaxYear::load`] so the tax-year config is fetched
+    /// and the **SE Worksheet** button becomes enabled once the config
+    /// arrives. Other Estimate Form fields (AGI, deductions, etc.) are
+    /// **not** modified.
+    pub fn populate_from_estimate(
+        &mut self,
+        input: &TaxEstimateInput,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let year_str = SharedString::from(input.tax_year.to_string());
+        self.tax_year.update(cx, |state, is_cx| {
+            state.set_value(year_str, window, is_cx);
+        });
+
+        if is_loadable_tax_year(input.tax_year) {
+            ActiveTaxYear::load(input.tax_year, cx);
+        }
+        self.recompute_tax_year_ready(cx);
+
+        let idx = filing_status_index(input.filing_status);
+        self.filing_status.update(cx, |state, is_cx| {
+            state.set_selected_index(Some(IndexPath::default().row(idx)), window, is_cx);
+        });
+
+        self.worksheet.update(cx, |ws, ws_cx| {
+            ws.populate_from_estimate(input, window, ws_cx);
+        });
+
+        cx.notify();
+    }
+
     fn input_from_form_or_show_errors(
         &self,
         se_model: &SeWorksheetModel,
@@ -513,6 +548,19 @@ fn tax_year_is_ready(
     is_loadable_tax_year(year)
         && active_tax_year.year == Some(year)
         && active_tax_year.tax_year_data.is_some()
+}
+
+/// Maps a [`FilingStatusCode`] to its positional index in the filing-status
+/// dropdown. The order must match the `statuses` vec built in
+/// [`EstimatedIncomeForm::new`].
+fn filing_status_index(code: FilingStatusCode) -> usize {
+    match code {
+        FilingStatusCode::Single => 0,
+        FilingStatusCode::MarriedFilingJointly => 1,
+        FilingStatusCode::MarriedFilingSeparately => 2,
+        FilingStatusCode::HeadOfHousehold => 3,
+        FilingStatusCode::QualifyingSurvivingSpouse => 4,
+    }
 }
 
 #[cfg(test)]
