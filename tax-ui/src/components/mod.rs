@@ -394,3 +394,16 @@ pub fn show_err(
         ErrorDialog::show("Save failed", &lines, window, cx);
     });
 }
+
+/// Writes a text value into an input's [`InputState`], for any sync context.
+pub(crate) fn set_input_value<C: AppContext>(
+    input: &Entity<InputState>,
+    value: impl Into<SharedString>,
+    window: &mut Window,
+    cx: &mut C,
+) {
+    let value = value.into();
+    input.update(cx, |state, is_cx| {
+        state.set_value(value, window, is_cx);
+    });
+}

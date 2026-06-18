@@ -81,11 +81,7 @@ impl AppWindow {
                                 Rc::new(move |estimate, window, cx| {
                                     tracing::info!("Selected estimate: {}", estimate);
                                     form.update(cx, |form, form_cx| {
-                                        form.populate_from_estimate(
-                                            &estimate.input,
-                                            window,
-                                            form_cx,
-                                        );
+                                        form.populate_from_estimate(&estimate, window, form_cx);
                                     });
                                 });
                             let selector = view_cx.new(|sel_cx| {

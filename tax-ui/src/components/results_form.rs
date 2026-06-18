@@ -7,9 +7,10 @@
 //     pub required_payment: Decimal,
 // }
 
-use gpui::{Context, Div, IntoElement, ParentElement, Render, Styled, Window};
+use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window};
 use gpui_component::v_flex;
 use rust_decimal::Decimal;
+use tax_core::TaxEstimateComputed;
 use tax_core::calculations::EstimatedTaxWorksheetResult;
 
 use crate::components::{make_display_row, make_header_row};
@@ -43,25 +44,21 @@ impl ResultForm {
         self.calculated_payment = Some(result.required_annual_payment);
     }
 
-    fn render_se_row(
-        &self,
-        _cx: &mut Context<Self>,
-    ) -> Div {
-        make_display_row(SE_LABEL, self.calculated_se_tax)
+    /// Fills display fields from a previously persisted [`TaxEstimateComputed`].
+    pub fn set_from_computed(
+        &mut self,
+        computed: &TaxEstimateComputed,
+    ) {
+        self.calculated_se_tax = Some(computed.se_tax);
+        self.calculated_total_tax = Some(computed.total_tax);
+        self.calculated_payment = Some(computed.required_payment);
     }
 
-    fn render_total_row(
-        &self,
-        _cx: &mut Context<Self>,
-    ) -> Div {
-        make_display_row(TOTAL_TAX_LABEL, self.calculated_total_tax)
-    }
-
-    fn render_payments_row(
-        &self,
-        _cx: &mut Context<Self>,
-    ) -> Div {
-        make_display_row(PAYMENTS_LABEL, self.calculated_payment)
+    /// Resets the form so no results are displayed.
+    pub fn clear(&mut self) {
+        self.calculated_se_tax = None;
+        self.calculated_total_tax = None;
+        self.calculated_payment = None;
     }
 }
 
@@ -69,14 +66,53 @@ impl Render for ResultForm {
     fn render(
         &mut self,
         _window: &mut Window,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> impl IntoElement {
         v_flex()
             .size_full()
             .gap_4()
             .child(make_header_row("Calculated Results"))
-            .child(self.render_se_row(cx))
-            .child(self.render_total_row(cx))
-            .child(self.render_payments_row(cx))
+            .child(make_display_row(SE_LABEL, self.calculated_se_tax))
+            .child(make_display_row(TOTAL_TAX_LABEL, self.calculated_total_tax))
+            .child(make_display_row(PAYMENTS_LABEL, self.calculated_payment))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+    use rust_decimal_macros::dec;
+
+    use super::*;
+
+    #[test]
+    fn set_from_computed_populates_all_fields() {
+        let computed = TaxEstimateComputed {
+            se_tax: dec!(7500.00),
+            total_tax: dec!(25000.00),
+            required_payment: dec!(4000.00),
+        };
+        let mut form = ResultForm::default();
+        form.set_from_computed(&computed);
+
+        assert_eq!(form.calculated_se_tax, Some(dec!(7500.00)));
+        assert_eq!(form.calculated_total_tax, Some(dec!(25000.00)));
+        assert_eq!(form.calculated_payment, Some(dec!(4000.00)));
+        assert_eq!(form.has_results(), true);
+    }
+
+    #[test]
+    fn clear_resets_all_fields() {
+        let mut form = ResultForm {
+            calculated_se_tax: Some(dec!(1.00)),
+            calculated_total_tax: Some(dec!(2.00)),
+            calculated_payment: Some(dec!(3.00)),
+        };
+        form.clear();
+
+        assert_eq!(form.calculated_se_tax, None);
+        assert_eq!(form.calculated_total_tax, None);
+        assert_eq!(form.calculated_payment, None);
+        assert_eq!(form.has_results(), false);
     }
 }

@@ -75,9 +75,25 @@ pub fn percent(d: &Decimal) -> String {
     format!("{:.2}%", (d * Decimal::from(100)).round_dp(2))
 }
 
+/// Renders an optional [`Decimal`] as the text to place into a form input
+/// field, yielding an empty string when the value is `None`.
+///
+/// ```
+/// use rust_decimal_macros::dec;
+/// use pretty_assertions::assert_eq;
+/// use tax_ui::utils::optional_decimal_input_text;
+///
+/// assert_eq!(optional_decimal_input_text(Some(dec!(1234.56))), "1234.56");
+/// assert_eq!(optional_decimal_input_text(None), "");
+/// ```
+pub fn optional_decimal_input_text(value: Option<Decimal>) -> String {
+    value.map(|v| v.to_string()).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use rust_decimal_macros::dec;
 
     #[test]
@@ -126,5 +142,17 @@ mod tests {
         assert_eq!(percent(&dec!(0.062)), "6.20%");
         assert_eq!(percent(&dec!(0.0145)), "1.45%");
         assert_eq!(percent(&dec!(0.37)), "37.00%");
+    }
+
+    // ── input-field text rendering ──────────────────────────────────────
+
+    #[test]
+    fn optional_decimal_input_text_renders_some() {
+        assert_eq!(optional_decimal_input_text(Some(dec!(1234.56))), "1234.56");
+    }
+
+    #[test]
+    fn optional_decimal_input_text_none_is_empty() {
+        assert_eq!(optional_decimal_input_text(None), "");
     }
 }

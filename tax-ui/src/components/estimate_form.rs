@@ -17,7 +17,7 @@ use tax_core::calculations::{
     EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetInput,
     EstimatedTaxWorksheetResult,
 };
-use tax_core::{FilingStatusCode, TaxEstimateInput, TaxYearConfig};
+use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateInput, TaxYearConfig};
 
 use crate::app::{FilingStatusData, save_tax_estimate};
 use crate::components::{ErrorDialog, show_err};
@@ -28,9 +28,10 @@ use crate::{
     components::{
         ResultForm, SeWorksheetForm, make_button, make_decimal_input, make_header_row,
         make_input_row, make_input_row_with_help, make_integer_input, make_select_row,
+        set_input_value,
     },
     repository::ActiveTaxYear,
-    utils::{parse_decimal, parse_optional_decimal},
+    utils::{optional_decimal_input_text, parse_decimal, parse_optional_decimal},
 };
 
 #[derive(Clone, Debug)]
@@ -241,19 +242,22 @@ impl EstimatedIncomeForm {
         value.trim().parse::<i32>().ok()
     }
 
-    /// Populates the form's tax year, filing status, and SE worksheet
-    /// fields from a previously saved [`TaxEstimateInput`].
+    /// Populates the form's tax year, filing status, SE worksheet fields,
+    /// and the 1040-ES worksheet inputs from a previously saved
+    /// [`TaxEstimate`]. When the estimate carries computed results, those
+    /// are shown in the results panel; otherwise the panel is cleared.
     ///
     /// Triggers [`ActiveTaxYear::load`] so the tax-year config is fetched
     /// and the **SE Worksheet** button becomes enabled once the config
-    /// arrives. Other Estimate Form fields (AGI, deductions, etc.) are
-    /// **not** modified.
+    /// arrives.
     pub fn populate_from_estimate(
         &mut self,
-        input: &TaxEstimateInput,
+        estimate: &TaxEstimate,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let input = &estimate.input;
+
         let year_str = SharedString::from(input.tax_year.to_string());
         self.tax_year.update(cx, |state, is_cx| {
             state.set_value(year_str, window, is_cx);
@@ -267,6 +271,44 @@ impl EstimatedIncomeForm {
         let idx = filing_status_index(input.filing_status);
         self.filing_status.update(cx, |state, is_cx| {
             state.set_selected_index(Some(IndexPath::default().row(idx)), window, is_cx);
+        });
+
+        set_decimal_input(&self.expected_agi, input.expected_agi, window, cx);
+        set_decimal_input(
+            &self.expected_deduction,
+            input.expected_deduction,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(
+            &self.expected_qbi_deduction,
+            input.expected_qbi_deduction,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(&self.expected_amt, input.expected_amt, window, cx);
+        set_optional_decimal_input(&self.expected_credits, input.expected_credits, window, cx);
+        set_optional_decimal_input(
+            &self.expected_other_taxes,
+            input.expected_other_taxes,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(
+            &self.expected_withholding,
+            input.expected_withholding,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(&self.prior_year_tax, input.prior_year_tax, window, cx);
+
+        self.results.update(cx, |rf, rf_cx| {
+            if let Some(ref computed) = estimate.computed {
+                rf.set_from_computed(computed);
+            } else {
+                rf.clear();
+            }
+            rf_cx.notify();
         });
 
         self.worksheet.update(cx, |ws, ws_cx| {
@@ -561,6 +603,27 @@ fn filing_status_index(code: FilingStatusCode) -> usize {
         FilingStatusCode::HeadOfHousehold => 3,
         FilingStatusCode::QualifyingSurvivingSpouse => 4,
     }
+}
+
+/// Writes a [`Decimal`] value into an input's [`InputState`].
+fn set_decimal_input(
+    input: &Entity<InputState>,
+    value: Decimal,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    set_input_value(input, value.to_string(), window, cx);
+}
+
+/// Writes an optional [`Decimal`] into an input's [`InputState`], clearing the
+/// field when the value is `None`.
+fn set_optional_decimal_input(
+    input: &Entity<InputState>,
+    value: Option<Decimal>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    set_input_value(input, optional_decimal_input_text(value), window, cx);
 }
 
 #[cfg(test)]
