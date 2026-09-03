@@ -23,7 +23,7 @@ use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt, h_flex, v_flex,
 };
 
-pub use dialogs::ErrorDialog;
+pub use dialogs::{ErrorDialog, InfoDialog};
 pub use estimate_form::EstimatedIncomeForm;
 pub use estimate_selector::EstimateSelector;
 pub use results_form::ResultForm;
@@ -384,15 +384,20 @@ fn build_field_help_tooltip(
     .build(window, cx)
 }
 
+/// Shows an [`ErrorDialog`] for `err` in the window identified by `handle`,
+/// from an async context. Does nothing if the window has already been closed.
 pub fn show_err(
     handle: AnyWindowHandle,
     async_cx: &mut AsyncApp,
-    err: anyhow::Error,
+    title: &str,
+    err: &anyhow::Error,
 ) {
-    let _ = handle.update(async_cx, |_, window, cx| {
-        let lines: Vec<String> = err.chain().map(|c| c.to_string()).collect();
-        ErrorDialog::show("Save failed", &lines, window, cx);
+    let shown = handle.update(async_cx, |_, window, cx| {
+        ErrorDialog::show_error(title, err, window, cx);
     });
+    if shown.is_err() {
+        tracing::debug!(%title, "window closed before error could be shown");
+    }
 }
 
 /// Writes a text value into an input's [`InputState`], for any sync context.

@@ -90,7 +90,6 @@ pub fn setup_app(app_cx: &mut App) {
     register_action(app_cx, stub_file_action::<SaveProject>("SaveProject"));
     register_action(app_cx, stub_file_action::<SaveProjectAs>("SaveProjectAs"));
     register_action(app_cx, stub_file_action::<CloseProject>("CloseProject"));
-    register_action(app_cx, stub_file_action::<LoadEstimate>("LoadEstimate"));
 
     bind_menu_keys(app_cx);
 

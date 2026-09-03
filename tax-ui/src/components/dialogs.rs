@@ -12,10 +12,21 @@ impl ErrorDialog {
         cx: &mut App,
     ) {
         let detail = Self::format_error_list(errors);
-        let _x = window.prompt(PromptLevel::Warning, title, Some(&detail), &["OK"], cx);
-        // `prompt()` returns a future but we don't really need this to be async
-        // so we drop it here to avoid accumulating futues.
-        std::mem::drop(_x);
+        // `prompt()` returns a receiver for the user's choice. We only offer
+        // "OK", so there is nothing to wait for and dropping it is fine.
+        let _ = window.prompt(PromptLevel::Warning, title, Some(&detail), &["OK"], cx);
+    }
+
+    /// Show a warning dialog for an [`anyhow::Error`], listing each link in
+    /// its context chain (outermost first) as a separate line.
+    pub fn show_error(
+        title: &str,
+        error: &anyhow::Error,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let lines: Vec<String> = error.chain().map(ToString::to_string).collect();
+        Self::show(title, &lines, window, cx);
     }
 
     fn format_error_list(errors: &[String]) -> String {
@@ -28,5 +39,20 @@ impl ErrorDialog {
                 .collect::<Vec<_>>()
                 .join("\n"),
         }
+    }
+}
+
+/// InfoDialog displays an informational dialog with a single message.
+pub struct InfoDialog;
+
+impl InfoDialog {
+    /// Show an informational dialog with a single message.
+    pub fn show(
+        title: &str,
+        message: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let _ = window.prompt(PromptLevel::Info, title, Some(message), &["OK"], cx);
     }
 }

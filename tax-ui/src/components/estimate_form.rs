@@ -346,9 +346,26 @@ impl EstimatedIncomeForm {
             return;
         };
 
-        let Some(tax_year_data) = ActiveTaxYear::get(cx).tax_year_data.clone() else {
-            tracing::warn!("No tax year loaded; cannot calculate SE tax");
-            // TODO: Add call to ErrorDialog
+        // Only use the active tax-year data if it is for the year the user
+        // actually entered; otherwise a stale year's brackets could be used.
+        let active = ActiveTaxYear::get(cx);
+        let active_year = active.year;
+        let tax_year_data = active
+            .tax_year_data
+            .clone()
+            .filter(|_| active_year == Some(form_input.tax_year));
+        let Some(tax_year_data) = tax_year_data else {
+            tracing::warn!(
+                requested = form_input.tax_year,
+                active = ?active_year,
+                "No matching tax year loaded; cannot calculate"
+            );
+            let message = format!(
+                "Tax data for {} is not loaded. It may still be loading, or no configuration \
+                 exists for that year. Check the tax year and try again.",
+                form_input.tax_year
+            );
+            ErrorDialog::show("Tax year not loaded", &[message], window, cx);
             return;
         };
 
@@ -360,7 +377,24 @@ impl EstimatedIncomeForm {
             .iter()
             .find(|f: &&FilingStatusData| f.filing_status.status_code == filing_status)
         else {
-            // TODO: Handle this error situation
+            tracing::error!(
+                ?filing_status,
+                tax_year = form_input.tax_year,
+                "Filing status data missing from tax year configuration"
+            );
+            // Prefer the human-readable dropdown label over the enum name.
+            let label = self
+                .filing_status
+                .read(cx)
+                .selected_value()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{filing_status:?}"));
+            let message = format!(
+                "No tax bracket data was found for filing status \"{label}\" in tax year {}. \
+                 The configuration for this year appears to be incomplete.",
+                form_input.tax_year
+            );
+            ErrorDialog::show("Missing tax data", &[message], window, cx);
             return;
         };
 
@@ -393,24 +427,32 @@ impl EstimatedIncomeForm {
 
         tracing::info!(input = %form_input, %result, "Estimated taxes");
 
+        // The results are already on screen at this point, so any failure
+        // below is a save failure, not a calculation failure.
+        const SAVE_FAILED_TITLE: &str = "Estimate not saved";
+        const SAVE_FAILED_CONTEXT: &str =
+            "The estimate was calculated but could not be saved to the database";
+
         let window_handle = window.window_handle();
         cx.spawn(async move |_this, async_cx| {
             let repo = match async_cx.update(|app_cx: &mut App| {
                 TaxRepo::try_get(app_cx)
                     .map(|tax_repo| tax_repo.tax_repository_arc())
-                    .ok_or_else(|| anyhow::anyhow!("TaxRepo not initialized for save_tax_estimate"))
+                    .ok_or_else(|| anyhow::anyhow!("The database connection is not available"))
             }) {
                 Ok(Ok(repo)) => repo,
                 Ok(Err(e)) | Err(e) => {
+                    let e = e.context(SAVE_FAILED_CONTEXT);
                     tracing::warn!(error = ?e, "Cannot save tax estimate");
-                    show_err(window_handle, async_cx, e);
+                    show_err(window_handle, async_cx, SAVE_FAILED_TITLE, &e);
                     return;
                 }
             };
 
             if let Err(e) = save_tax_estimate(&form_input, &result, &se_model, repo).await {
+                let e = e.context(SAVE_FAILED_CONTEXT);
                 tracing::error!(error = ?e, "save_tax_estimate failed");
-                show_err(window_handle, async_cx, e);
+                show_err(window_handle, async_cx, SAVE_FAILED_TITLE, &e);
             }
         })
         .detach();

@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, AppContext, Context, Entity, InteractiveElement as _, IntoElement, ParentElement, Render,
-    Styled, Subscription, Window, div, px,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
+    ParentElement, Render, Styled, Subscription, Window, div, px,
 };
 use gpui_component::{Root, StyledExt, WindowExt, v_flex};
 use tax_core::TaxEstimate;
@@ -15,7 +15,8 @@ use crate::Quit;
 #[cfg(not(target_os = "macos"))]
 use crate::components::build_menu_bar;
 use crate::components::{
-    EstimateSelector, EstimatedIncomeForm, LoadEstimate, SeWorksheetForm, show_err,
+    ErrorDialog, EstimateSelector, EstimatedIncomeForm, InfoDialog, LoadEstimate, SeWorksheetForm,
+    show_err,
 };
 #[cfg(not(target_os = "linux"))]
 use crate::quit;
@@ -23,6 +24,7 @@ use crate::repository::TaxRepo;
 
 pub struct AppWindow {
     _window_close_subscription: Subscription,
+    focus_handle: FocusHandle,
     status_message: Option<String>,
     form: Entity<EstimatedIncomeForm>,
 }
@@ -38,12 +40,20 @@ impl AppWindow {
             quit(&Quit, _cx);
         });
 
+        // Actions are dispatched along the focus path, so the root element
+        // must be focused (or an ancestor of the focused element) for its
+        // `on_action` handlers to run. Focus it up front so menu actions work
+        // before the user has clicked into any field.
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle);
+
         let worksheet = cx.new(|form_cx| SeWorksheetForm::new(window, form_cx));
         let form = cx.new(|form_cx| EstimatedIncomeForm::new(worksheet.clone(), window, form_cx));
 
         info!("Window constructed");
         Self {
             _window_close_subscription: subscription,
+            focus_handle,
             status_message: None,
             form,
         }
@@ -57,6 +67,12 @@ impl AppWindow {
     ) {
         let Some(repo) = TaxRepo::try_get(cx) else {
             tracing::warn!("TaxRepo not initialised; cannot load estimates");
+            ErrorDialog::show(
+                "Cannot load estimates",
+                &["The database connection is not available.".to_string()],
+                window,
+                cx,
+            );
             return;
         };
 
@@ -67,6 +83,15 @@ impl AppWindow {
             async move |this, async_cx| match repo.list_estimates(None).await {
                 Ok(estimates) if estimates.is_empty() => {
                     tracing::info!("No saved estimates found");
+                    let _ = window_handle.update(async_cx, |_, window, cx| {
+                        InfoDialog::show(
+                            "No saved estimates",
+                            "There are no saved estimates to load yet. Calculate an estimate \
+                             and it will be saved automatically.",
+                            window,
+                            cx,
+                        );
+                    });
                 }
                 Ok(estimates) => {
                     tracing::info!("Found {} saved estimate(s)", estimates.len());
@@ -102,8 +127,9 @@ impl AppWindow {
                     });
                 }
                 Err(e) => {
-                    tracing::error!(error = %e, "Failed to load estimates");
-                    show_err(window_handle, async_cx, e.into());
+                    let e = anyhow::Error::from(e).context("Could not load saved estimates");
+                    tracing::error!(error = ?e, "Failed to load estimates");
+                    show_err(window_handle, async_cx, "Load failed", &e);
                 }
             },
         )
@@ -153,6 +179,8 @@ impl Render for AppWindow {
     ) -> impl IntoElement {
         div()
             .id("app-window")
+            .key_context("AppWindow")
+            .track_focus(&self.focus_handle)
             .on_action(cx.listener(|this, _: &LoadEstimate, window, cx| {
                 this.handle_load_estimate(window, cx);
             }))
@@ -165,5 +193,14 @@ impl Render for AppWindow {
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))
+    }
+}
+
+impl Focusable for AppWindow {
+    fn focus_handle(
+        &self,
+        _cx: &App,
+    ) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
