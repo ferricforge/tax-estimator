@@ -318,6 +318,48 @@ impl EstimatedIncomeForm {
         cx.notify();
     }
 
+    /// Returns the form to its initial empty state: blank inputs, the default
+    /// filing status, no results, and a fresh SE worksheet. Called after the
+    /// active database changes so nothing from the previous project lingers.
+    pub fn reset(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        set_input_value(&self.tax_year, "", window, cx);
+
+        let single = IndexPath::default().row(filing_status_index(FilingStatusCode::Single));
+        self.filing_status.update(cx, |state, is_cx| {
+            state.set_selected_index(Some(single), window, is_cx);
+        });
+
+        for input in [
+            &self.expected_agi,
+            &self.expected_deduction,
+            &self.expected_qbi_deduction,
+            &self.expected_amt,
+            &self.expected_credits,
+            &self.expected_other_taxes,
+            &self.expected_withholding,
+            &self.prior_year_tax,
+        ] {
+            set_input_value(input, "", window, cx);
+        }
+
+        self.results.update(cx, |results, results_cx| {
+            results.clear();
+            results_cx.notify();
+        });
+
+        // Rebuild the child worksheet rather than clearing it field-by-field:
+        // only this form holds a handle to it, so swapping the entity is the
+        // simplest way to reset every SE-worksheet input as well.
+        self.worksheet = cx.new(|worksheet_cx| SeWorksheetForm::new(window, worksheet_cx));
+
+        self.is_tax_year_ready = false;
+        cx.notify();
+    }
+
     fn input_from_form_or_show_errors(
         &self,
         se_model: &SeWorksheetModel,

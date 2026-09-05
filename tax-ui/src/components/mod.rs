@@ -29,8 +29,8 @@ pub use estimate_selector::EstimateSelector;
 pub use results_form::ResultForm;
 
 pub use file_menu::{
-    CloseProject, LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs,
-    bind_menu_keys, build_menu_bar,
+    LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
+    build_menu_bar,
 };
 use gpui_component::input::{Input, InputState, MaskPattern};
 use rust_decimal::Decimal;

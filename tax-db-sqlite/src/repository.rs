@@ -92,6 +92,42 @@ impl SqliteRepository {
         &self.pool
     }
 
+    /// Collapse the write-ahead log into the main database file.
+    ///
+    /// Estimates are committed as they are calculated, so nothing new is
+    /// persisted here; this just leaves the on-disk `.db` self-contained
+    /// (no `-wal`/`-shm` sidecar) for the *Save* action.
+    pub async fn checkpoint(&self) -> Result<()> {
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&self.pool)
+            .await
+            .context("Failed to checkpoint the write-ahead log")?;
+        Ok(())
+    }
+
+    /// Write a consistent, fully self-contained copy of the database to
+    /// `dest`, including every committed estimate and all reference data.
+    ///
+    /// Uses SQLite's `VACUUM INTO`, so `dest` is a single clean file with no
+    /// `-wal`/`-shm` sidecars regardless of the source journal mode. `dest`
+    /// must not already exist.
+    pub async fn backup_to(
+        &self,
+        dest: &Path,
+    ) -> Result<()> {
+        let dest = dest.to_str().ok_or_else(|| {
+            anyhow::anyhow!("Destination path is not valid UTF-8: {}", dest.display())
+        })?;
+
+        // `VACUUM INTO` only accepts a string literal, never a bound parameter.
+        let sql = format!("VACUUM INTO '{}'", dest.replace('\'', "''"));
+        sqlx::raw_sql(AssertSqlSafe(sql))
+            .execute(&self.pool)
+            .await
+            .with_context(|| format!("Failed to copy the database to '{dest}'"))?;
+        Ok(())
+    }
+
     async fn filing_status_id_for_code(
         &self,
         code: FilingStatusCode,
@@ -847,6 +883,50 @@ mod tests {
             expected_withholding: None,
             prior_year_tax: None,
         }
+    }
+
+    #[tokio::test]
+    async fn backup_to_produces_a_populated_standalone_copy() {
+        let dir = std::env::temp_dir().join(format!("tax-db-sqlite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let source = dir.join("source.db");
+        let dest = dir.join("copy.db");
+
+        // A file-backed (WAL) source is the scenario `VACUUM INTO` exists for.
+        let source_path = source.to_str().expect("temp path is UTF-8");
+        let repo = SqliteRepository::new(source_path)
+            .await
+            .expect("Failed to open source database");
+        repo.run_migrations()
+            .await
+            .expect("Failed to run migrations");
+        setup_test_data_for_estimates(&repo).await;
+        let created = repo
+            .create_estimate(create_minimal_test_estimate())
+            .await
+            .expect("Should create estimate");
+
+        repo.backup_to(&dest)
+            .await
+            .expect("backup_to should write the copy");
+
+        let dest_path = dest.to_str().expect("temp path is UTF-8");
+        let copy = SqliteRepository::new(dest_path)
+            .await
+            .expect("Should open the copied database");
+        let estimates = copy
+            .list_estimates(None)
+            .await
+            .expect("Should list estimates from the copy");
+
+        assert_eq!(estimates.len(), 1);
+        assert_eq!(estimates[0].id, created.id);
+        assert_eq!(estimates[0].input.expected_agi, created.input.expected_agi);
+
+        drop(repo);
+        drop(copy);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

@@ -2,6 +2,7 @@
 name = "tax-ui"
 version.workspace = true
 edition.workspace = true
+default-run = "TaxEstimator"
 
 [dependencies]
 anyhow.workspace            = true

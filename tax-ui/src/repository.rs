@@ -67,23 +67,63 @@ impl TaxRepo {
     }
 }
 
+/// Open (or create) a repository for `db_config` using the backend registry.
+async fn open_repository(db_config: &DbConfig) -> Result<Arc<dyn TaxRepository>> {
+    let registry = build_registry();
+    let repo = registry.create(db_config).await?;
+    Ok(repo.into())
+}
+
 /// Build the repository from `AppConfig` and install it as a global.
 /// Call once during startup, *after* `AppConfig::init`.
 pub async fn init_repository(cx: &mut gpui::AsyncApp) -> Result<()> {
-    let (url, backend) = cx.update(|cx| {
+    let db_config = cx.update(|cx| {
         let cfg = AppConfig::get(cx);
-        (cfg.database_url.clone(), cfg.database_backend.as_str())
+        DbConfig {
+            backend: cfg.database_backend.as_str().to_string(),
+            connection_string: cfg.database_url.clone(),
+        }
     })?;
 
-    let db_config = DbConfig {
-        backend: backend.to_string(),
-        connection_string: url,
-    };
+    let repo = open_repository(&db_config).await?;
+    cx.update(|cx| cx.set_global(TaxRepo::new(repo)))?;
+    Ok(())
+}
 
-    let registry = build_registry();
-    let repo = registry.create(&db_config).await?;
+/// Point the application at a different database.
+///
+/// Rebuilds the [`TaxRepo`] global against `db_config`, discards the cached
+/// [`ActiveTaxYear`] (the new database may carry different reference data),
+/// and persists the new connection details into [`AppConfig`].
+///
+/// Shared by the project *Open*, *New*, and *Save As* actions.
+pub async fn switch_repository(
+    cx: &mut gpui::AsyncApp,
+    db_config: DbConfig,
+) -> Result<()> {
+    let repo = open_repository(&db_config).await?;
 
-    cx.update(|cx| cx.set_global(TaxRepo::new(repo.into())))?;
+    cx.update(|cx| {
+        cx.set_global(TaxRepo::new(repo));
+        cx.set_global(ActiveTaxYear::default());
+
+        AppConfig::update(cx, |cfg| {
+            cfg.database_url = db_config.connection_string.clone();
+            if let Ok(backend) = db_config.backend.parse() {
+                cfg.database_backend = backend;
+            }
+        });
+
+        if let Err(e) = AppConfig::save(cx) {
+            tracing::warn!(error = %e, "failed to persist config after switching database");
+        }
+    })?;
+
+    tracing::info!(
+        backend = %db_config.backend,
+        connection_string = %db_config.connection_string,
+        "switched active database"
+    );
     Ok(())
 }
 

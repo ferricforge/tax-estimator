@@ -10,17 +10,16 @@ pub mod themes;
 pub mod utils;
 
 use gpui::KeyBinding;
-use gpui::{Action, App, actions};
+use gpui::{App, actions};
 
 #[cfg(target_os = "macos")]
 use gpui::{Menu, MenuItem};
 
 use tracing::info;
 
-use crate::components::{
-    CloseProject, LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs,
-    bind_menu_keys, init_theme_colors,
-};
+#[cfg(target_os = "macos")]
+use crate::components::{LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs};
+use crate::components::{bind_menu_keys, init_theme_colors};
 use crate::config::{AppConfig, TomlConfigStore};
 use crate::repository::ActiveTaxYear;
 #[cfg(target_os = "linux")]
@@ -39,20 +38,6 @@ pub fn quit(
 ) {
     info!("Executing quit handler");
     cx.quit();
-}
-
-/// Registers a handler for a GPUI [`Action`] type.
-fn register_action<A: Action>(
-    app: &mut App,
-    f: impl Fn(&A, &mut App) + 'static,
-) {
-    app.on_action(f);
-}
-
-fn stub_file_action<A: Action>(name: &'static str) -> impl Fn(&A, &mut App) {
-    move |_, _| {
-        tracing::info!("{name}: not yet implemented");
-    }
 }
 
 pub fn setup_app(app_cx: &mut App) {
@@ -85,12 +70,8 @@ pub fn setup_app(app_cx: &mut App) {
 
     app_cx.on_action(quit);
 
-    register_action(app_cx, stub_file_action::<NewProject>("NewProject"));
-    register_action(app_cx, stub_file_action::<OpenProject>("OpenProject"));
-    register_action(app_cx, stub_file_action::<SaveProject>("SaveProject"));
-    register_action(app_cx, stub_file_action::<SaveProjectAs>("SaveProjectAs"));
-    register_action(app_cx, stub_file_action::<CloseProject>("CloseProject"));
-
+    // New / Open / Save / Save As are handled by `AppWindow` so the handlers
+    // can reach the estimate form; see its `on_action` listeners in `render`.
     bind_menu_keys(app_cx);
 
     // Native macOS menu bar
@@ -109,8 +90,6 @@ pub fn setup_app(app_cx: &mut App) {
                 MenuItem::separator(),
                 MenuItem::action("Save", SaveProject),
                 MenuItem::action("Save As...", SaveProjectAs),
-                MenuItem::separator(),
-                MenuItem::action("Close Project", CloseProject),
             ],
         },
     ]);
