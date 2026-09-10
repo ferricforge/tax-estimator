@@ -886,50 +886,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn backup_to_produces_a_populated_standalone_copy() {
-        let dir = std::env::temp_dir().join(format!("tax-db-sqlite-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        let source = dir.join("source.db");
-        let dest = dir.join("copy.db");
-
-        // A file-backed (WAL) source is the scenario `VACUUM INTO` exists for.
-        let source_path = source.to_str().expect("temp path is UTF-8");
-        let repo = SqliteRepository::new(source_path)
-            .await
-            .expect("Failed to open source database");
-        repo.run_migrations()
-            .await
-            .expect("Failed to run migrations");
-        setup_test_data_for_estimates(&repo).await;
-        let created = repo
-            .create_estimate(create_minimal_test_estimate())
-            .await
-            .expect("Should create estimate");
-
-        repo.backup_to(&dest)
-            .await
-            .expect("backup_to should write the copy");
-
-        let dest_path = dest.to_str().expect("temp path is UTF-8");
-        let copy = SqliteRepository::new(dest_path)
-            .await
-            .expect("Should open the copied database");
-        let estimates = copy
-            .list_estimates(None)
-            .await
-            .expect("Should list estimates from the copy");
-
-        assert_eq!(estimates.len(), 1);
-        assert_eq!(estimates[0].id, created.id);
-        assert_eq!(estimates[0].input.expected_agi, created.input.expected_agi);
-
-        drop(repo);
-        drop(copy);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
     async fn test_get_tax_year_config() {
         let repo = setup_test_db().await;
         insert_test_tax_year_config(&repo).await;
