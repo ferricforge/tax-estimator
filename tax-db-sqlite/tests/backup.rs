@@ -354,8 +354,14 @@ async fn backup_to_accepts_a_variety_of_destination_path_characters() {
 
         let (dest_wal, dest_shm) = sidecar_paths(&dest);
         assert!(dest.exists(), "backup {name:?} should exist");
-        assert!(!dest_wal.exists(), "backup {name:?} must not have a -wal sidecar");
-        assert!(!dest_shm.exists(), "backup {name:?} must not have a -shm sidecar");
+        assert!(
+            !dest_wal.exists(),
+            "backup {name:?} must not have a -wal sidecar"
+        );
+        assert!(
+            !dest_shm.exists(),
+            "backup {name:?} must not have a -shm sidecar"
+        );
 
         let copy = SqliteRepository::new(dest.to_str().expect("destination path is UTF-8"))
             .await
@@ -364,7 +370,11 @@ async fn backup_to_accepts_a_variety_of_destination_path_characters() {
             .list_estimates(None)
             .await
             .unwrap_or_else(|err| panic!("should list estimates from {name:?}: {err:#}"));
-        assert_eq!(estimates.len(), 1, "backup {name:?} should carry the estimate");
+        assert_eq!(
+            estimates.len(),
+            1,
+            "backup {name:?} should carry the estimate"
+        );
         assert_eq!(estimates[0].id, created.id);
         copy.pool().close().await;
     }
@@ -376,7 +386,10 @@ async fn backup_to_accepts_a_variety_of_destination_path_characters() {
 async fn backup_to_reports_an_error_for_an_invalid_destination_path() {
     let workspace = tempdir().expect("create temp workspace");
     let source = workspace.path().join("source.db");
-    let base = workspace.path().to_str().expect("temp workspace path is UTF-8");
+    let base = workspace
+        .path()
+        .to_str()
+        .expect("temp workspace path is UTF-8");
 
     let repo = open_wal_source(&source).await;
     repo.run_migrations().await.expect("run migrations");
