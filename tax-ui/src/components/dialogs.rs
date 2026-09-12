@@ -1,5 +1,20 @@
 use gpui::{App, PromptLevel, Window};
 
+/// Opens a native prompt with a single **OK** button.
+///
+/// `Window::prompt` returns a receiver for the user's choice. With only
+/// one button there is nothing to wait for, so the receiver is dropped
+/// explicitly; this does not cancel the prompt.
+fn prompt_ok(
+    level: PromptLevel,
+    title: &str,
+    message: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    drop(window.prompt(level, title, Some(message), &["OK"], cx));
+}
+
 /// ErrorDialog displays a warning dialog with a list of errors.
 pub struct ErrorDialog;
 
@@ -12,9 +27,7 @@ impl ErrorDialog {
         cx: &mut App,
     ) {
         let detail = Self::format_error_list(errors);
-        // `prompt()` returns a receiver for the user's choice. We only offer
-        // "OK", so there is nothing to wait for and dropping it is fine.
-        let _ = window.prompt(PromptLevel::Warning, title, Some(&detail), &["OK"], cx);
+        prompt_ok(PromptLevel::Warning, title, &detail, window, cx);
     }
 
     /// Show a warning dialog for an [`anyhow::Error`], listing each link in
@@ -53,6 +66,6 @@ impl InfoDialog {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let _ = window.prompt(PromptLevel::Info, title, Some(message), &["OK"], cx);
+        prompt_ok(PromptLevel::Info, title, message, window, cx);
     }
 }

@@ -10,7 +10,6 @@ use gpui::{
     Window, div, px,
 };
 use gpui_component::{Root, StyledExt, WindowExt, v_flex};
-use tax_core::TaxEstimate;
 use tax_core::db::DbConfig;
 use tax_db_sqlite::SqliteRepository;
 use tracing::info;
@@ -19,6 +18,7 @@ use tracing::info;
 use crate::Quit;
 #[cfg(not(target_os = "macos"))]
 use crate::components::build_menu_bar;
+use crate::components::estimate_selector::OnSelectEstimate;
 use crate::components::file_picker::{get_file_path, put_file_path};
 use crate::components::{
     ErrorDialog, EstimateSelector, EstimatedIncomeForm, InfoDialog, LoadEstimate, NewProject,
@@ -145,11 +145,11 @@ impl AppWindow {
                         let _ = this.update(cx, move |app_window, view_cx| {
                             let mut estimates_opt = Some(estimates);
                             let form = app_window.form.clone();
-                            let on_select: Rc<dyn Fn(&TaxEstimate, &mut Window, &mut App)> =
+                            let on_select: OnSelectEstimate =
                                 Rc::new(move |estimate, window, cx| {
                                     tracing::info!("Selected estimate: {}", estimate);
                                     form.update(cx, |form, form_cx| {
-                                        form.populate_from_estimate(&estimate, window, form_cx);
+                                        form.populate_from_estimate(estimate, window, form_cx);
                                     });
                                 });
                             let selector = view_cx.new(|sel_cx| {

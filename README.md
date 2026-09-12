@@ -113,7 +113,7 @@ CSV schedule mappings:
 - Seed SQL lives in `tax-db-sqlite/seeds/`.
 - `tax_estimate` enforces one record per `(tax_year, filing_status_id)` via unique index.
 - In-memory mode (`:memory:`) is supported for tests.
-- Seed directory resolution can be overridden with `TAX_DB_SQLITE_SEEDS_DIR`.
+- Seed scripts are embedded into the binary at build time.
 
 ## Known Limitations (Current Behavior)
 

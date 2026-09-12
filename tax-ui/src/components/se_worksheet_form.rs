@@ -8,8 +8,8 @@ use rust_decimal::Decimal;
 use tax_core::calculations::SeWorksheetResult;
 use tax_core::{TaxEstimateInput, TaxYearConfig};
 
+use crate::estimate::se_tax_estimate;
 use crate::{
-    app::se_tax_estimate,
     components::{
         make_button, make_decimal_input, make_display_row_with_help, make_header_row,
         make_input_row_fixed_with_help, set_input_value,

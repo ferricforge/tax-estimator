@@ -116,7 +116,7 @@ async fn backup_to_produces_a_populated_standalone_copy() {
     // A file-backed WAL source is the scenario `VACUUM INTO` exists to handle.
     let repo = open_wal_source(&source).await;
     repo.run_migrations().await.expect("run migrations");
-    repo.run_seeds(Path::new("./seeds"))
+    repo.run_seeds(tax_db_sqlite::seeds::embedded())
         .await
         .expect("seed reference data");
 
@@ -278,7 +278,7 @@ async fn backup_to_refuses_an_existing_destination() {
             .expect("open pre-existing destination");
         existing.run_migrations().await.expect("run migrations");
         existing
-            .run_seeds(Path::new("./seeds"))
+            .run_seeds(tax_db_sqlite::seeds::embedded())
             .await
             .expect("seed pre-existing destination");
         existing
@@ -328,7 +328,7 @@ async fn backup_to_accepts_a_variety_of_destination_path_characters() {
 
     let repo = open_wal_source(&source).await;
     repo.run_migrations().await.expect("run migrations");
-    repo.run_seeds(Path::new("./seeds"))
+    repo.run_seeds(tax_db_sqlite::seeds::embedded())
         .await
         .expect("seed reference data");
     let created = repo

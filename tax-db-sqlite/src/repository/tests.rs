@@ -6,6 +6,8 @@ use tax_core::{
     TaxRepository,
 };
 
+use crate::seeds;
+
 use super::SqliteRepository;
 
 const TEST_YEAR: i32 = 9999;
@@ -670,7 +672,7 @@ async fn run_seeds_populates_every_reference_table() {
     let repo = setup_test_db().await;
     clear_all_data(&repo).await;
 
-    repo.run_seeds(std::path::Path::new("./seeds"))
+    repo.run_seeds(seeds::embedded())
         .await
         .expect("Should run seeds successfully");
 
@@ -709,7 +711,7 @@ async fn run_seeds_errors_for_missing_directory() {
     let repo = setup_test_db().await;
 
     let err = repo
-        .run_seeds(std::path::Path::new("./nonexistent"))
+        .run_seeds(seeds::embedded())
         .await
         .expect_err("Should fail for nonexistent directory");
 

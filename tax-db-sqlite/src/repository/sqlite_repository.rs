@@ -7,6 +7,8 @@ use sqlx::{
 };
 use tax_core::{FilingStatusCode, RepositoryError, TaxRepository};
 
+use crate::seeds::Seed;
+
 /// SQLite-backed implementation of [`tax_core::TaxRepository`].
 ///
 /// Wraps a connection pool and owns the schema migrations and reference-data
@@ -63,35 +65,19 @@ impl SqliteRepository {
         Ok(())
     }
 
-    /// Load and execute every `*.sql` seed file in `seeds_dir`, in alphabetical
-    /// order by filename.
+    /// Applies every seed script in order. The factory runs this on every
+    /// open, so the scripts must remain idempotent.
     pub async fn run_seeds(
         &self,
-        seeds_dir: &Path,
-    ) -> Result<()> {
-        tracing::info!(
-            "Running seeds for sqlite from {}",
-            seeds_dir.to_string_lossy()
-        );
-
-        let mut entries: Vec<_> = std::fs::read_dir(seeds_dir)
-            .with_context(|| format!("Failed to read seeds directory '{}'", seeds_dir.display()))?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
-            .collect();
-        entries.sort_by_key(|entry| entry.file_name());
-
-        for entry in entries {
-            let path = entry.path();
-            let sql = std::fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read seed file '{}'", path.display()))?;
-
-            sqlx::raw_sql(AssertSqlSafe(sql))
+        seeds: &[Seed],
+    ) -> anyhow::Result<()> {
+        for seed in seeds {
+            tracing::debug!(seed = seed.name, "applying seed");
+            sqlx::raw_sql(seed.sql)
                 .execute(&self.pool)
                 .await
-                .with_context(|| format!("Failed to execute seed file '{}'", path.display()))?;
+                .with_context(|| format!("failed to apply seed '{}'", seed.name))?;
         }
-
         Ok(())
     }
 

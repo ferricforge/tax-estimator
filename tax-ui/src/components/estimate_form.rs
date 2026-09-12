@@ -13,14 +13,10 @@ use gpui_component::{
 };
 use regex::Regex;
 use rust_decimal::Decimal;
-use tax_core::calculations::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetInput,
-    EstimatedTaxWorksheetResult,
-};
-use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateInput, TaxYearConfig};
+use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateInput};
 
-use crate::app::{FilingStatusData, save_tax_estimate};
 use crate::components::{ErrorDialog, show_err};
+use crate::estimate::{computed_values, estimated_tax, save_tax_estimate};
 use crate::instructions::{UiInstructionField, help_for_field};
 use crate::models::SeWorksheetModel;
 use crate::repository::TaxRepo;
@@ -411,14 +407,8 @@ impl EstimatedIncomeForm {
             return;
         };
 
-        let config: &TaxYearConfig = &tax_year_data.config;
-        let filing_status: FilingStatusCode = form_input.filing_status;
-        let filing_data: &Vec<FilingStatusData> = &tax_year_data.statuses;
-
-        let Some(filing_status_data) = filing_data
-            .iter()
-            .find(|f: &&FilingStatusData| f.filing_status.status_code == filing_status)
-        else {
+        let filing_status = form_input.filing_status;
+        let Some(filing_status_data) = tax_year_data.status_for(filing_status) else {
             tracing::error!(
                 ?filing_status,
                 tax_year = form_input.tax_year,
@@ -440,27 +430,22 @@ impl EstimatedIncomeForm {
             return;
         };
 
-        let worksheet_context = EstimatedTaxWorksheetContext {
-            self_employment_tax: se_model.line_10_total_se_tax.unwrap_or_default(),
-            refundable_credits: Decimal::ZERO,
-            is_farmer_or_fisher: false,
-            required_payment_threshold: config.req_pmnt_threshold,
-        };
-        let inputs: EstimatedTaxWorksheetInput =
-            form_input.to_estimated_tax_worksheet_input(&worksheet_context);
-
-        let tax_worksheet: EstimatedTaxWorksheet =
-            EstimatedTaxWorksheet::new(&filing_status_data.tax_brackets);
-        let result: EstimatedTaxWorksheetResult = match tax_worksheet.calculate(&inputs) {
+        let se_tax = se_model.line_10_total_se_tax.unwrap_or_default();
+        let result = match estimated_tax(
+            filing_status_data,
+            &tax_year_data.config,
+            &form_input,
+            se_tax,
+        ) {
             Ok(result) => result,
             Err(error) => {
-                tracing::warn!(%error, "Estimated tax calculation failed");
-                ErrorDialog::show("Calculation failed", &[error.to_string()], window, cx);
+                tracing::warn!(error = ?error, "Estimated tax calculation failed");
+                // `{:#}` keeps the full anyhow chain (context + worksheet error).
+                ErrorDialog::show("Calculation failed", &[format!("{error:#}")], window, cx);
                 return;
             }
         };
 
-        let se_tax = se_model.line_10_total_se_tax.unwrap_or_default();
         self.results.update(cx, |rf, cx| {
             rf.set_from_calculation(se_tax, &result);
             cx.notify();
@@ -468,6 +453,10 @@ impl EstimatedIncomeForm {
         cx.notify();
 
         tracing::info!(input = %form_input, %result, "Estimated taxes");
+
+        // Build the persisted summary now so the spawned task only needs to
+        // own `computed` and `form_input`, not the whole worksheet result.
+        let computed = computed_values(se_tax, &result);
 
         // The results are already on screen at this point, so any failure
         // below is a save failure, not a calculation failure.
@@ -491,7 +480,7 @@ impl EstimatedIncomeForm {
                 }
             };
 
-            if let Err(e) = save_tax_estimate(&form_input, &result, &se_model, repo).await {
+            if let Err(e) = save_tax_estimate(repo.as_ref(), &form_input, computed).await {
                 let e = e.context(SAVE_FAILED_CONTEXT);
                 tracing::error!(error = ?e, "save_tax_estimate failed");
                 show_err(window_handle, async_cx, SAVE_FAILED_TITLE, &e);
@@ -713,8 +702,9 @@ fn set_optional_decimal_input(
 #[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;
+    use tax_core::TaxYearConfig;
 
-    use crate::app::TaxYearData;
+    use crate::models::TaxYearData;
 
     use super::*;
 

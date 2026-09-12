@@ -3,12 +3,21 @@ use std::sync::Arc;
 use anyhow::Result;
 use gpui::{App, AsyncApp, BorrowAppContext, Global};
 use rust_decimal::Decimal;
-use tax_core::{RepositoryError, TaxEstimate, TaxRepository, TaxYearConfig, db::DbConfig};
-
-use crate::{
-    app::{TaxYearData, build_registry, load_tax_year_data},
-    config::AppConfig,
+use tax_core::{
+    RepositoryError, TaxEstimate, TaxRepository, TaxYearConfig,
+    db::{DbConfig, RepositoryRegistry},
 };
+use tax_db_sqlite::SqliteRepositoryFactory;
+
+use crate::{config::AppConfig, models::TaxYearData};
+
+/// Register every known backend with a fresh [`RepositoryRegistry`].
+/// Adding a new backend later is one line here.
+pub fn build_registry() -> RepositoryRegistry {
+    let mut registry = RepositoryRegistry::new();
+    registry.register(Box::new(SqliteRepositoryFactory));
+    registry
+}
 
 // ---------------------------------------------------------------------------
 // Shared repository handle
@@ -176,8 +185,8 @@ impl ActiveTaxYear {
         });
 
         cx.spawn(async move |async_cx: &mut AsyncApp| {
-            match load_tax_year_data(repo.tax_repository(), year).await {
-                // match repo.get_tax_year_config(year).await {
+            match TaxYearData::load(repo.tax_repository(), year).await {
+                // match load_tax_year_data(repo.tax_repository(), year).await {
                 Ok(tax_year_data) => {
                     let _ = async_cx.update(|cx| {
                         // update_global notifies observe_global subscribers
@@ -199,7 +208,6 @@ impl ActiveTaxYear {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
     use std::sync::Arc;
 
     use pretty_assertions::assert_eq;
@@ -207,13 +215,11 @@ mod tests {
     use tax_core::{
         FilingStatusCode, RepositoryError, TaxEstimateComputed, TaxEstimateInput, TaxRepository,
     };
-    use tax_db_sqlite::SqliteRepository;
+    use tax_db_sqlite::{SqliteRepository, seeds};
 
     use super::TaxRepo;
 
     async fn setup_test_repo() -> (Arc<dyn TaxRepository>, TaxRepo) {
-        let seeds_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tax-db-sqlite/seeds");
-
         let sqlite_repo = SqliteRepository::new(":memory:")
             .await
             .expect("Failed to create in-memory database");
@@ -222,7 +228,8 @@ mod tests {
             .await
             .expect("Failed to run migrations");
         sqlite_repo
-            .run_seeds(&seeds_dir)
+            // .run_seeds(&seeds_dir)
+            .run_seeds(seeds::embedded())
             .await
             .expect("Failed to run seeds");
 

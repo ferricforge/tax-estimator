@@ -1,7 +1,7 @@
 //! Common utility functions for tax calculations.
 //!
 //! This module provides shared functionality used across multiple worksheet
-//! calculations, including rounding and other common operations.
+//! calculations, such as currency rounding.
 
 use rust_decimal::Decimal;
 
@@ -31,34 +31,6 @@ use rust_decimal::Decimal;
 /// ```
 pub fn round_half_up(value: Decimal) -> Decimal {
     value.round_dp_with_strategy(2, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
-}
-
-/// Returns the maximum of two decimal values.
-///
-/// # Arguments
-///
-/// * `a` - First decimal value
-/// * `b` - Second decimal value
-///
-/// # Returns
-///
-/// The larger of the two values.
-///
-/// # Examples
-///
-/// ```
-/// use rust_decimal_macros::dec;
-/// use tax_core::calculations::common::max;
-///
-/// assert_eq!(max(dec!(100.00), dec!(200.00)), dec!(200.00));
-/// assert_eq!(max(dec!(200.00), dec!(100.00)), dec!(200.00));
-/// assert_eq!(max(dec!(-100.00), dec!(-200.00)), dec!(-100.00));
-/// ```
-pub fn max(
-    a: Decimal,
-    b: Decimal,
-) -> Decimal {
-    if a > b { a } else { b }
 }
 
 #[cfg(test)]
@@ -126,51 +98,5 @@ mod tests {
         let result = round_half_up(dec!(999999.999));
 
         assert_eq!(result, dec!(1000000.00));
-    }
-
-    // =========================================================================
-    // max tests
-    // =========================================================================
-
-    #[test]
-    fn max_returns_larger_value() {
-        let result = max(dec!(100.00), dec!(200.00));
-
-        assert_eq!(result, dec!(200.00));
-    }
-
-    #[test]
-    fn max_returns_first_when_larger() {
-        let result = max(dec!(200.00), dec!(100.00));
-
-        assert_eq!(result, dec!(200.00));
-    }
-
-    #[test]
-    fn max_handles_equal_values() {
-        let result = max(dec!(150.00), dec!(150.00));
-
-        assert_eq!(result, dec!(150.00));
-    }
-
-    #[test]
-    fn max_handles_negative_values() {
-        let result = max(dec!(-100.00), dec!(-200.00));
-
-        assert_eq!(result, dec!(-100.00));
-    }
-
-    #[test]
-    fn max_handles_zero() {
-        let result = max(dec!(0.00), dec!(100.00));
-
-        assert_eq!(result, dec!(100.00));
-    }
-
-    #[test]
-    fn max_handles_negative_and_positive() {
-        let result = max(dec!(-50.00), dec!(50.00));
-
-        assert_eq!(result, dec!(50.00));
     }
 }

@@ -88,6 +88,7 @@
 //! assert!(result.estimated_payments_required);
 //! ```
 
+use std::cmp::max;
 use std::fmt::{self, Display};
 
 use rust_decimal::Decimal;
@@ -95,7 +96,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::TaxBracket;
-use crate::calculations::common::{max, round_half_up};
+use crate::calculations::common::round_half_up;
 
 /// Errors that can occur during estimated tax worksheet calculations.
 #[derive(Debug, Error, PartialEq, Eq)]

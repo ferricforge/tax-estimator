@@ -13,6 +13,9 @@ use tax_core::TaxEstimate;
 
 use crate::components::make_button;
 
+/// Callback invoked with the chosen estimate when the user clicks **Select**.
+pub type OnSelectEstimate = Rc<dyn Fn(&TaxEstimate, &mut Window, &mut App)>;
+
 /// Dropdown selector over a list of previously saved [`TaxEstimate`] records.
 ///
 /// Renders a dropdown with **Select** and **Cancel** buttons beneath it. The
@@ -24,7 +27,7 @@ pub struct EstimateSelector {
     estimates: Vec<TaxEstimate>,
     labels: Vec<SharedString>,
     select: Entity<SelectState<Vec<SharedString>>>,
-    on_select: Rc<dyn Fn(&TaxEstimate, &mut Window, &mut App)>,
+    on_select: OnSelectEstimate,
     _select_subscription: Subscription,
 }
 
@@ -35,7 +38,7 @@ impl EstimateSelector {
     /// **Select**.
     pub fn new(
         estimates: Vec<TaxEstimate>,
-        on_select: Rc<dyn Fn(&TaxEstimate, &mut Window, &mut App)>,
+        on_select: OnSelectEstimate,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {

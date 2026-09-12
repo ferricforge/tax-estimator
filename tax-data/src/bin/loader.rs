@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use tax_data::TaxBracketLoader;
-use tax_db_sqlite::SqliteRepository;
+use tax_db_sqlite::{SqliteRepository, seeds};
 
 /// Load tax bracket data from a CSV file into the database.
 ///
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
 
     if let Some(seeds_dir) = &args.seeds {
         println!("Running seeds from: {}", seeds_dir.display());
-        repo.run_seeds(seeds_dir)
+        repo.run_seeds(seeds::embedded())
             .await
             .with_context(|| format!("Failed to run seeds from: {}", seeds_dir.display()))?;
         println!("Seeds complete.");
