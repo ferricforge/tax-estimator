@@ -705,18 +705,3 @@ async fn run_seeds_populates_every_reference_table() {
         7,
     );
 }
-
-#[tokio::test]
-async fn run_seeds_errors_for_missing_directory() {
-    let repo = setup_test_db().await;
-
-    let err = repo
-        .run_seeds(seeds::embedded())
-        .await
-        .expect_err("Should fail for nonexistent directory");
-
-    assert_eq!(
-        err.to_string(),
-        "Failed to read seeds directory './nonexistent'"
-    );
-}

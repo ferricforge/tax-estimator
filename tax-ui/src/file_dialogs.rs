@@ -1,4 +1,8 @@
-#![allow(unused)]
+//! Native file dialogs (through `rfd`) and the filter helpers they share.
+
+use std::path::PathBuf;
+
+use rfd::AsyncFileDialog;
 
 /// Convert borrowed filter definitions into owned `String` values.
 ///
@@ -14,6 +18,49 @@ pub fn owned_filters(filters: &[(&str, &[&str])]) -> Vec<(String, Vec<String>)> 
             )
         })
         .collect()
+}
+
+/// Opens an async file picker dialog with the given filters and starting directory.
+///
+/// Each filter is a `(name, extensions)` pair, e.g. `("Excel", &["xlsx", "xlsm"])`.
+pub async fn get_file_path(
+    location: String,
+    filters: Vec<(String, Vec<String>)>,
+) -> Option<PathBuf> {
+    let dialog = with_filters(AsyncFileDialog::new().set_directory(&location), &filters);
+
+    let file = dialog.pick_file().await?;
+    Some(file.path().to_path_buf())
+}
+
+/// Opens an async *save* dialog, returning the chosen path.
+///
+/// `default_name` pre-fills the filename field. Filters use the same
+/// `(name, extensions)` shape as [`get_file_path`].
+pub async fn put_file_path(
+    location: String,
+    default_name: String,
+    filters: Vec<(String, Vec<String>)>,
+) -> Option<PathBuf> {
+    let dialog = AsyncFileDialog::new()
+        .set_directory(&location)
+        .set_file_name(&default_name);
+    let dialog = with_filters(dialog, &filters);
+
+    let file = dialog.save_file().await?;
+    Some(file.path().to_path_buf())
+}
+
+/// Adds each `(name, extensions)` filter to `dialog`.
+fn with_filters(
+    mut dialog: AsyncFileDialog,
+    filters: &[(String, Vec<String>)],
+) -> AsyncFileDialog {
+    for (name, extensions) in filters {
+        let ext_refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+        dialog = dialog.add_filter(name, &ext_refs);
+    }
+    dialog
 }
 
 #[cfg(test)]

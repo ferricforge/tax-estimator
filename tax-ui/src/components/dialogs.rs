@@ -1,4 +1,4 @@
-use gpui::{App, PromptLevel, Window};
+use gpui::{AnyWindowHandle, App, AsyncApp, PromptLevel, Window};
 
 /// Opens a native prompt with a single **OK** button.
 ///
@@ -67,5 +67,21 @@ impl InfoDialog {
         cx: &mut App,
     ) {
         prompt_ok(PromptLevel::Info, title, message, window, cx);
+    }
+}
+
+/// Shows an [`ErrorDialog`] for `err` in the window identified by `handle`,
+/// from an async context. Does nothing if the window has already been closed.
+pub fn show_err(
+    handle: AnyWindowHandle,
+    async_cx: &mut AsyncApp,
+    title: &str,
+    err: &anyhow::Error,
+) {
+    let shown = handle.update(async_cx, |_, window, cx| {
+        ErrorDialog::show_error(title, err, window, cx);
+    });
+    if shown.is_err() {
+        tracing::debug!(%title, "window closed before error could be shown");
     }
 }

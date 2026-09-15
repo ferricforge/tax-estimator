@@ -12,10 +12,64 @@ use tax_core::calculations::{
 };
 use tax_core::db::TaxRepository;
 use tax_core::models::TaxYearConfig;
-use tax_core::{TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
+use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
 use tracing::debug;
 
-use crate::models::FilingStatusData;
+use crate::models::{FilingStatusData, TaxYearData};
+use crate::repository::ActiveTaxYear;
+
+/// Why an estimate could not be calculated for the input the user entered.
+#[derive(Debug, thiserror::Error)]
+pub enum EstimateError {
+    /// No tax-year configuration is loaded for `year`.
+    #[error("no tax year configuration is loaded for {year}")]
+    TaxYearNotLoaded { year: i32 },
+    /// The loaded year has no bracket data for `status`.
+    #[error("no tax bracket data for filing status {status:?} in tax year {year}")]
+    MissingFilingStatus { year: i32, status: FilingStatusCode },
+    /// One of the worksheets rejected the input.
+    #[error(transparent)]
+    Worksheet(#[from] anyhow::Error),
+}
+
+/// Returns the loaded tax-year data when it is for `year`; `None` when nothing
+/// is loaded or the loaded data is for a different year.
+pub fn loaded_tax_year_data(
+    active: &ActiveTaxYear,
+    year: i32,
+) -> Option<&TaxYearData> {
+    active
+        .tax_year_data
+        .as_ref()
+        .filter(|_| active.year == Some(year))
+}
+
+/// Runs the Estimated Tax Worksheet for `input` using whatever tax-year data
+/// is currently loaded.
+///
+/// Fails with [`EstimateError::TaxYearNotLoaded`] unless `active` holds the
+/// configuration for `input.tax_year`, and with
+/// [`EstimateError::MissingFilingStatus`] when that configuration has no
+/// brackets for `input.filing_status`.
+pub fn calculate_estimate(
+    active: &ActiveTaxYear,
+    input: &TaxEstimateInput,
+    se_tax: Decimal,
+) -> Result<EstimatedTaxWorksheetResult, EstimateError> {
+    let tax_year_data =
+        loaded_tax_year_data(active, input.tax_year).ok_or(EstimateError::TaxYearNotLoaded {
+            year: input.tax_year,
+        })?;
+
+    let status = tax_year_data.status_for(input.filing_status).ok_or(
+        EstimateError::MissingFilingStatus {
+            year: input.tax_year,
+            status: input.filing_status,
+        },
+    )?;
+
+    Ok(estimated_tax(status, &tax_year_data.config, input, se_tax)?)
+}
 
 /// Runs the Self-Employment Tax Worksheet for the given income figures.
 pub fn se_tax_estimate(
@@ -188,6 +242,19 @@ mod tests {
         }
     }
 
+    fn active_tax_year(
+        year: Option<i32>,
+        statuses: Vec<FilingStatusData>,
+    ) -> ActiveTaxYear {
+        ActiveTaxYear {
+            year,
+            tax_year_data: Some(TaxYearData {
+                config: sample_config(),
+                statuses,
+            }),
+        }
+    }
+
     #[test]
     fn se_tax_estimate_succeeds_for_typical_input() {
         let result = se_tax_estimate(
@@ -240,5 +307,60 @@ mod tests {
                 required_payment: dec!(12_000.00),
             }
         );
+    }
+
+    #[test]
+    fn loaded_tax_year_data_is_none_when_nothing_is_loaded() {
+        assert!(loaded_tax_year_data(&ActiveTaxYear::default(), 2025).is_none());
+    }
+
+    #[test]
+    fn loaded_tax_year_data_requires_matching_year() {
+        let active = active_tax_year(Some(2024), vec![single_status_data()]);
+
+        assert!(loaded_tax_year_data(&active, 2025).is_none());
+        assert!(loaded_tax_year_data(&active, 2024).is_some());
+    }
+
+    #[test]
+    fn calculate_estimate_reports_unloaded_year() {
+        let active = active_tax_year(Some(2024), vec![single_status_data()]);
+
+        let Err(err) = calculate_estimate(&active, &wage_only_input(), Decimal::ZERO) else {
+            panic!("calculation should fail when the active year differs");
+        };
+
+        assert!(matches!(
+            err,
+            EstimateError::TaxYearNotLoaded { year: 2025 }
+        ));
+    }
+
+    #[test]
+    fn calculate_estimate_reports_missing_filing_status() {
+        let active = active_tax_year(Some(2025), Vec::new());
+
+        let Err(err) = calculate_estimate(&active, &wage_only_input(), Decimal::ZERO) else {
+            panic!("calculation should fail without bracket data");
+        };
+
+        assert!(matches!(
+            err,
+            EstimateError::MissingFilingStatus {
+                year: 2025,
+                status: FilingStatusCode::Single,
+            }
+        ));
+    }
+
+    #[test]
+    fn calculate_estimate_matches_estimated_tax() {
+        let active = active_tax_year(Some(2025), vec![single_status_data()]);
+
+        let result = calculate_estimate(&active, &wage_only_input(), Decimal::ZERO)
+            .expect("calculation should succeed with matching data loaded");
+
+        assert_eq!(result.total_estimated_tax, dec!(13_614.00));
+        assert_eq!(result.required_annual_payment, dec!(12_000.00));
     }
 }

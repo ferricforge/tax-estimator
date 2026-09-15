@@ -12,12 +12,12 @@ use crate::estimate::se_tax_estimate;
 use crate::{
     components::{
         make_button, make_decimal_input, make_display_row_with_help, make_header_row,
-        make_input_row_fixed_with_help, set_input_value,
+        make_input_row_fixed_with_help, set_input_value, set_optional_decimal_input,
     },
     instructions::{UiInstructionField, help_for_field},
     models::SeWorksheetModel,
     repository::ActiveTaxYear,
-    utils::{optional_decimal_input_text, parse_optional_decimal},
+    utils::parse_optional_decimal,
 };
 
 pub struct SeWorksheetForm {
@@ -107,7 +107,6 @@ impl SeWorksheetForm {
         let preserved_line_5 = ActiveTaxYear::ss_wage_max(cx);
         self.model = SeWorksheetModel::default();
         self.model.line_5_ss_maximum_income = preserved_line_5;
-
         self.model.tax_year = Some(input.tax_year);
         self.model.line_1a_expected_se_income = input.se_income;
         self.model.line_1b_expected_crp_payments = input.expected_crp_payments;
@@ -117,24 +116,9 @@ impl SeWorksheetForm {
         let crp = input.expected_crp_payments.unwrap_or(Decimal::ZERO);
         self.model.line_2_subtract_1b_from_1a = Some(income - crp);
 
-        set_input_value(
-            &self.se_income,
-            optional_decimal_input_text(input.se_income),
-            window,
-            cx,
-        );
-        set_input_value(
-            &self.crp_payments,
-            optional_decimal_input_text(input.expected_crp_payments),
-            window,
-            cx,
-        );
-        set_input_value(
-            &self.expected_wages,
-            optional_decimal_input_text(input.expected_wages),
-            window,
-            cx,
-        );
+        set_optional_decimal_input(&self.se_income, input.se_income, window, cx);
+        set_optional_decimal_input(&self.crp_payments, input.expected_crp_payments, window, cx);
+        set_optional_decimal_input(&self.expected_wages, input.expected_wages, window, cx);
 
         let _ = self.calculate_se(cx);
         cx.notify();
@@ -173,12 +157,12 @@ impl SeWorksheetForm {
         &mut self,
         cx: &App,
     ) {
-        let Some(tax_year_data) = ActiveTaxYear::get(cx).tax_year_data.clone() else {
+        let Some(tax_year_data) = &ActiveTaxYear::get(cx).tax_year_data else {
             tracing::warn!("No tax year loaded; cannot calculate SE tax");
             return;
         };
 
-        match make_se_estimate(&tax_year_data.config, self.model.clone()) {
+        match make_se_estimate(&tax_year_data.config, &self.model) {
             Ok(result) => self.model.from_worksheet_result(&result),
             Err(e) => {
                 tracing::warn!(%e, "Calculate SE Tax failed");
@@ -305,7 +289,7 @@ impl Render for SeWorksheetForm {
 
 fn make_se_estimate(
     config: &TaxYearConfig,
-    model: SeWorksheetModel,
+    model: &SeWorksheetModel,
 ) -> Result<SeWorksheetResult> {
     let se_income = model.line_1a_expected_se_income.unwrap_or_default();
     let crp_payments = model.line_1b_expected_crp_payments.unwrap_or_default();
