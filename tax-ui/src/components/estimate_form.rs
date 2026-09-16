@@ -19,12 +19,11 @@ use crate::components::{
     make_input_row, make_input_row_with_help, make_integer_input, make_select_row,
     set_decimal_input, set_input_value, set_optional_decimal_input, show_err,
 };
-use crate::estimate::{
-    EstimateError, calculate_estimate, computed_values, loaded_tax_year_data, save_tax_estimate,
-};
+use crate::estimate::{EstimateError, calculate_estimate, computed_values, save_tax_estimate};
 use crate::instructions::{UiInstructionField, help_for_field};
 use crate::models::SeWorksheetModel;
-use crate::repository::{ActiveTaxYear, TaxRepo};
+use crate::repository::TaxRepo;
+use crate::state::ActiveTaxYear;
 use crate::utils::{parse_decimal, parse_optional_decimal};
 
 #[derive(Clone, Debug)]
@@ -390,11 +389,12 @@ impl EstimatedIncomeForm {
             "The estimate was calculated but could not be saved to the database";
 
         let window_handle = window.window_handle();
+
         cx.spawn(async move |_this, async_cx| {
             let repo = match async_cx.update(|app_cx: &mut App| {
-                TaxRepo::try_get(app_cx)
-                    .map(|tax_repo| tax_repo.tax_repository_arc())
-                    .ok_or_else(|| anyhow::anyhow!("The database connection is not available"))
+                TaxRepo::require(app_cx)
+                    .map(|tax_repo| tax_repo.arc())
+                    .map_err(anyhow::Error::from)
             }) {
                 Ok(Ok(repo)) => repo,
                 Ok(Err(e)) | Err(e) => {
@@ -653,8 +653,7 @@ fn tax_year_is_ready(
     tax_year_input: &str,
     active_tax_year: &ActiveTaxYear,
 ) -> bool {
-    parse_loadable_tax_year(tax_year_input)
-        .is_some_and(|year| loaded_tax_year_data(active_tax_year, year).is_some())
+    parse_loadable_tax_year(tax_year_input).is_some_and(|year| active_tax_year.is_loaded_for(year))
 }
 
 // ---------------------------------------------------------------------------
@@ -700,7 +699,7 @@ fn show_estimate_error(
         EstimateError::TaxYearNotLoaded { year } => {
             tracing::warn!(
                 requested = *year,
-                active = ?ActiveTaxYear::get(cx).year,
+                active = ?ActiveTaxYear::get(cx).year(),
                 "No matching tax year loaded; cannot calculate"
             );
             (
@@ -750,11 +749,19 @@ mod tests {
         year: Option<i32>,
         has_config: bool,
     ) -> ActiveTaxYear {
-        ActiveTaxYear {
+        let Some(year) = year else {
+            return ActiveTaxYear::default();
+        };
+
+        if !has_config {
+            return ActiveTaxYear::pending(year);
+        }
+
+        ActiveTaxYear::loaded(
             year,
-            tax_year_data: has_config.then(|| TaxYearData {
+            TaxYearData {
                 config: TaxYearConfig {
-                    tax_year: year.unwrap_or_default(),
+                    tax_year: year,
                     ss_wage_max: Decimal::ZERO,
                     ss_tax_rate: Decimal::ZERO,
                     medicare_tax_rate: Decimal::ZERO,
@@ -764,8 +771,8 @@ mod tests {
                     min_se_threshold: Decimal::ZERO,
                 },
                 statuses: Vec::new(),
-            }),
-        }
+            },
+        )
     }
 
     #[test]

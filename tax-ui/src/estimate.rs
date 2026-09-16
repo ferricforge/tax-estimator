@@ -15,8 +15,8 @@ use tax_core::models::TaxYearConfig;
 use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
 use tracing::debug;
 
-use crate::models::{FilingStatusData, TaxYearData};
-use crate::repository::ActiveTaxYear;
+use crate::models::FilingStatusData;
+use crate::state::ActiveTaxYear;
 
 /// Why an estimate could not be calculated for the input the user entered.
 #[derive(Debug, thiserror::Error)]
@@ -32,18 +32,6 @@ pub enum EstimateError {
     Worksheet(#[from] anyhow::Error),
 }
 
-/// Returns the loaded tax-year data when it is for `year`; `None` when nothing
-/// is loaded or the loaded data is for a different year.
-pub fn loaded_tax_year_data(
-    active: &ActiveTaxYear,
-    year: i32,
-) -> Option<&TaxYearData> {
-    active
-        .tax_year_data
-        .as_ref()
-        .filter(|_| active.year == Some(year))
-}
-
 /// Runs the Estimated Tax Worksheet for `input` using whatever tax-year data
 /// is currently loaded.
 ///
@@ -56,8 +44,9 @@ pub fn calculate_estimate(
     input: &TaxEstimateInput,
     se_tax: Decimal,
 ) -> Result<EstimatedTaxWorksheetResult, EstimateError> {
-    let tax_year_data =
-        loaded_tax_year_data(active, input.tax_year).ok_or(EstimateError::TaxYearNotLoaded {
+    let tax_year_data = active
+        .data_for(input.tax_year)
+        .ok_or(EstimateError::TaxYearNotLoaded {
             year: input.tax_year,
         })?;
 
@@ -167,6 +156,7 @@ mod tests {
     use tax_core::models::{FilingStatus, StandardDeduction, TaxBracket};
 
     use super::*;
+    use crate::models::TaxYearData;
 
     fn sample_config() -> TaxYearConfig {
         TaxYearConfig {
@@ -246,12 +236,14 @@ mod tests {
         year: Option<i32>,
         statuses: Vec<FilingStatusData>,
     ) -> ActiveTaxYear {
-        ActiveTaxYear {
-            year,
-            tax_year_data: Some(TaxYearData {
-                config: sample_config(),
-                statuses,
-            }),
+        let tax_year_data = TaxYearData {
+            config: sample_config(),
+            statuses,
+        };
+
+        match year {
+            Some(year) => ActiveTaxYear::loaded(year, tax_year_data),
+            None => ActiveTaxYear::default(),
         }
     }
 
@@ -307,19 +299,6 @@ mod tests {
                 required_payment: dec!(12_000.00),
             }
         );
-    }
-
-    #[test]
-    fn loaded_tax_year_data_is_none_when_nothing_is_loaded() {
-        assert!(loaded_tax_year_data(&ActiveTaxYear::default(), 2025).is_none());
-    }
-
-    #[test]
-    fn loaded_tax_year_data_requires_matching_year() {
-        let active = active_tax_year(Some(2024), vec![single_status_data()]);
-
-        assert!(loaded_tax_year_data(&active, 2025).is_none());
-        assert!(loaded_tax_year_data(&active, 2024).is_some());
     }
 
     #[test]

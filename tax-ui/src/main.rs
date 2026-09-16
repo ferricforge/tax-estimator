@@ -10,7 +10,7 @@ use gpui_component_assets::Assets;
 use tax_ui::{
     components::{AppWindow, WindowPreferences},
     logging::{init_default_logging, log_task_error},
-    repository::init_repository,
+    session::init_database,
     setup_app,
 };
 
@@ -173,7 +173,7 @@ fn run_ui() {
         app_cx
             .spawn(async move |async_cx| {
                 let result: anyhow::Result<()> = async {
-                    init_repository(async_cx).await?;
+                    init_database(async_cx).await?;
 
                     let bounds = async_cx
                         .update(|app_cx: &mut App| compute_window_bounds(prefs.size, app_cx))?;

@@ -13,7 +13,8 @@ use crate::project::{
     DEFAULT_PROJECT_FILE_NAME, checkpoint_database, copy_database, db_file_filters, is_same_file,
     project_dialog_directory, project_file_name,
 };
-use crate::repository::{ActiveTaxYear, switch_repository};
+use crate::session::{DatabaseTarget, switch_database};
+use crate::state::ActiveTaxYear;
 
 /// What the window should do after [`apply_project_switch`] repoints the
 /// application at a different database file.
@@ -50,9 +51,8 @@ impl AppWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let config = AppConfig::get(cx);
-        let directory = project_dialog_directory(&config.database_url);
-        let backend = config.database_backend.as_str().to_string();
+        let directory = project_dialog_directory(&AppConfig::get(cx).database_url);
+        let target = DatabaseTarget::from_config(cx);
         let filters = db_file_filters();
         let window_handle = window.window_handle();
 
@@ -79,10 +79,8 @@ impl AppWindow {
                 return;
             }
 
-            let db_config = DbConfig {
-                backend,
-                connection_string: path.to_string_lossy().into_owned(),
-            };
+            let db_config = target.db_config(path.to_string_lossy().into_owned());
+
             apply_project_switch(
                 this,
                 window_handle,
@@ -101,9 +99,8 @@ impl AppWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let config = AppConfig::get(cx);
-        let directory = project_dialog_directory(&config.database_url);
-        let backend = config.database_backend.as_str().to_string();
+        let directory = project_dialog_directory(&AppConfig::get(cx).database_url);
+        let target = DatabaseTarget::from_config(cx);
         let filters = db_file_filters();
         let window_handle = window.window_handle();
 
@@ -113,10 +110,8 @@ impl AppWindow {
                 return;
             };
 
-            let db_config = DbConfig {
-                backend,
-                connection_string: path.to_string_lossy().into_owned(),
-            };
+            let db_config = target.db_config(path.to_string_lossy().into_owned());
+
             apply_project_switch(
                 this,
                 window_handle,
@@ -158,38 +153,35 @@ impl AppWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let config = AppConfig::get(cx);
-        let source = config.database_url.clone();
-        let backend = config.database_backend.as_str().to_string();
+        let source = AppConfig::get(cx).database_url.clone();
+        let target = DatabaseTarget::from_config(cx);
         let directory = project_dialog_directory(&source);
         let default_name = project_file_name(&source);
         let filters = db_file_filters();
         let window_handle = window.window_handle();
 
         cx.spawn(async move |this, async_cx| {
-            let Some(target) = put_file_path(directory, default_name, filters).await else {
+            let Some(destination) = put_file_path(directory, default_name, filters).await else {
                 tracing::info!("Save As cancelled");
                 return;
             };
 
-            if is_same_file(&source, &target) {
+            if is_same_file(&source, &destination) {
                 // Saving over the current project is just a plain Save.
                 let result = checkpoint_database(&source).await;
                 report_save_result(&this, window_handle, async_cx, &source, result);
                 return;
             }
 
-            if let Err(e) = copy_database(&source, &target).await {
+            if let Err(e) = copy_database(&source, &destination).await {
                 let e = e.context("Could not save a copy of the project");
                 tracing::error!(error = ?e, "save as failed");
                 show_err(window_handle, async_cx, "Save As failed", &e);
                 return;
             }
 
-            let db_config = DbConfig {
-                backend,
-                connection_string: target.to_string_lossy().into_owned(),
-            };
+            let db_config = target.db_config(destination.to_string_lossy().into_owned());
+
             apply_project_switch(
                 this,
                 window_handle,
@@ -204,7 +196,7 @@ impl AppWindow {
 
     /// Re-loads the tax-year configuration for the year currently in the
     /// form. Used after a *Save As*, whose copy keeps the form values even
-    /// though [`switch_repository`] has cleared the cached [`ActiveTaxYear`].
+    /// though [`switch_database`] has cleared the cached [`ActiveTaxYear`].
     fn reload_active_year(
         &self,
         cx: &mut App,
@@ -228,7 +220,7 @@ async fn apply_project_switch(
 ) {
     let project_path = db_config.connection_string.clone();
 
-    if let Err(e) = switch_repository(async_cx, db_config).await {
+    if let Err(e) = switch_database(async_cx, db_config).await {
         let e = e.context(format!("Could not open project '{project_path}'"));
         tracing::error!(error = ?e, "project switch failed");
         show_err(window_handle, async_cx, "Open failed", &e);

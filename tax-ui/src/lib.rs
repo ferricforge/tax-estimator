@@ -8,22 +8,22 @@ pub mod logging;
 pub mod models;
 mod project;
 pub mod repository;
+pub mod session;
+pub mod state;
 pub mod themes;
 pub mod utils;
 
 use gpui::KeyBinding;
 use gpui::{App, actions};
-
 #[cfg(target_os = "macos")]
 use gpui::{Menu, MenuItem};
-
 use tracing::info;
 
 #[cfg(target_os = "macos")]
 use crate::components::{LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs};
 use crate::components::{bind_menu_keys, init_theme_colors};
 use crate::config::{AppConfig, TomlConfigStore};
-use crate::repository::ActiveTaxYear;
+use crate::state::ActiveTaxYear;
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
 #[cfg(target_os = "macos")]

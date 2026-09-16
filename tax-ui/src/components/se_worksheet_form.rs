@@ -16,7 +16,7 @@ use crate::{
     },
     instructions::{UiInstructionField, help_for_field},
     models::SeWorksheetModel,
-    repository::ActiveTaxYear,
+    state::ActiveTaxYear,
     utils::parse_optional_decimal,
 };
 
@@ -157,7 +157,7 @@ impl SeWorksheetForm {
         &mut self,
         cx: &App,
     ) {
-        let Some(tax_year_data) = &ActiveTaxYear::get(cx).tax_year_data else {
+        let Some(tax_year_data) = ActiveTaxYear::get(cx).data() else {
             tracing::warn!("No tax year loaded; cannot calculate SE tax");
             return;
         };

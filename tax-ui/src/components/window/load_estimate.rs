@@ -17,15 +17,13 @@ impl AppWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(repo) = TaxRepo::try_get(cx) else {
-            tracing::warn!("TaxRepo not initialised; cannot load estimates");
-            ErrorDialog::show(
-                "Cannot load estimates",
-                &["The database connection is not available.".to_string()],
-                window,
-                cx,
-            );
-            return;
+        let repo = match TaxRepo::require(cx) {
+            Ok(repo) => repo,
+            Err(e) => {
+                tracing::warn!(error = %e, "cannot load estimates");
+                ErrorDialog::show("Cannot load estimates", &[e.to_string()], window, cx);
+                return;
+            }
         };
 
         tracing::info!("Loading saved estimates");
