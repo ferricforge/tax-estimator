@@ -43,7 +43,8 @@ pub fn configured_database(cx: &App) -> DbConfig {
 }
 
 /// Opens the configured database and installs it as the process-wide handle.
-/// Call once during startup, after `AppConfig::init`.
+/// Call once during startup, after [`AppConfig`](crate::config::AppConfig) is
+/// installed as a gpui global.
 pub async fn init_database(cx: &mut AsyncApp) -> Result<()> {
     let db_config = cx.update(|cx| configured_database(cx))?;
     let repo = open_repository(&db_config).await?;

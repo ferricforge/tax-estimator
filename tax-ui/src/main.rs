@@ -6,21 +6,126 @@ use gpui::{
 use gpui::{Point, px};
 use gpui_component::Root;
 use gpui_component_assets::Assets;
+use std::path::PathBuf;
 
 use tax_ui::{
     components::{AppWindow, WindowPreferences},
-    logging::{init_default_logging, log_task_error},
+    config::{AppConfig, ConfigStore, TomlConfigStore},
+    logging::{apply_settings, init_default_logging, log_task_error},
     session::init_database,
     setup_app,
 };
 
+/// Summary used when logging setup does not complete.
+const LOGGING_SETUP_WARNING: &str = "logging setup incomplete";
+
+/// Configuration and persistence state resolved before logging and gpui start.
+struct StartupConfig {
+    config: AppConfig,
+    store: Option<Box<dyn ConfigStore>>,
+    path: Option<PathBuf>,
+    created: bool,
+    error: Option<StartupConfigError>,
+}
+
+/// Stage at which startup configuration loading failed.
+enum StartupConfigError {
+    ResolvePath(anyhow::Error),
+    Load(anyhow::Error),
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    init_default_logging();
+    let startup_config = load_startup_config();
 
-    run_ui();
+    if let Err(error) = init_default_logging() {
+        report_logging_setup_error(&error);
+    }
+
+    if let Err(error) = apply_settings(&startup_config.config.logging.settings()) {
+        tracing::error!("Failed to apply logging settings: {error:#}");
+    }
+
+    report_startup_config(&startup_config);
+    run_ui(startup_config);
 
     Ok(())
+}
+
+/// Loads the application configuration before logging and gpui initialization.
+///
+/// Failures retain an in-memory default configuration. They are reported only
+/// after logging is installed.
+fn load_startup_config() -> StartupConfig {
+    let store = match TomlConfigStore::default_location() {
+        Ok(store) => store,
+        Err(error) => {
+            return StartupConfig {
+                config: AppConfig::default(),
+                store: None,
+                path: None,
+                created: false,
+                error: Some(StartupConfigError::ResolvePath(error)),
+            };
+        }
+    };
+    let path = store.path().to_path_buf();
+    let created = !store.exists();
+
+    match store.load_or_init() {
+        Ok(config) => StartupConfig {
+            config,
+            store: Some(Box::new(store)),
+            path: Some(path),
+            created,
+            error: None,
+        },
+        Err(error) => StartupConfig {
+            config: AppConfig::default(),
+            store: None,
+            path: Some(path),
+            created: false,
+            error: Some(StartupConfigError::Load(error)),
+        },
+    }
+}
+
+/// Reports configuration loading after its logging settings are active.
+fn report_startup_config(startup: &StartupConfig) {
+    match startup.error.as_ref() {
+        Some(StartupConfigError::ResolvePath(error)) => {
+            tracing::error!("Could not resolve config path: {error:#}; using in-memory defaults");
+        }
+        Some(StartupConfigError::Load(error)) => {
+            tracing::error!("Failed to load config: {error:#}; using defaults");
+        }
+        None => {}
+    }
+
+    if startup.created {
+        tracing::info!("No existing config found; wrote defaults");
+    }
+
+    if let Some(path) = startup.path.as_ref() {
+        tracing::info!("Config path: {}", path.display());
+    }
+    tracing::info!(
+        database_url = %startup.config.database_url,
+        backend = %startup.config.database_backend,
+        "Configuration loaded"
+    );
+}
+
+/// Reports a logging setup failure without stopping the application.
+///
+/// The report goes to stderr, which is visible when the application runs from
+/// a terminal. It is also emitted as a `tracing` event: after a setup failure
+/// a subscriber is usually still active (another subscriber, or this
+/// application's own when only the `log` bridge failed), so the event is
+/// recorded there as well.
+fn report_logging_setup_error(error: &anyhow::Error) {
+    eprintln!("Warning: {LOGGING_SETUP_WARNING}: {error:#}");
+    tracing::warn!(?error, "{LOGGING_SETUP_WARNING}");
 }
 
 #[cfg(target_os = "linux")]
@@ -122,7 +227,7 @@ fn compute_window_bounds(
     Bounds::centered(None, size, app_cx)
 }
 
-fn run_ui() {
+fn run_ui(startup_config: StartupConfig) {
     #[cfg(target_os = "linux")]
     {
         if should_force_xwayland() {
@@ -160,7 +265,7 @@ fn run_ui() {
     let app = Application::new().with_assets(Assets);
 
     app.run(move |app_cx: &mut App| {
-        setup_app(app_cx);
+        setup_app(app_cx, startup_config.config, startup_config.store);
 
         let prefs = WindowPreferences::default();
 

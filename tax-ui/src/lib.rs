@@ -22,7 +22,7 @@ use tracing::info;
 #[cfg(target_os = "macos")]
 use crate::components::{LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs};
 use crate::components::{bind_menu_keys, init_theme_colors};
-use crate::config::{AppConfig, TomlConfigStore};
+use crate::config::{AppConfig, ConfigStore};
 use crate::state::ActiveTaxYear;
 #[cfg(target_os = "linux")]
 use crate::themes::apply_linux_system_theme;
@@ -42,8 +42,12 @@ pub fn quit(
     cx.quit();
 }
 
-pub fn setup_app(app_cx: &mut App) {
-    init_config(app_cx);
+pub fn setup_app(
+    app_cx: &mut App,
+    config: AppConfig,
+    config_store: Option<Box<dyn ConfigStore>>,
+) {
+    AppConfig::install(app_cx, config, config_store);
 
     // Placeholder so observe_global has something to attach to before the
     // async repo init finishes.
@@ -96,27 +100,4 @@ pub fn setup_app(app_cx: &mut App) {
         },
     ]);
     app_cx.activate(true);
-}
-
-fn init_config(cx: &mut App) {
-    match TomlConfigStore::default_location() {
-        Ok(store) => {
-            tracing::info!("Config path: {}", store.path().display());
-            if let Err(e) = AppConfig::init(cx, store) {
-                tracing::error!("Failed to load config: {e:#}; using defaults");
-                cx.set_global(AppConfig::default());
-            }
-        }
-        Err(e) => {
-            tracing::error!("Could not resolve config path: {e:#}; using in-memory defaults");
-            cx.set_global(AppConfig::default());
-        }
-    }
-
-    let cfg = AppConfig::get(cx);
-    tracing::info!(
-        database_url = %cfg.database_url,
-        backend = %cfg.database_backend,
-        "Configuration loaded"
-    );
 }

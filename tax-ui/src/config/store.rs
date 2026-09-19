@@ -1,4 +1,4 @@
-use super::AppConfig;
+use super::{APP_NAME, AppConfig};
 use anyhow::Context as _;
 use std::path::{Path, PathBuf};
 
@@ -90,7 +90,6 @@ impl ConfigStore for TomlConfigStore {
 // Platform config paths
 // ---------------------------------------------------------------------------
 
-const APP_DIR: &str = "TaxEstimator";
 const FILE_NAME: &str = "config.toml";
 
 #[cfg(target_os = "windows")]
@@ -98,7 +97,7 @@ fn default_config_path() -> anyhow::Result<PathBuf> {
     let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .context("%APPDATA% not set")?;
-    Ok(base.join(APP_DIR).join(FILE_NAME))
+    Ok(base.join(APP_NAME).join(FILE_NAME))
 }
 
 #[cfg(target_os = "macos")]
@@ -109,7 +108,7 @@ fn default_config_path() -> anyhow::Result<PathBuf> {
     Ok(home
         .join("Library")
         .join("Application Support")
-        .join(APP_DIR)
+        .join(APP_NAME)
         .join(FILE_NAME))
 }
 
@@ -119,5 +118,5 @@ fn default_config_path() -> anyhow::Result<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .context("neither $XDG_CONFIG_HOME nor $HOME set")?;
-    Ok(base.join(APP_DIR).join(FILE_NAME))
+    Ok(base.join(APP_NAME).join(FILE_NAME))
 }
