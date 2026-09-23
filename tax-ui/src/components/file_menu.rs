@@ -11,7 +11,7 @@ use crate::Quit; // reuse the app-wide action
 
 // Add any new actions you need
 gpui::actions!(
-    timekeeper,
+    tax_estimator,
     [
         NewProject,
         OpenProject,

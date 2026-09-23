@@ -270,7 +270,7 @@ fn run_ui(startup_config: StartupConfig) {
         let prefs = WindowPreferences::default();
 
         let titlebar = Some(TitlebarOptions {
-            title: Some("TimeKeeper Loader".into()),
+            title: Some("Tax Estimator".into()),
             appears_transparent: false,
             ..Default::default()
         });
