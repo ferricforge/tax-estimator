@@ -1,12 +1,14 @@
+mod database;
+mod recent;
 mod store;
 
+pub use database::{DatabaseBackend, DatabaseConfig, PoolSettings};
+pub use recent::{RecentConfig, RecentConnection};
 pub use store::{ConfigStore, TomlConfigStore};
 
 use gpui::{App, Global};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use crate::logging::{self, LogSettings, SourcePathDisplay};
 
@@ -16,62 +18,6 @@ const APP_NAME: &str = "TaxEstimator";
 
 /// File extension of the default log file.
 const LOG_FILE_EXTENSION: &str = "log";
-
-// ---------------------------------------------------------------------------
-// DatabaseBackend
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum DatabaseBackend {
-    #[default]
-    Sqlite,
-    // Postgres,
-    // MySql,
-}
-
-impl DatabaseBackend {
-    /// Canonical lowercase name. Matches the serde representation.
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            Self::Sqlite => "sqlite",
-        }
-    }
-}
-
-impl fmt::Display for DatabaseBackend {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-// `let s: &str = backend.into();`
-impl From<DatabaseBackend> for &'static str {
-    fn from(b: DatabaseBackend) -> Self {
-        b.as_str()
-    }
-}
-
-// `let s: String = backend.into();`
-impl From<DatabaseBackend> for String {
-    fn from(b: DatabaseBackend) -> Self {
-        b.as_str().to_owned()
-    }
-}
-
-impl FromStr for DatabaseBackend {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "sqlite" => Ok(Self::Sqlite),
-            other => anyhow::bail!("unknown database backend: {other:?}"),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // LoggingConfig
@@ -151,22 +97,75 @@ impl LoggingConfig {
 // AppConfig
 // ---------------------------------------------------------------------------
 
+/// The whole configuration: one field per section of the file.
+///
+/// Every section is optional in the file; a missing section uses its
+/// defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "AppConfigFile")]
 pub struct AppConfig {
-    pub database_url: String,
-    pub database_backend: DatabaseBackend,
+    /// Database settings, stored under `[database]`.
+    pub database: DatabaseConfig,
 
-    /// Logging settings. The `[logging]` section is optional in the file.
-    #[serde(default)]
+    /// Logging settings, stored under `[logging]`.
     pub logging: LoggingConfig,
+
+    /// Recently used connections, stored under `[recent]`.
+    pub recent: RecentConfig,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            database_url: "taxes.db".into(),
-            database_backend: DatabaseBackend::Sqlite,
+            database: DatabaseConfig::default(),
             logging: LoggingConfig::default(),
+            recent: RecentConfig::default(),
+        }
+    }
+}
+
+/// The configuration as it may appear on disk.
+///
+/// Besides the current sections, this accepts the two top-level keys that
+/// held the database settings before the `[database]` section existed, so an
+/// older file keeps pointing at the same database. The former keys are read
+/// only when `[database]` is absent. They are never written: the next save
+/// produces the current layout.
+#[derive(Deserialize)]
+struct AppConfigFile {
+    database: Option<DatabaseConfig>,
+
+    #[serde(default)]
+    logging: LoggingConfig,
+
+    #[serde(default)]
+    recent: RecentConfig,
+
+    /// Former name of `database.url`.
+    database_url: Option<String>,
+
+    /// Former name of `database.backend`.
+    database_backend: Option<DatabaseBackend>,
+}
+
+impl From<AppConfigFile> for AppConfig {
+    fn from(file: AppConfigFile) -> Self {
+        let database = match file.database {
+            Some(database) => database,
+            None => {
+                let defaults = DatabaseConfig::default();
+                DatabaseConfig {
+                    backend: file.database_backend.unwrap_or(defaults.backend),
+                    url: file.database_url.unwrap_or(defaults.url),
+                    pool: defaults.pool,
+                }
+            }
+        };
+
+        Self {
+            database,
+            logging: file.logging,
+            recent: file.recent,
         }
     }
 }
@@ -234,9 +233,16 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
-    /// Database settings that every configuration file must contain.
+    /// A `[database]` section with the default values.
     const DATABASE_SECTION: &str = r#"
-database_url = "taxes.db"
+[database]
+backend = "sqlite"
+url = "taxes.db"
+"#;
+
+    /// Top-level database keys used before the `[database]` section existed.
+    const FORMER_DATABASE_KEYS: &str = r#"
+database_url = "old.db"
 database_backend = "sqlite"
 "#;
 
@@ -265,6 +271,139 @@ database_backend = "sqlite"
     fn app_config_without_logging_section_uses_logging_defaults() {
         let config: AppConfig = toml::from_str(DATABASE_SECTION).expect("config must parse");
         assert_eq!(config.logging, LoggingConfig::default());
+    }
+
+    #[test]
+    fn empty_file_uses_defaults_for_every_section() {
+        let config: AppConfig = toml::from_str("").expect("config must parse");
+
+        assert_eq!(config.database, DatabaseConfig::default());
+        assert_eq!(config.logging, LoggingConfig::default());
+        assert_eq!(config.recent, RecentConfig::default());
+    }
+
+    #[test]
+    fn app_config_reads_the_recent_section() {
+        let text = r#"
+[recent]
+limit = 5
+
+[[recent.connections]]
+backend = "sqlite"
+url = "/data/2024.db"
+
+[[recent.connections]]
+url = "/data/2023.db"
+"#;
+        let config: AppConfig = toml::from_str(text).expect("config must parse");
+        let expected = RecentConfig {
+            limit: 5,
+            connections: vec![
+                RecentConnection {
+                    backend: DatabaseBackend::Sqlite,
+                    url: "/data/2024.db".to_string(),
+                },
+                RecentConnection {
+                    backend: DatabaseBackend::Sqlite,
+                    url: "/data/2023.db".to_string(),
+                },
+            ],
+        };
+
+        assert_eq!(config.recent, expected);
+    }
+
+    #[test]
+    fn app_config_round_trips_the_recent_section() {
+        let original = AppConfig {
+            recent: RecentConfig {
+                limit: 3,
+                connections: vec![
+                    RecentConnection {
+                        backend: DatabaseBackend::Sqlite,
+                        url: "/data/2024.db".to_string(),
+                    },
+                    RecentConnection {
+                        backend: DatabaseBackend::Sqlite,
+                        url: "/data/2023.db".to_string(),
+                    },
+                ],
+            },
+            ..AppConfig::default()
+        };
+
+        let text = toml::to_string_pretty(&original).expect("config must serialize");
+        let parsed: AppConfig = toml::from_str(&text).expect("config must parse");
+
+        assert_eq!(parsed.recent, original.recent);
+    }
+
+    #[test]
+    fn app_config_reads_the_database_section() {
+        let text = r#"
+[database]
+url = "other.db"
+
+[database.pool]
+max_connections = 3
+"#;
+        let config: AppConfig = toml::from_str(text).expect("config must parse");
+        let expected = DatabaseConfig {
+            url: "other.db".to_string(),
+            pool: PoolSettings {
+                max_connections: 3,
+                ..PoolSettings::default()
+            },
+            ..DatabaseConfig::default()
+        };
+
+        assert_eq!(config.database, expected);
+    }
+
+    #[test]
+    fn app_config_round_trips_the_database_section() {
+        let original = AppConfig {
+            database: DatabaseConfig {
+                backend: DatabaseBackend::Sqlite,
+                url: "projects/2025.db".to_string(),
+                pool: PoolSettings {
+                    max_connections: 3,
+                    idle_timeout_secs: 0,
+                    ..PoolSettings::default()
+                },
+            },
+            ..AppConfig::default()
+        };
+
+        let text = toml::to_string_pretty(&original).expect("config must serialize");
+        let parsed: AppConfig = toml::from_str(&text).expect("config must parse");
+
+        assert_eq!(parsed.database, original.database);
+    }
+
+    #[test]
+    fn app_config_reads_the_former_top_level_database_keys() {
+        let config: AppConfig = toml::from_str(FORMER_DATABASE_KEYS).expect("config must parse");
+
+        assert_eq!(config.database.url, "old.db");
+        assert_eq!(config.database.backend, DatabaseBackend::Sqlite);
+        assert_eq!(config.database.pool, PoolSettings::default());
+    }
+
+    #[test]
+    fn database_section_takes_precedence_over_the_former_keys() {
+        let text = format!("{FORMER_DATABASE_KEYS}\n[database]\nurl = \"new.db\"\n");
+        let config: AppConfig = toml::from_str(&text).expect("config must parse");
+
+        assert_eq!(config.database.url, "new.db");
+    }
+
+    #[test]
+    fn saved_config_never_contains_the_former_keys() {
+        let text = toml::to_string_pretty(&AppConfig::default()).expect("config must serialize");
+
+        assert!(!text.contains("database_url"));
+        assert!(!text.contains("database_backend"));
     }
 
     #[test]

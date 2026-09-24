@@ -1,0 +1,55 @@
+# Example Tax Estimator configuration.
+#
+# Every section and every key is optional. A missing value uses the default
+# named in its comment. The application writes this file without comments.
+
+[database]
+# Name of a registered backend. Default: "sqlite".
+backend = "sqlite"
+# Backend-specific location. For SQLite: a file path, or ":memory:".
+# Default: "taxes.db".
+url = "./taxes.db"
+
+[database.pool]
+# Most connections open at once. Must be at least 1. Default: 10.
+max_connections = 10
+# Connections kept open while idle. Cannot exceed max_connections. Default: 0.
+min_connections = 0
+# Longest wait for a free connection, in seconds. Must be greater than 0.
+# Default: 30.
+acquire_timeout_secs = 30
+# Close a connection after this many idle seconds. 0 = never. Default: 600.
+idle_timeout_secs = 600
+# Close and replace a connection after this many seconds. 0 = never.
+# Default: 1800.
+max_lifetime_secs = 1800
+# Check that a connection still works before handing it out. Default: true.
+test_before_acquire = true
+
+[logging]
+# Bare level or a full filter directive. Default: "info".
+level = "debug"
+# Whether a bare level applies only to the application crates. Default: true.
+application_only = true
+# Write log output to stdout. Default: true.
+stdout = true
+# Write log output to file_path. Default: false.
+file_enabled = true
+# Log file location. Default: "TaxEstimator.log".
+file_path = "TaxEstimator.log"
+# Source location display: full, short, file_name, or hidden. Default: "full".
+source_path = "short"
+
+[recent]
+# Most connections kept in the list below. 0 keeps none. Default: 10.
+limit = 10
+
+# The application maintains this list: most recent first, never the
+# connection that is currently open, never the same connection twice.
+[[recent.connections]]
+backend = "sqlite"
+url = "/home/me/taxes/2024.db"
+
+[[recent.connections]]
+backend = "sqlite"
+url = "/home/me/taxes/2023.db"

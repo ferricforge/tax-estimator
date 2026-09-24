@@ -39,6 +39,7 @@ async fn estimate_input_through_db_and_calculations_to_tax_estimate() {
     let db_config = DbConfig {
         backend: "sqlite".to_string(),
         connection_string: ":memory:".to_string(),
+        ..Default::default()
     };
     let repo: Box<dyn TaxRepository> = build_registry()
         .create(&db_config)

@@ -5,6 +5,7 @@ mod estimate_selector;
 mod file_menu;
 mod form_rows;
 mod inputs;
+mod recent_labels;
 mod results_form;
 mod se_worksheet_form;
 mod theme;
@@ -15,9 +16,11 @@ pub use buttons::make_button;
 pub use dialogs::{ErrorDialog, InfoDialog, show_err};
 pub use estimate_form::EstimatedIncomeForm;
 pub use estimate_selector::EstimateSelector;
+#[cfg(target_os = "macos")]
+pub use file_menu::build_app_menus;
 pub use file_menu::{
-    LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs, bind_menu_keys,
-    build_menu_bar,
+    LoadEstimate, NewConnection, OpenConnection, OpenRecentConnection, SaveConnection,
+    SaveConnectionAs, bind_menu_keys, build_menu_bar,
 };
 pub use form_rows::{
     SE_FIELD_WIDTH, SE_LABEL_WIDTH, make_display_row, make_header_row, make_input_row,

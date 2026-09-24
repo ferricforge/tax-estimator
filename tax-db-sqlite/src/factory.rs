@@ -25,12 +25,14 @@ impl RepositoryFactory for SqliteRepositoryFactory {
         "sqlite"
     }
 
-    /// Open the database described by `config.connection_string`.
+    /// Open the database described by `config.connection_string`, with a
+    /// connection pool built from `config.pool`.
     ///
     /// Accepted connection-string values:
     /// * A bare file path — e.g. `"taxes.db"`.  The file is created if it
     ///   does not exist.
     /// * `":memory:"` — an ephemeral in-memory database (useful for tests).
+    ///   It always uses one permanent connection, whatever `config.pool` says.
     ///
     /// After connecting, migrations are applied and then every seed script
     /// embedded at build time (see [`crate::seeds`]) is run, in file-name
@@ -40,7 +42,8 @@ impl RepositoryFactory for SqliteRepositoryFactory {
         &self,
         config: &DbConfig,
     ) -> Result<Box<dyn TaxRepository>, RepositoryError> {
-        let repo = SqliteRepository::new(&config.connection_string)
+        let database_url = &config.connection_string;
+        let repo = SqliteRepository::new_with_pool_config(database_url, &config.pool)
             .await
             .map_err(RepositoryError::Connection)?;
         repo.run_migrations()
@@ -63,6 +66,7 @@ mod tests {
         DbConfig {
             backend: "sqlite".to_string(),
             connection_string: ":memory:".to_string(),
+            ..DbConfig::default()
         }
     }
 

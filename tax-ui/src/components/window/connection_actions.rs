@@ -1,35 +1,35 @@
-//! *New Project*, *Open Project*, *Save*, and *Save As* handlers for
+//! *New Connection*, *Open Connection*, *Save*, and *Save As* handlers for
 //! [`AppWindow`], plus the async helpers that report their results back to
-//! the window. File-level work is delegated to [`crate::project`].
+//! the window. File-level work is delegated to [`crate::connection`].
 
 use gpui::{AnyWindowHandle, App, AsyncApp, Context, WeakEntity, Window};
 use tax_core::db::DbConfig;
 
 use super::AppWindow;
 use crate::components::{ErrorDialog, show_err};
-use crate::config::AppConfig;
-use crate::file_dialogs::{get_file_path, put_file_path};
-use crate::project::{
-    DEFAULT_PROJECT_FILE_NAME, checkpoint_database, copy_database, db_file_filters, is_same_file,
-    project_dialog_directory, project_file_name,
+use crate::config::{AppConfig, RecentConnection};
+use crate::connection::{
+    DEFAULT_DATABASE_FILE_NAME, checkpoint_database, connection_dialog_directory,
+    connection_file_name, copy_database, db_file_filters, is_same_file,
 };
-use crate::session::{DatabaseTarget, switch_database};
+use crate::file_dialogs::{get_file_path, put_file_path};
+use crate::session::{DatabaseTarget, forget_missing_recent_connections, switch_database};
 use crate::state::ActiveTaxYear;
 
-/// What the window should do after [`apply_project_switch`] repoints the
+/// What the window should do after [`apply_connection_switch`] repoints the
 /// application at a different database file.
 #[derive(Clone, Copy)]
-enum ProjectSwitch {
-    /// A fresh file (*New Project*) — clear the estimate form.
+enum ConnectionSwitch {
+    /// A fresh file (*New Connection*) — clear the estimate form.
     Created,
-    /// An existing file (*Open Project*) — clear the estimate form.
+    /// An existing file (*Open Connection*) — clear the estimate form.
     Opened,
     /// A copy of the current data (*Save As*) — keep the form and just
     /// reload the active tax year.
     Branched,
 }
 
-impl ProjectSwitch {
+impl ConnectionSwitch {
     fn status_verb(self) -> &'static str {
         match self {
             Self::Created => "Created",
@@ -46,21 +46,21 @@ impl ProjectSwitch {
 impl AppWindow {
     /// Prompts for a new database file and switches to it. The SQLite factory
     /// creates the file, runs migrations, and seeds the reference tax data.
-    pub(super) fn handle_new_project(
+    pub(super) fn handle_new_connection(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let directory = project_dialog_directory(&AppConfig::get(cx).database_url);
+        let directory = connection_dialog_directory(&AppConfig::get(cx).database.url);
         let target = DatabaseTarget::from_config(cx);
         let filters = db_file_filters();
         let window_handle = window.window_handle();
 
         cx.spawn(async move |this, async_cx| {
             let Some(path) =
-                put_file_path(directory, DEFAULT_PROJECT_FILE_NAME.to_string(), filters).await
+                put_file_path(directory, DEFAULT_DATABASE_FILE_NAME.to_string(), filters).await
             else {
-                tracing::info!("New project cancelled");
+                tracing::info!("New connection cancelled");
                 return;
             };
 
@@ -69,7 +69,7 @@ impl AppWindow {
                     ErrorDialog::show(
                         "File already exists",
                         &[format!(
-                            "'{}' already exists. Use Open Project to open it instead.",
+                            "'{}' already exists. Use Open Connection to open it instead.",
                             path.display()
                         )],
                         window,
@@ -81,12 +81,12 @@ impl AppWindow {
 
             let db_config = target.db_config(path.to_string_lossy().into_owned());
 
-            apply_project_switch(
+            apply_connection_switch(
                 this,
                 window_handle,
                 async_cx,
                 db_config,
-                ProjectSwitch::Created,
+                ConnectionSwitch::Created,
             )
             .await;
         })
@@ -94,30 +94,72 @@ impl AppWindow {
     }
 
     /// Prompts for an existing database file and switches to it.
-    pub(super) fn handle_open_project(
+    pub(super) fn handle_open_connection(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let directory = project_dialog_directory(&AppConfig::get(cx).database_url);
+        let directory = connection_dialog_directory(&AppConfig::get(cx).database.url);
         let target = DatabaseTarget::from_config(cx);
         let filters = db_file_filters();
         let window_handle = window.window_handle();
 
         cx.spawn(async move |this, async_cx| {
             let Some(path) = get_file_path(directory, filters).await else {
-                tracing::info!("Open project cancelled");
+                tracing::info!("Open connection cancelled");
                 return;
             };
 
             let db_config = target.db_config(path.to_string_lossy().into_owned());
 
-            apply_project_switch(
+            apply_connection_switch(
                 this,
                 window_handle,
                 async_cx,
                 db_config,
-                ProjectSwitch::Opened,
+                ConnectionSwitch::Opened,
+            )
+            .await;
+        })
+        .detach();
+    }
+
+    /// Switches to `connection`, chosen from the *Recent...* menu.
+    ///
+    /// A connection whose database has disappeared since the menu was built
+    /// is not opened, because that would create an empty database in its
+    /// place. It is removed from the recent list instead.
+    pub(super) fn handle_open_recent_connection(
+        &mut self,
+        connection: &RecentConnection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !connection.exists() {
+            tracing::warn!(url = %connection.url, "recent connection no longer exists");
+            forget_missing_recent_connections(cx);
+            ErrorDialog::show(
+                "Connection not found",
+                &[format!(
+                    "'{}' no longer exists. It was removed from the recent list.",
+                    connection.url
+                )],
+                window,
+                cx,
+            );
+            return;
+        }
+
+        let db_config = DatabaseTarget::from_config(cx).recent_db_config(connection);
+        let window_handle = window.window_handle();
+
+        cx.spawn(async move |this, async_cx| {
+            apply_connection_switch(
+                this,
+                window_handle,
+                async_cx,
+                db_config,
+                ConnectionSwitch::Opened,
             )
             .await;
         })
@@ -128,12 +170,12 @@ impl AppWindow {
     ///
     /// Estimates are written as they are calculated, so this saves nothing
     /// new; it just leaves the on-disk `.db` self-contained.
-    pub(super) fn handle_save_project(
+    pub(super) fn handle_save_connection(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let source = AppConfig::get(cx).database_url.clone();
+        let source = AppConfig::get(cx).database.url.clone();
         let window_handle = window.window_handle();
 
         self.set_status("Saving…");
@@ -147,16 +189,16 @@ impl AppWindow {
     }
 
     /// Prompts for a destination, writes a standalone copy of the current
-    /// project there, and makes that copy the active project.
-    pub(super) fn handle_save_project_as(
+    /// database there, and makes that copy the active connection.
+    pub(super) fn handle_save_connection_as(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let source = AppConfig::get(cx).database_url.clone();
+        let source = AppConfig::get(cx).database.url.clone();
         let target = DatabaseTarget::from_config(cx);
-        let directory = project_dialog_directory(&source);
-        let default_name = project_file_name(&source);
+        let directory = connection_dialog_directory(&source);
+        let default_name = connection_file_name(&source);
         let filters = db_file_filters();
         let window_handle = window.window_handle();
 
@@ -167,14 +209,14 @@ impl AppWindow {
             };
 
             if is_same_file(&source, &destination) {
-                // Saving over the current project is just a plain Save.
+                // Saving over the current database is just a plain Save.
                 let result = checkpoint_database(&source).await;
                 report_save_result(&this, window_handle, async_cx, &source, result);
                 return;
             }
 
             if let Err(e) = copy_database(&source, &destination).await {
-                let e = e.context("Could not save a copy of the project");
+                let e = e.context("Could not save a copy of the database");
                 tracing::error!(error = ?e, "save as failed");
                 show_err(window_handle, async_cx, "Save As failed", &e);
                 return;
@@ -182,12 +224,12 @@ impl AppWindow {
 
             let db_config = target.db_config(destination.to_string_lossy().into_owned());
 
-            apply_project_switch(
+            apply_connection_switch(
                 this,
                 window_handle,
                 async_cx,
                 db_config,
-                ProjectSwitch::Branched,
+                ConnectionSwitch::Branched,
             )
             .await;
         })
@@ -209,20 +251,20 @@ impl AppWindow {
 }
 
 /// Rebuilds the repository against `db_config`, then refreshes the window:
-/// either clears the estimate form (a different project is now open) or keeps
-/// it and reloads the active tax year (the data was merely copied).
-async fn apply_project_switch(
+/// either clears the estimate form (a different connection is now open) or
+/// keeps it and reloads the active tax year (the data was merely copied).
+async fn apply_connection_switch(
     this: WeakEntity<AppWindow>,
     window_handle: AnyWindowHandle,
     async_cx: &mut AsyncApp,
     db_config: DbConfig,
-    outcome: ProjectSwitch,
+    outcome: ConnectionSwitch,
 ) {
-    let project_path = db_config.connection_string.clone();
+    let connection_string = db_config.connection_string.clone();
 
     if let Err(e) = switch_database(async_cx, db_config).await {
-        let e = e.context(format!("Could not open project '{project_path}'"));
-        tracing::error!(error = ?e, "project switch failed");
+        let e = e.context(format!("Could not open connection '{connection_string}'"));
+        tracing::error!(error = ?e, "connection switch failed");
         show_err(window_handle, async_cx, "Open failed", &e);
         restore_ready_status(&this, window_handle, async_cx);
         return;
@@ -237,13 +279,13 @@ async fn apply_project_switch(
             } else {
                 app_window.reload_active_year(view_cx);
             }
-            app_window.set_status(format!("{} {project_path}", outcome.status_verb()));
+            app_window.set_status(format!("{} {connection_string}", outcome.status_verb()));
             view_cx.notify();
         });
     });
 
     if refreshed.is_err() {
-        tracing::debug!(%project_path, "window closed before project switch finished");
+        tracing::debug!(%connection_string, "window closed before connection switch finished");
     }
 }
 
@@ -275,7 +317,7 @@ fn report_save_result(
     }
 }
 
-/// Resets the status line to "Ready" after a failed project operation.
+/// Resets the status line to "Ready" after a failed connection operation.
 fn restore_ready_status(
     this: &WeakEntity<AppWindow>,
     window_handle: AnyWindowHandle,

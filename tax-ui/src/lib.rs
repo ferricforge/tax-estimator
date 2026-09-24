@@ -1,26 +1,25 @@
 pub mod components;
 pub mod config;
+mod connection;
 pub mod csv_loader;
 pub mod estimate;
 mod file_dialogs;
 mod instructions;
 pub mod logging;
 pub mod models;
-mod project;
 pub mod repository;
 pub mod session;
+pub mod startup;
 pub mod state;
 pub mod themes;
 pub mod utils;
 
 use gpui::KeyBinding;
 use gpui::{App, actions};
-#[cfg(target_os = "macos")]
-use gpui::{Menu, MenuItem};
 use tracing::info;
 
 #[cfg(target_os = "macos")]
-use crate::components::{LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs};
+use crate::components::build_app_menus;
 use crate::components::{bind_menu_keys, init_theme_colors};
 use crate::config::{AppConfig, ConfigStore};
 use crate::state::ActiveTaxYear;
@@ -40,6 +39,13 @@ pub fn quit(
 ) {
     info!("Executing quit handler");
     cx.quit();
+}
+
+/// Installs the native macOS menu bar from the current configuration.
+#[cfg(target_os = "macos")]
+fn install_macos_app_menus(cx: &mut App) {
+    let menus = build_app_menus(cx);
+    cx.set_menus(menus);
 }
 
 pub fn setup_app(
@@ -76,28 +82,20 @@ pub fn setup_app(
 
     app_cx.on_action(quit);
 
-    // New / Open / Save / Save As are handled by `AppWindow` so the handlers
-    // can reach the estimate form; see its `on_action` listeners in `render`.
+    // New / Open / Save / Save As and the Recent entries are handled by
+    // `AppWindow` so the handlers can reach the estimate form; see its
+    // `on_action` listeners in `render`.
     bind_menu_keys(app_cx);
 
-    // Native macOS menu bar
+    // Native macOS menu bar. It is rebuilt whenever the configuration
+    // changes, so the Recent submenu follows the recent list.
     #[cfg(target_os = "macos")]
-    app_cx.set_menus(vec![
-        Menu {
-            name: "Tax Estimator".into(),
-            items: vec![MenuItem::action("Quit", Quit)],
-        },
-        Menu {
-            name: "File".into(),
-            items: vec![
-                MenuItem::action("New Project", NewProject),
-                MenuItem::action("Open Project", OpenProject),
-                MenuItem::action("Load Estimate", LoadEstimate),
-                MenuItem::separator(),
-                MenuItem::action("Save", SaveProject),
-                MenuItem::action("Save As...", SaveProjectAs),
-            ],
-        },
-    ]);
+    {
+        install_macos_app_menus(app_cx);
+        app_cx
+            .observe_global::<AppConfig>(install_macos_app_menus)
+            .detach();
+    }
+
     app_cx.activate(true);
 }

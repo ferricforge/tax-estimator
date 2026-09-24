@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 
+use super::pool::PoolConfig;
 use super::repository::{RepositoryError, TaxRepository};
 
 /// Backend-agnostic connection configuration.
@@ -19,6 +20,9 @@ pub struct DbConfig {
     pub backend: String,
     /// Opaque value forwarded to the factory's `create` method.
     pub connection_string: String,
+    /// Connection pool limits and timeouts. A factory may override values
+    /// the connection string cannot support, as SQLite does for `:memory:`.
+    pub pool: PoolConfig,
 }
 
 impl Default for DbConfig {
@@ -26,6 +30,7 @@ impl Default for DbConfig {
         Self {
             backend: "sqlite".to_string(),
             connection_string: ":memory:".to_string(),
+            pool: PoolConfig::default(),
         }
     }
 }
@@ -366,6 +371,7 @@ mod tests {
         let config = DbConfig {
             backend: "sqlite".to_string(),
             connection_string: ":memory:".to_string(),
+            ..DbConfig::default()
         };
 
         assert!(reg.create(&config).await.is_ok());
@@ -390,6 +396,7 @@ mod tests {
         let config = DbConfig {
             backend: "nope".to_string(),
             connection_string: "x".to_string(),
+            ..DbConfig::default()
         };
 
         match expect_error(reg.create(&config).await) {
@@ -415,6 +422,7 @@ mod tests {
         let config = DbConfig {
             backend: "postgres".to_string(),
             connection_string: "x".to_string(),
+            ..DbConfig::default()
         };
 
         match expect_error(reg.create(&config).await) {
@@ -442,6 +450,7 @@ mod tests {
         let config = DbConfig {
             backend: "failing".to_string(),
             connection_string: "x".to_string(),
+            ..DbConfig::default()
         };
 
         // expect_error extracts the RepositoryError first; both sides of

@@ -1,9 +1,9 @@
-//! Project-file operations that do not depend on the UI.
+//! Connection-file operations that do not depend on the UI.
 //!
-//! A project is a single SQLite database file. This module holds the
-//! file-level helpers used by the window's New / Open / Save / Save As
-//! handlers: dialog filters, path derivation and checks, and the SQLite
-//! checkpoint and copy operations.
+//! With the SQLite backend, a connection is a single database file. This
+//! module holds the file-level helpers used by the New / Open / Save /
+//! Save As handlers and by the startup check: dialog filters, path
+//! derivation and checks, and the SQLite checkpoint and copy operations.
 
 use std::path::Path;
 
@@ -12,23 +12,23 @@ use tax_db_sqlite::SqliteRepository;
 
 use crate::file_dialogs::owned_filters;
 
-/// Label shown for the database file type in the project dialogs.
+/// Label shown for the database file type in the connection dialogs.
 const DB_FILTER_LABEL: &str = "Tax Estimator Database";
 
-/// Extensions offered (and filtered on) in the project dialogs.
+/// Extensions offered (and filtered on) in the connection dialogs.
 const DB_EXTENSIONS: [&str; 3] = ["db", "sqlite", "sqlite3"];
 
-/// Filename pre-filled when creating a brand-new project.
-pub const DEFAULT_PROJECT_FILE_NAME: &str = "taxes.db";
+/// Filename pre-filled when creating a brand-new database.
+pub const DEFAULT_DATABASE_FILE_NAME: &str = "taxes.db";
 
-/// The database file filters used by every project dialog.
+/// The database file filters used by every connection dialog.
 pub fn db_file_filters() -> Vec<(String, Vec<String>)> {
     owned_filters(&[(DB_FILTER_LABEL, DB_EXTENSIONS.as_slice())])
 }
 
-/// Folder the project dialogs should open in: the directory holding
+/// Folder the connection dialogs should open in: the directory holding
 /// `database_url`, falling back to the working directory.
-pub fn project_dialog_directory(database_url: &str) -> String {
+pub fn connection_dialog_directory(database_url: &str) -> String {
     Path::new(database_url)
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -37,12 +37,12 @@ pub fn project_dialog_directory(database_url: &str) -> String {
 }
 
 /// File name of the database at `database_url`, used to pre-fill *Save As*.
-/// Falls back to [`DEFAULT_PROJECT_FILE_NAME`] when the URL has no file name.
-pub fn project_file_name(database_url: &str) -> String {
+/// Falls back to [`DEFAULT_DATABASE_FILE_NAME`] when the URL has no file name.
+pub fn connection_file_name(database_url: &str) -> String {
     Path::new(database_url)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| DEFAULT_PROJECT_FILE_NAME.to_string())
+        .unwrap_or_else(|| DEFAULT_DATABASE_FILE_NAME.to_string())
 }
 
 /// True when `candidate` resolves to the same existing file as `current`. A
@@ -106,39 +106,39 @@ mod tests {
     }
 
     #[test]
-    fn project_dialog_directory_uses_parent_of_database_file() {
+    fn connection_dialog_directory_uses_parent_of_database_file() {
         assert_eq!(
-            project_dialog_directory("/data/taxes/current.db"),
+            connection_dialog_directory("/data/taxes/current.db"),
             "/data/taxes"
         );
     }
 
     #[test]
-    fn project_dialog_directory_falls_back_to_working_directory() {
-        assert_eq!(project_dialog_directory("current.db"), ".");
-        assert_eq!(project_dialog_directory(""), ".");
+    fn connection_dialog_directory_falls_back_to_working_directory() {
+        assert_eq!(connection_dialog_directory("current.db"), ".");
+        assert_eq!(connection_dialog_directory(""), ".");
     }
 
     #[test]
-    fn project_file_name_uses_database_file_name() {
-        assert_eq!(project_file_name("/data/taxes/current.db"), "current.db");
+    fn connection_file_name_uses_database_file_name() {
+        assert_eq!(connection_file_name("/data/taxes/current.db"), "current.db");
     }
 
     #[test]
-    fn project_file_name_falls_back_to_default() {
-        assert_eq!(project_file_name(""), DEFAULT_PROJECT_FILE_NAME);
+    fn connection_file_name_falls_back_to_default() {
+        assert_eq!(connection_file_name(""), DEFAULT_DATABASE_FILE_NAME);
     }
 
     #[test]
     fn is_same_file_is_false_when_candidate_does_not_exist() {
-        let missing = std::env::temp_dir().join("tax-ui-project-missing-file.db");
+        let missing = std::env::temp_dir().join("tax-ui-connection-missing-file.db");
         assert!(!is_same_file("also-missing.db", &missing));
     }
 
     #[test]
     fn is_same_file_is_true_for_the_same_existing_file() {
         let path = std::env::temp_dir().join(format!(
-            "tax-ui-project-same-file-{}.db",
+            "tax-ui-connection-same-file-{}.db",
             std::process::id()
         ));
         std::fs::write(&path, b"").expect("temp file should be writable");

@@ -2,10 +2,10 @@
 //!
 //! `AppWindow` owns the estimate form and the status line, wires the File
 //! menu actions to their handlers, and renders the window. The handlers
-//! themselves live in sibling files: `load_estimate` and `project_actions`.
+//! themselves live in sibling files: `load_estimate` and `connection_actions`.
 
+mod connection_actions;
 mod load_estimate;
-mod project_actions;
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
@@ -19,8 +19,8 @@ use crate::Quit;
 #[cfg(not(target_os = "macos"))]
 use crate::components::build_menu_bar;
 use crate::components::{
-    EstimatedIncomeForm, LoadEstimate, NewProject, OpenProject, SaveProject, SaveProjectAs,
-    SeWorksheetForm,
+    EstimatedIncomeForm, LoadEstimate, NewConnection, OpenConnection, OpenRecentConnection,
+    SaveConnection, SaveConnectionAs, SeWorksheetForm,
 };
 #[cfg(not(target_os = "linux"))]
 use crate::quit;
@@ -117,17 +117,20 @@ impl Render for AppWindow {
             .on_action(cx.listener(|this, _: &LoadEstimate, window, cx| {
                 this.handle_load_estimate(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &NewProject, window, cx| {
-                this.handle_new_project(window, cx);
+            .on_action(cx.listener(|this, _: &NewConnection, window, cx| {
+                this.handle_new_connection(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &OpenProject, window, cx| {
-                this.handle_open_project(window, cx);
+            .on_action(cx.listener(|this, _: &OpenConnection, window, cx| {
+                this.handle_open_connection(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &SaveProject, window, cx| {
-                this.handle_save_project(window, cx);
+            .on_action(cx.listener(|this, action: &OpenRecentConnection, window, cx| {
+                this.handle_open_recent_connection(&action.connection, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &SaveProjectAs, window, cx| {
-                this.handle_save_project_as(window, cx);
+            .on_action(cx.listener(|this, _: &SaveConnection, window, cx| {
+                this.handle_save_connection(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SaveConnectionAs, window, cx| {
+                this.handle_save_connection_as(window, cx);
             }))
             .v_flex()
             .gap_2()

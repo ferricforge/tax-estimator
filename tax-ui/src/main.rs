@@ -12,8 +12,8 @@ use tax_ui::{
     components::{AppWindow, WindowPreferences},
     config::{AppConfig, ConfigStore, TomlConfigStore},
     logging::{apply_settings, init_default_logging, log_task_error},
-    session::init_database,
     setup_app,
+    startup::{StartupOutcome, open_database_or_ask},
 };
 
 /// Summary used when logging setup does not complete.
@@ -25,6 +25,7 @@ struct StartupConfig {
     store: Option<Box<dyn ConfigStore>>,
     path: Option<PathBuf>,
     created: bool,
+    removed_recent: usize,
     error: Option<StartupConfigError>,
 }
 
@@ -54,6 +55,10 @@ async fn main() -> anyhow::Result<()> {
 
 /// Loads the application configuration before logging and gpui initialization.
 ///
+/// Recent connections whose files no longer exist are removed from the
+/// loaded list; the shorter list is written the next time the configuration
+/// is saved.
+///
 /// Failures retain an in-memory default configuration. They are reported only
 /// after logging is installed.
 fn load_startup_config() -> StartupConfig {
@@ -65,6 +70,7 @@ fn load_startup_config() -> StartupConfig {
                 store: None,
                 path: None,
                 created: false,
+                removed_recent: 0,
                 error: Some(StartupConfigError::ResolvePath(error)),
             };
         }
@@ -73,18 +79,23 @@ fn load_startup_config() -> StartupConfig {
     let created = !store.exists();
 
     match store.load_or_init() {
-        Ok(config) => StartupConfig {
-            config,
-            store: Some(Box::new(store)),
-            path: Some(path),
-            created,
-            error: None,
-        },
+        Ok(mut config) => {
+            let removed_recent = config.recent.remove_missing();
+            StartupConfig {
+                config,
+                store: Some(Box::new(store)),
+                path: Some(path),
+                created,
+                removed_recent,
+                error: None,
+            }
+        }
         Err(error) => StartupConfig {
             config: AppConfig::default(),
             store: None,
             path: Some(path),
             created: false,
+            removed_recent: 0,
             error: Some(StartupConfigError::Load(error)),
         },
     }
@@ -109,9 +120,18 @@ fn report_startup_config(startup: &StartupConfig) {
     if let Some(path) = startup.path.as_ref() {
         tracing::info!("Config path: {}", path.display());
     }
+
+    if startup.removed_recent > 0 {
+        tracing::info!(
+            removed = startup.removed_recent,
+            "Removed recent connections whose files no longer exist"
+        );
+    }
+
+    let database = &startup.config.database;
     tracing::info!(
-        database_url = %startup.config.database_url,
-        backend = %startup.config.database_backend,
+        database_url = %database.url,
+        backend = %database.backend,
         "Configuration loaded"
     );
 }
@@ -278,7 +298,10 @@ fn run_ui(startup_config: StartupConfig) {
         app_cx
             .spawn(async move |async_cx| {
                 let result: anyhow::Result<()> = async {
-                    init_database(async_cx).await?;
+                    if open_database_or_ask(async_cx).await? == StartupOutcome::Declined {
+                        async_cx.update(|app_cx: &mut App| app_cx.quit())?;
+                        return Ok(());
+                    }
 
                     let bounds = async_cx
                         .update(|app_cx: &mut App| compute_window_bounds(prefs.size, app_cx))?;

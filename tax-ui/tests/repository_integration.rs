@@ -214,6 +214,7 @@ async fn registry_opens_the_sqlite_backend() {
     let db_config = DbConfig {
         backend: "sqlite".to_string(),
         connection_string: ":memory:".to_string(),
+        ..Default::default()
     };
 
     let repo = build_registry().create(&db_config).await;
@@ -226,6 +227,7 @@ async fn registry_rejects_an_unregistered_backend() {
     let db_config = DbConfig {
         backend: "not-a-backend".to_string(),
         connection_string: ":memory:".to_string(),
+        ..Default::default()
     };
 
     let repo = build_registry().create(&db_config).await;
