@@ -1,8 +1,15 @@
 mod database;
+mod geometry;
+mod preferences;
 mod recent;
 mod store;
 
 pub use database::{DatabaseBackend, DatabaseConfig, PoolSettings};
+pub use geometry::{
+    MAIN_WINDOW, PREFERENCES_WINDOW, WindowGeometries, WindowGeometry, WindowSize,
+    on_screen_geometry, resolve_geometry,
+};
+pub use preferences::{FieldError, PreferenceField, Preferences, PreferencesDraft};
 pub use recent::{RecentConfig, RecentConnection};
 pub use store::{ConfigStore, TomlConfigStore};
 
@@ -18,6 +25,9 @@ const APP_NAME: &str = "TaxEstimator";
 
 /// File extension of the default log file.
 const LOG_FILE_EXTENSION: &str = "log";
+
+/// Version recorded in every saved configuration file.
+const CONFIG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // ---------------------------------------------------------------------------
 // LoggingConfig
@@ -45,7 +55,7 @@ pub struct LoggingConfig {
     /// directive.
     pub level: String,
 
-    /// Whether a bare [`level`](Self::level) applies only to the application
+    /// Whether a bare `[level](Self::level)` applies only to the application
     /// workspace crates. When false, a bare level applies to every target.
     /// Full filter directives define their own target scopes and ignore this
     /// setting.
@@ -54,7 +64,7 @@ pub struct LoggingConfig {
     /// Whether log output is written to stdout.
     pub stdout: bool,
 
-    /// Whether log output is written to [`file_path`](Self::file_path).
+    /// Whether log output is written to `[file_path](Self::file_path)`.
     pub file_enabled: bool,
 
     /// Log file location. A relative path is resolved against the current
@@ -104,6 +114,9 @@ impl LoggingConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "AppConfigFile")]
 pub struct AppConfig {
+    /// Version of the application that last wrote the file.
+    pub version: String,
+
     /// Database settings, stored under `[database]`.
     pub database: DatabaseConfig,
 
@@ -112,14 +125,19 @@ pub struct AppConfig {
 
     /// Recently used connections, stored under `[recent]`.
     pub recent: RecentConfig,
+
+    /// Remembered window geometry, stored under `[window_geometry]`.
+    pub window_geometry: WindowGeometries,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            version: CONFIG_VERSION.to_string(),
             database: DatabaseConfig::default(),
             logging: LoggingConfig::default(),
             recent: RecentConfig::default(),
+            window_geometry: WindowGeometries::default(),
         }
     }
 }
@@ -133,6 +151,8 @@ impl Default for AppConfig {
 /// produces the current layout.
 #[derive(Deserialize)]
 struct AppConfigFile {
+    version: Option<String>,
+
     database: Option<DatabaseConfig>,
 
     #[serde(default)]
@@ -140,6 +160,9 @@ struct AppConfigFile {
 
     #[serde(default)]
     recent: RecentConfig,
+
+    #[serde(default)]
+    window_geometry: WindowGeometries,
 
     /// Former name of `database.url`.
     database_url: Option<String>,
@@ -163,9 +186,11 @@ impl From<AppConfigFile> for AppConfig {
         };
 
         Self {
+            version: file.version.unwrap_or_default(),
             database,
             logging: file.logging,
             recent: file.recent,
+            window_geometry: file.window_geometry,
         }
     }
 }
@@ -174,6 +199,7 @@ impl Global for AppConfig {}
 
 /// Opaque wrapper so a `dyn ConfigStore` can live in gpui's global map.
 struct ConfigStoreHandle(Box<dyn ConfigStore>);
+
 impl Global for ConfigStoreHandle {}
 
 impl AppConfig {
@@ -219,11 +245,15 @@ impl AppConfig {
     }
 
     /// Persist the current in-memory config through the registered store.
+    ///
+    /// The saved file records the running application's version.
     pub fn save(cx: &App) -> anyhow::Result<()> {
         let store = cx
             .try_global::<ConfigStoreHandle>()
             .ok_or_else(|| anyhow::anyhow!("no ConfigStore registered"))?;
-        store.0.save(cx.global::<Self>())
+        let mut config = cx.global::<Self>().clone();
+        config.version = CONFIG_VERSION.to_string();
+        store.0.save(&config)
     }
 }
 
@@ -270,6 +300,7 @@ database_backend = "sqlite"
     #[test]
     fn app_config_without_logging_section_uses_logging_defaults() {
         let config: AppConfig = toml::from_str(DATABASE_SECTION).expect("config must parse");
+
         assert_eq!(config.logging, LoggingConfig::default());
     }
 
@@ -477,5 +508,36 @@ max_connections = 3
         assert_eq!(disabled.settings().file, None);
         assert_eq!(enabled.settings().file, Some(expected_path));
         assert!(disabled.settings().application_only);
+    }
+
+    #[test]
+    fn default_config_records_the_application_version() {
+        assert_eq!(AppConfig::default().version, CONFIG_VERSION);
+    }
+
+    #[test]
+    fn file_without_version_reads_as_empty_version() {
+        let config: AppConfig = toml::from_str(DATABASE_SECTION).expect("config must parse");
+
+        assert_eq!(config.version, "");
+    }
+
+    #[test]
+    fn app_config_round_trips_the_window_geometry_section() {
+        let mut original = AppConfig::default();
+        original.window_geometry.set(
+            MAIN_WINDOW,
+            WindowGeometry {
+                x: 10.0,
+                y: 20.0,
+                width: 800.0,
+                height: 600.0,
+            },
+        );
+
+        let text = toml::to_string_pretty(&original).expect("config must serialize");
+        let parsed: AppConfig = toml::from_str(&text).expect("config must parse");
+
+        assert_eq!(parsed.window_geometry, original.window_geometry);
     }
 }

@@ -20,7 +20,10 @@ use tracing::info;
 
 #[cfg(target_os = "macos")]
 use crate::components::build_app_menus;
-use crate::components::{bind_menu_keys, init_theme_colors};
+use crate::components::{
+    bind_menu_keys, bind_preferences_keys, init_theme_colors, open_preferences,
+    save_tracked_window_bounds,
+};
 use crate::config::{AppConfig, ConfigStore};
 use crate::state::ActiveTaxYear;
 #[cfg(target_os = "linux")]
@@ -86,6 +89,20 @@ pub fn setup_app(
     // `AppWindow` so the handlers can reach the estimate form; see its
     // `on_action` listeners in `render`.
     bind_menu_keys(app_cx);
+
+    // Preferences opens from the application menu (macOS) or the Edit menu
+    // (elsewhere), and from its shortcut.
+    bind_preferences_keys(app_cx);
+    app_cx.on_action(open_preferences);
+
+    // Quitting does not send windows a close request, so their geometry is
+    // saved here instead of in each window's close hook.
+    app_cx
+        .on_app_quit(|app_cx: &mut App| {
+            save_tracked_window_bounds(app_cx);
+            std::future::ready(())
+        })
+        .detach();
 
     // Native macOS menu bar. It is rebuilt whenever the configuration
     // changes, so the Recent submenu follows the recent list.

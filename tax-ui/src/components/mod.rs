@@ -1,15 +1,18 @@
 mod buttons;
 mod dialogs;
+mod edit_menu;
 mod estimate_form;
 mod estimate_selector;
 mod file_menu;
 mod form_rows;
 mod inputs;
+mod preferences;
 mod recent_labels;
 mod results_form;
 mod se_worksheet_form;
 mod theme;
 mod window;
+mod window_geometry;
 mod window_preferences;
 
 pub use buttons::make_button;
@@ -27,10 +30,15 @@ pub use form_rows::{
     make_input_row_fixed, make_labeled_row, make_labeled_row_fixed, make_select_row,
 };
 pub use inputs::{make_decimal_input, make_integer_input};
+pub use preferences::{OpenPreferences, bind_preferences_keys, open_preferences};
 pub use results_form::ResultForm;
 pub use se_worksheet_form::SeWorksheetForm;
 pub use theme::init_theme_colors;
-pub use window::AppWindow;
+pub use window::{AppWindow, ReloadConnection};
+pub use window_geometry::{
+    restore_saved_window_bounds, save_tracked_window_bounds, save_window_bounds, track_window,
+    tracked_window,
+};
 pub use window_preferences::WindowPreferences;
 
 pub(crate) use form_rows::{

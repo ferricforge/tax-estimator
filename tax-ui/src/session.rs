@@ -114,7 +114,10 @@ pub fn forget_missing_recent_connections(cx: &mut App) {
         return;
     }
 
-    tracing::info!(removed, "removed recent connections whose files no longer exist");
+    tracing::info!(
+        removed,
+        "removed recent connections whose files no longer exist"
+    );
     if let Err(e) = AppConfig::save(cx) {
         tracing::warn!(error = %e, "failed to persist config after updating recent connections");
     }

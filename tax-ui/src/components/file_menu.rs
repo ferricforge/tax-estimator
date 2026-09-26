@@ -9,6 +9,11 @@ use gpui_component::{
     menu::{DropdownMenu, PopupMenu},
 };
 
+use super::edit_menu::build_edit_menu_button;
+#[cfg(target_os = "macos")]
+use super::edit_menu::edit_app_menu;
+#[cfg(target_os = "macos")]
+use super::preferences::{OpenPreferences, PREFERENCES_LABEL};
 use super::recent_labels::recent_connection_labels;
 use crate::Quit; // reuse the app-wide action
 use crate::config::{AppConfig, RecentConnection};
@@ -94,34 +99,35 @@ fn add_recent_items(
 /// The dropdown is built each time it opens, so the *Recent...* submenu
 /// always shows the current list.
 pub fn build_menu_bar() -> impl gpui::IntoElement {
-    h_flex().gap_0().child(
-        Button::new("file-menu")
-            .label("File")
-            .ghost()
-            .xsmall()
-            .dropdown_menu(|menu, window, cx| {
-                let entries = recent_entries(cx);
+    h_flex()
+        .gap_0()
+        .child(
+            Button::new("file-menu")
+                .label("File")
+                .ghost()
+                .xsmall()
+                .dropdown_menu(|menu, window, cx| {
+                    let entries = recent_entries(cx);
 
-                menu.menu_with_icon("New Connection", IconName::File, Box::new(NewConnection))
-                    .menu_with_icon(
-                        "Open Connection",
-                        IconName::FolderOpen,
-                        Box::new(OpenConnection),
-                    )
-                    .menu("Load Estimate", Box::new(LoadEstimate))
-                    .separator()
-                    .submenu(RECENT_MENU_LABEL, window, cx, move |submenu, _, _| {
-                        add_recent_items(submenu, &entries)
-                    })
-                    .separator()
-                    .menu("Save", Box::new(SaveConnection))
-                    .menu("Save As...", Box::new(SaveConnectionAs))
-                    .separator()
-                    .menu("Quit", Box::new(Quit))
-            }),
-    )
-    // .child(Button::new("edit-menu").label("Edit").ghost().xsmall().dropdown_menu(...))
-    // .child(Button::new("help-menu").label("Help").ghost().xsmall().dropdown_menu(...))
+                    menu.menu_with_icon("New Connection", IconName::File, Box::new(NewConnection))
+                        .menu_with_icon(
+                            "Open Connection",
+                            IconName::FolderOpen,
+                            Box::new(OpenConnection),
+                        )
+                        .menu("Load Estimate", Box::new(LoadEstimate))
+                        .separator()
+                        .submenu(RECENT_MENU_LABEL, window, cx, move |submenu, _, _| {
+                            add_recent_items(submenu, &entries)
+                        })
+                        .separator()
+                        .menu("Save", Box::new(SaveConnection))
+                        .menu("Save As...", Box::new(SaveConnectionAs))
+                        .separator()
+                        .menu("Quit", Box::new(Quit))
+                }),
+        )
+        .child(build_edit_menu_button())
 }
 
 /// The native menu row that reopens `connection`.
@@ -145,7 +151,11 @@ pub fn build_app_menus(cx: &App) -> Vec<Menu> {
     vec![
         Menu {
             name: "Tax Estimator".into(),
-            items: vec![MenuItem::action("Quit", Quit)],
+            items: vec![
+                MenuItem::action(PREFERENCES_LABEL, OpenPreferences),
+                MenuItem::separator(),
+                MenuItem::action("Quit", Quit),
+            ],
         },
         Menu {
             name: "File".into(),
@@ -163,5 +173,6 @@ pub fn build_app_menus(cx: &App) -> Vec<Menu> {
                 MenuItem::action("Save As...", SaveConnectionAs),
             ],
         },
+        edit_app_menu(),
     ]
 }

@@ -9,8 +9,8 @@ use gpui_component_assets::Assets;
 use std::path::PathBuf;
 
 use tax_ui::{
-    components::{AppWindow, WindowPreferences},
-    config::{AppConfig, ConfigStore, TomlConfigStore},
+    components::{AppWindow, WindowPreferences, restore_saved_window_bounds, track_window},
+    config::{AppConfig, ConfigStore, MAIN_WINDOW, TomlConfigStore},
     logging::{apply_settings, init_default_logging, log_task_error},
     setup_app,
     startup::{StartupOutcome, open_database_or_ask},
@@ -171,7 +171,8 @@ fn should_force_xwayland() -> bool {
     is_gnome && has_x11_display && has_wayland_display
 }
 
-/// Computes window bounds for Linux.
+/// Computes default window bounds for Linux, used when no saved geometry is
+/// available or the saved geometry no longer fits any display.
 ///
 /// **Native Linux** always uses [`Bounds::centered`]; no custom sizing or
 /// positioning logic runs outside WSL.
@@ -182,7 +183,7 @@ fn should_force_xwayland() -> bool {
 /// full virtual desktop. Otherwise WSL uses [`Bounds::centered`] like native
 /// Linux.
 #[cfg(target_os = "linux")]
-fn compute_window_bounds(
+fn compute_default_window_bounds(
     size: Size<Pixels>,
     app_cx: &App,
 ) -> Bounds<Pixels> {
@@ -240,11 +241,24 @@ fn compute_window_bounds(
 
 /// Non-Linux platforms: just use standard centering.
 #[cfg(not(target_os = "linux"))]
-fn compute_window_bounds(
+fn compute_default_window_bounds(
     size: Size<Pixels>,
     app_cx: &App,
 ) -> Bounds<Pixels> {
     Bounds::centered(None, size, app_cx)
+}
+
+/// Computes the bounds for the main window.
+///
+/// A saved geometry that still fits on a connected display is used.
+/// Otherwise [`compute_default_window_bounds`] supplies the platform-specific
+/// default, including the WSL dual-monitor adjustment.
+fn compute_window_bounds(
+    size: Size<Pixels>,
+    app_cx: &App,
+) -> Bounds<Pixels> {
+    restore_saved_window_bounds(MAIN_WINDOW, app_cx)
+        .unwrap_or_else(|| compute_default_window_bounds(size, app_cx))
 }
 
 fn run_ui(startup_config: StartupConfig) {
@@ -306,7 +320,7 @@ fn run_ui(startup_config: StartupConfig) {
                     let bounds = async_cx
                         .update(|app_cx: &mut App| compute_window_bounds(prefs.size, app_cx))?;
 
-                    let _window_handle: WindowHandle<Root> = async_cx.open_window(
+                    let window_handle: WindowHandle<Root> = async_cx.open_window(
                         WindowOptions {
                             window_bounds: Some(WindowBounds::Windowed(bounds)),
                             titlebar,
@@ -320,6 +334,10 @@ fn run_ui(startup_config: StartupConfig) {
                             window_cx.new(|root_cx| Root::new(view, window, root_cx))
                         },
                     )?;
+
+                    async_cx.update(|app_cx: &mut App| {
+                        track_window(MAIN_WINDOW, window_handle.into(), app_cx)
+                    })?;
 
                     Ok(())
                 }

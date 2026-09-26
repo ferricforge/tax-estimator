@@ -20,10 +20,13 @@ use crate::Quit;
 use crate::components::build_menu_bar;
 use crate::components::{
     EstimatedIncomeForm, LoadEstimate, NewConnection, OpenConnection, OpenRecentConnection,
-    SaveConnection, SaveConnectionAs, SeWorksheetForm,
+    SaveConnection, SaveConnectionAs, SeWorksheetForm, save_window_bounds,
 };
+use crate::config::MAIN_WINDOW;
 #[cfg(not(target_os = "linux"))]
 use crate::quit;
+
+gpui::actions!(tax_estimator, [ReloadConnection]);
 
 pub struct AppWindow {
     _window_close_subscription: Subscription,
@@ -37,10 +40,27 @@ impl AppWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let subscription = cx.on_window_closed(|_cx: &mut App| {
+        // Closing the last window quits the application. Today the main
+        // window is the only window, so this always fires when it closes.
+        // It will also run, harmlessly, when a future window (for example,
+        // preferences) outlives the main window and is then closed itself.
+        //
+        // The Linux branch is intentionally excluded here; the reason has
+        // not yet been confirmed against gpui's Linux platform code. See the
+        // preferences editor design notes for how to investigate this.
+        let subscription = cx.on_window_closed(|app_cx: &mut App| {
             info!("Window closed callback");
             #[cfg(not(target_os = "linux"))]
-            quit(&Quit, _cx);
+            if app_cx.windows().is_empty() {
+                quit(&Quit, app_cx);
+            }
+        });
+
+        // Saves the window's position and size before it closes, so the
+        // next launch can restore them.
+        window.on_window_should_close(cx, |window, app_cx| {
+            save_window_bounds(MAIN_WINDOW, window, app_cx);
+            true
         });
 
         // Actions are dispatched along the focus path, so the root element
@@ -123,14 +143,19 @@ impl Render for AppWindow {
             .on_action(cx.listener(|this, _: &OpenConnection, window, cx| {
                 this.handle_open_connection(window, cx);
             }))
-            .on_action(cx.listener(|this, action: &OpenRecentConnection, window, cx| {
-                this.handle_open_recent_connection(&action.connection, window, cx);
-            }))
+            .on_action(
+                cx.listener(|this, action: &OpenRecentConnection, window, cx| {
+                    this.handle_open_recent_connection(&action.connection, window, cx);
+                }),
+            )
             .on_action(cx.listener(|this, _: &SaveConnection, window, cx| {
                 this.handle_save_connection(window, cx);
             }))
             .on_action(cx.listener(|this, _: &SaveConnectionAs, window, cx| {
                 this.handle_save_connection_as(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ReloadConnection, window, cx| {
+                this.handle_reload_connection(window, cx);
             }))
             .v_flex()
             .gap_2()

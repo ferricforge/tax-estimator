@@ -27,6 +27,9 @@ enum ConnectionSwitch {
     /// A copy of the current data (*Save As*) — keep the form and just
     /// reload the active tax year.
     Branched,
+    /// The same file, reopened so changed pool settings take effect — keep
+    /// the form and just reload the active tax year.
+    Reloaded,
 }
 
 impl ConnectionSwitch {
@@ -35,11 +38,42 @@ impl ConnectionSwitch {
             Self::Created => "Created",
             Self::Opened => "Opened",
             Self::Branched => "Saved a copy to",
+            Self::Reloaded => "Reloaded",
         }
     }
 
     fn clears_form(self) -> bool {
-        !matches!(self, Self::Branched)
+        !matches!(self, Self::Branched | Self::Reloaded)
+    }
+}
+
+impl AppWindow {
+    /// Reopens the current database so changed pool settings take effect.
+    ///
+    /// The estimate form is kept, as it is for *Save As*.
+    pub(super) fn handle_reload_connection(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let url = AppConfig::get(cx).database.url.clone();
+        let db_config = DatabaseTarget::from_config(cx).db_config(url);
+        let window_handle = window.window_handle();
+
+        self.set_status("Reloading…");
+        cx.notify();
+
+        cx.spawn(async move |this, async_cx| {
+            apply_connection_switch(
+                this,
+                window_handle,
+                async_cx,
+                db_config,
+                ConnectionSwitch::Reloaded,
+            )
+            .await;
+        })
+        .detach();
     }
 }
 
