@@ -26,8 +26,10 @@ tax-estimator/
 ├── tax-db-sqlite/      # SQLx/SQLite repository implementation + migrations + seed SQL
 ├── tax-data/           # CSV-to-database loader CLI for tax bracket schedules
 ├── tax-ui/             # GPUI desktop application
-├── docs/               # Design/roadmap documents
+├── docs/               # Design documents and docs/config.toml
+├── .cargo/config.toml  # Linker and profile settings
 ├── Cargo.toml          # Workspace manifest
+├── rust-toolchain.toml # Pins the Rust channel
 └── rustfmt.toml
 ```
 
@@ -42,9 +44,9 @@ tax-estimator/
 
 ## Runtime Architecture
 
-1. `tax-ui` initializes app configuration (`database_backend`, `database_url`).
+1. `tax-ui` loads `config.toml` (`[database] backend` and `url`, plus logging, recent connections, and window geometry).
 2. A repository is created through `RepositoryRegistry` (currently `sqlite` backend).
-3. SQLite migrations and seed SQL are applied automatically during repository initialization.
+3. SQLite migrations and embedded seed SQL are applied automatically during repository initialization.
 4. UI loads tax-year data (`TaxYearConfig`, filing statuses, standard deductions, tax brackets).
 5. User enters worksheet values, calculations run in `tax-core`.
 6. Persist flow writes:
@@ -53,10 +55,23 @@ tax-estimator/
 
 ## Configuration
 
-`tax-ui` uses a TOML config file. Defaults:
+`tax-ui` uses a TOML config file. Every section is optional; missing values use the defaults. A relative database `url` is resolved from the current working directory.
 
-- `database_backend = "sqlite"`
-- `database_url = "taxes.db"` (in current working directory if relative)
+```toml
+[database]
+backend = "sqlite"
+url = "taxes.db"
+
+[logging]
+level = "info"
+application_only = true
+stdout = true
+file_enabled = false
+```
+
+`docs/config.toml` is a full example, including the connection pool, log file path, and recent connections.
+
+Files that still have the former top-level keys `database_backend` and `database_url` are read when `[database]` is absent. The next save writes `[database]` and drops those keys.
 
 Default config location:
 
@@ -64,11 +79,18 @@ Default config location:
 - macOS: `~/Library/Application Support/TaxEstimator/config.toml`
 - Windows: `%APPDATA%\TaxEstimator\config.toml`
 
+## Logging
+
+Defaults: level `info`, workspace crates only, stdout on, file logging off. When file logging is enabled, the default path is `TaxEstimator.log` in the working directory.
+
+`RUST_LOG` overrides `level` and `application_only`. A full directive such as `RUST_LOG=gpui=debug,tax_ui=trace` is used as written. Preferences can change logging, the connection pool, and the recent-connection limit while the app is running.
+
 ## Quick Start
 
 ### Prerequisites
 
-- Rust toolchain (edition 2024 workspace)
+- Rust 1.98, pinned in `rust-toolchain.toml`. The workspace uses edition 2024.
+- On `x86_64-unknown-linux-gnu`, `.cargo/config.toml` links with `clang` and `mold`. Install both before building.
 
 ### Build
 
@@ -88,9 +110,31 @@ cargo run -p tax-ui --bin TaxEstimator
 cargo test --workspace
 ```
 
+## First Run
+
+If `config.toml` is missing, the app writes the defaults at the platform path above.
+
+If `database.url` names a file that is not there, startup asks you to open an existing database, create a new one, or quit. `:memory:` opens with no file.
+
+Opening a database applies migrations, then the seeds embedded in `tax-db-sqlite`: filing statuses, and 2025 and 2026 year config, standard deductions, and tax brackets. A normal launch does not need the CSV loader.
+
+## Using the App
+
+Required inputs are tax year, filing status, expected AGI, and expected deduction. Optional inputs are the QBI deduction, AMT, credits, other taxes, withholding, prior-year tax, and the self-employment worksheet (SE income, Conservation Reserve Program payments, and wages subject to Social Security tax).
+
+The deduction field stays empty until you fill it. Seeded standard-deduction amounts are reference data. The SE worksheet shows the deductible half of self-employment tax; include that reduction yourself in expected AGI.
+
+Calculate runs the worksheets and saves on its own: `create_estimate`, then `update_estimate` with the computed summary. Another save for the same tax year and filing status updates that row.
+
+The results panel shows self-employment tax, total tax, and the required annual payment.
+
+The File menu can create, open, save, and save-as a database connection, reopen a recent connection, and load a saved estimate. Load Estimate reads rows already stored in the database.
+
+Window size and position are restored from `[window_geometry]`.
+
 ## Loading Tax Brackets from CSV
 
-The `tax-data` crate provides a loader CLI:
+Use this when you want to replace bracket rows. The desktop app already seeds 2025 and 2026.
 
 ```bash
 cargo run -p tax-data --bin tax-data-loader -- \
@@ -99,6 +143,8 @@ cargo run -p tax-data --bin tax-data-loader -- \
   --migrate \
   --seeds tax-db-sqlite/seeds
 ```
+
+`--database` is a filesystem path, or `:memory:`. `--migrate` applies the embedded schema. `--seeds` applies the seeds compiled into `tax-db-sqlite`; the path value is required by the flag and is not read. The loader then deletes and reinserts brackets for each tax year and schedule in the CSV.
 
 CSV schedule mappings:
 
@@ -110,24 +156,26 @@ CSV schedule mappings:
 ## Database Notes
 
 - Schema migration lives in `tax-db-sqlite/migrations/`.
-- Seed SQL lives in `tax-db-sqlite/seeds/`.
-- `tax_estimate` enforces one record per `(tax_year, filing_status_id)` via unique index.
+- Seed SQL lives in `tax-db-sqlite/seeds/` and is embedded into the binary at build time.
+- `tax_estimate` has one row per `(tax_year, filing_status_id)`. `create_estimate` upserts on that unique index.
 - In-memory mode (`:memory:`) is supported for tests.
-- Seed scripts are embedded into the binary at build time.
 
 ## Known Limitations (Current Behavior)
 
-- Additional context values in estimated-tax calculation are currently fixed in UI:
+- Additional context values in estimated-tax calculation are currently fixed in the UI:
   - `refundable_credits = 0`
   - `is_farmer_or_fisher = false`
-- Safe-harbor `110%` prior-year logic is not auto-derived; caller provides prior-year value.
-- Additional Medicare Tax / NIIT are not modeled as dedicated calculators (can be entered via "other taxes" input as an estimate).
-- Quarterly due-date/payment scheduling is out of scope (this app computes annual required payment and underpayment signals).
+- Safe-harbor `110%` prior-year logic is not auto-derived; the caller provides the prior-year tax already adjusted.
+- QBI and AMT are entered amounts. Form 8995 is field help, not a calculator.
+- Additional Medicare Tax / NIIT are not modeled as dedicated calculators (enter an estimate in "other taxes").
+- The standard deduction is not copied into the deduction field, and the deductible half of SE tax is not subtracted from AGI.
+- Quarterly due dates are out of scope. The worksheet computes an underpayment figure; the results panel and the saved summary store self-employment tax, total tax, and the required annual payment.
 
 ## Docs
 
-Design and roadmap documents are in `docs/`, including:
+Design documents and the example config are in `docs/`:
 
+- `docs/config.toml`
 - `docs/TaxEstimatePersistencePlan.md`
 - `docs/BackendPersistenceMigration.md`
 - `docs/WASM_Plan.md`
