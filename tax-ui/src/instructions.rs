@@ -34,6 +34,18 @@ pub(crate) enum UiInstructionField {
     SeLine9,
     SeLine10,
     SeLine11,
+    QbiLine1,
+    QbiLine2,
+    QbiLine3,
+    QbiLine4,
+    QbiLine6,
+    QbiLine7,
+    QbiLine8,
+    QbiLine11,
+    QbiLine12,
+    QbiLine15,
+    QbiLine16,
+    QbiLine17,
 }
 
 impl UiInstructionField {
@@ -62,6 +74,18 @@ impl UiInstructionField {
             Self::SeLine9 => vec![FieldSpec::new("se-worksheet", "line_9")],
             Self::SeLine10 => vec![FieldSpec::new("se-worksheet", "line_10")],
             Self::SeLine11 => vec![FieldSpec::new("se-worksheet", "line_11")],
+            Self::QbiLine1 => vec![FieldSpec::new("8995", "line_1")],
+            Self::QbiLine2 => vec![FieldSpec::new("8995", "line_2")],
+            Self::QbiLine3 => vec![FieldSpec::new("8995", "line_3")],
+            Self::QbiLine4 => vec![FieldSpec::new("8995", "line_4")],
+            Self::QbiLine6 => vec![FieldSpec::new("8995", "line_6")],
+            Self::QbiLine7 => vec![FieldSpec::new("8995", "line_7")],
+            Self::QbiLine8 => vec![FieldSpec::new("8995", "line_8")],
+            Self::QbiLine11 => vec![FieldSpec::new("8995", "line_11")],
+            Self::QbiLine12 => vec![FieldSpec::new("8995", "line_12")],
+            Self::QbiLine15 => vec![FieldSpec::new("8995", "line_15")],
+            Self::QbiLine16 => vec![FieldSpec::new("8995", "line_16")],
+            Self::QbiLine17 => vec![FieldSpec::new("8995", "line_17")],
         }
     }
 }

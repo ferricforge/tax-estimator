@@ -7,6 +7,7 @@ mod file_menu;
 mod form_rows;
 mod inputs;
 mod preferences;
+mod qbi_form;
 mod recent_labels;
 mod results_form;
 mod se_worksheet_form;
@@ -29,8 +30,9 @@ pub use form_rows::{
     SE_FIELD_WIDTH, SE_LABEL_WIDTH, make_display_row, make_header_row, make_input_row,
     make_input_row_fixed, make_labeled_row, make_labeled_row_fixed, make_select_row,
 };
-pub use inputs::{make_decimal_input, make_integer_input};
+pub use inputs::{make_decimal_input, make_integer_input, make_text_input};
 pub use preferences::{OpenPreferences, bind_preferences_keys, open_preferences};
+pub use qbi_form::{QbiForm, QbiFormEvent};
 pub use results_form::ResultForm;
 pub use se_worksheet_form::SeWorksheetForm;
 pub use theme::init_theme_colors;
@@ -42,6 +44,7 @@ pub use window_geometry::{
 pub use window_preferences::WindowPreferences;
 
 pub(crate) use form_rows::{
-    make_display_row_with_help, make_input_row_fixed_with_help, make_input_row_with_help,
+    make_carryforward_display_row_with_help, make_display_row_with_help, make_help_slot,
+    make_input_row_fixed_with_help, make_input_row_with_help,
 };
 pub(crate) use inputs::{set_decimal_input, set_input_value, set_optional_decimal_input};

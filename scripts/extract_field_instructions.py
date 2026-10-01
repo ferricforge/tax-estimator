@@ -332,6 +332,219 @@ def forms() -> tuple[Form, ...]:
                                 ),
                             ),
                         ),
+                        Field(
+                            key="line_1",
+                            label="Trade, business, or aggregation",
+                            summary=(
+                                "Enter the name of each trade, business, or aggregation, its "
+                                "taxpayer identification number, and its qualified business "
+                                "income or loss."
+                            ),
+                            detail=(
+                                "If you aggregated multiple trades or businesses, enter the "
+                                "aggregation name and leave the taxpayer identification number "
+                                "blank. Enter the employer identification number, or your SSN "
+                                "or ITIN if you do not have one."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 1",
+                                    "If you aggregated multiple trades or businesses into a single",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_2",
+                            label="Total QBI",
+                            summary="Add the income and loss from each trade or business in line 1.",
+                            detail=(
+                                "If you have more than five trades or businesses, attach a "
+                                "statement with the name and taxpayer identification number of "
+                                "each one, and include their income and loss in this total."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 2",
+                                    "If you have more than five trades or businesses",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_3",
+                            label="QBI carryforward",
+                            summary=(
+                                "Enter the qualified part of any trade or business loss "
+                                "carryforward allowed in calculating taxable income this year."
+                            ),
+                            detail=(
+                                "Include the carryforward even if the loss came from a trade or "
+                                "business that no longer exists. Losses that remain suspended "
+                                "by other tax rules are not qualified losses and must be "
+                                "tracked separately."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 3",
+                                    "Include here the qualified portion of trade or business (loss)",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_4",
+                            label="Total qualified business income",
+                            summary=(
+                                "If you have a qualified business net loss for the year, you do "
+                                "not qualify for the QBI deduction unless you have qualified "
+                                "REIT dividends or qualified PTP income."
+                            ),
+                            detail=(
+                                "The loss carries forward to next year. The carryforward does "
+                                "not change whether the loss is deductible for other purposes."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 4",
+                                    "If you have a qualified business net loss for the year",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_6",
+                            label="REIT dividends and PTP income",
+                            summary=(
+                                "Enter qualified REIT dividends and qualified publicly traded "
+                                "partnership income or loss."
+                            ),
+                            detail="Enter income as a positive number and losses as a negative number.",
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 6",
+                                    "Enter income as a positive number and losses as a negative",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_7",
+                            label="REIT and PTP carryforward",
+                            summary=(
+                                "Enter the qualified part of any PTP loss carryforward allowed "
+                                "in calculating taxable income this year."
+                            ),
+                            detail=(
+                                "Include the carryforward even if you no longer hold an interest "
+                                "in the PTP or the PTP no longer exists."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 7",
+                                    "Include here the qualified portion of PTP (loss) carryforward",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_8",
+                            label="Total REIT and PTP income",
+                            summary="Combine lines 6 and 7. If zero or less, enter -0-.",
+                            detail="Any negative amount carries forward to next year.",
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 8",
+                                    "Any negative amount will be carried forward to the next year",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_11",
+                            label="Taxable income before QBI deduction",
+                            summary=(
+                                "Taxable income before the QBI deduction. This form computes it "
+                                "from your expected AGI minus your expected deduction."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 11",
+                                    "Enter your taxable income figured before any QBI",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_12",
+                            label="Net capital gain and qualified dividends",
+                            summary="Enter your net capital gain, increased by any qualified dividends.",
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    4,
+                                    "Line 12",
+                                    "Enter the amount from your tax return as follows",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_15",
+                            label="QBI deduction",
+                            summary=(
+                                "Enter this amount on the QBI deduction line of your return. "
+                                "Individual filers enter it on Form 1040 or 1040-SR, line 13a."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    5,
+                                    "Line 15",
+                                    "Enter this amount on your Form 1040",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_16",
+                            label="Total QBI carryforward",
+                            summary="This amount carries forward to next year and offsets QBI in later years.",
+                            detail=(
+                                "It offsets QBI in later years whether or not the trade or "
+                                "business that generated the loss still exists."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    5,
+                                    "Line 16",
+                                    "This is the amount to be carried forward to the next year",
+                                ),
+                            ),
+                        ),
+                        Field(
+                            key="line_17",
+                            label="Total REIT and PTP carryforward",
+                            summary=(
+                                "This amount carries forward to next year and offsets qualified "
+                                "REIT dividends and PTP income in later years."
+                            ),
+                            sources=(
+                                Source(
+                                    "docs/i8995_2025.pdf",
+                                    5,
+                                    "Line 17",
+                                    "This amount must be carried forward to next year",
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),

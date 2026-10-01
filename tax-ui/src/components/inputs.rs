@@ -82,3 +82,17 @@ pub(crate) fn set_optional_decimal_input<C: AppContext>(
 ) {
     set_input_value(input, optional_decimal_input_text(value), window, cx);
 }
+
+/// Creates a free-text [`InputState`]. Generic over the owning view type.
+pub fn make_text_input<V: 'static>(
+    placeholder: impl Into<SharedString>,
+    window: &mut Window,
+    cx: &mut Context<V>,
+) -> Entity<InputState> {
+    cx.new(|closure_cx| {
+        InputState::new(window, closure_cx)
+            .placeholder(placeholder.into())
+            .clean_on_escape()
+            .multi_line(false)
+    })
+}

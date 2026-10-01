@@ -15,9 +15,10 @@ use rust_decimal::Decimal;
 use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
 
 use crate::components::{
-    ErrorDialog, ResultForm, SeWorksheetForm, make_button, make_decimal_input, make_header_row,
-    make_input_row, make_input_row_with_help, make_integer_input, make_select_row,
-    set_decimal_input, set_input_value, set_optional_decimal_input, show_err,
+    ErrorDialog, QbiForm, QbiFormEvent, ResultForm, SeWorksheetForm, make_button,
+    make_decimal_input, make_header_row, make_input_row, make_input_row_with_help,
+    make_integer_input, make_select_row, set_decimal_input, set_input_value,
+    set_optional_decimal_input, show_err,
 };
 use crate::estimate::{EstimateError, calculate_estimate, computed_values, save_tax_estimate};
 use crate::instructions::{UiInstructionField, help_for_field};
@@ -29,6 +30,7 @@ use crate::utils::{parse_decimal, parse_optional_decimal};
 #[derive(Clone, Debug)]
 pub struct EstimatedIncomeForm {
     worksheet: Entity<SeWorksheetForm>,
+    qbi: Entity<QbiForm>,
     tax_year: Entity<InputState>,
     filing_status: Entity<SelectState<Vec<SharedString>>>,
     // 1040-ES Worksheet inputs
@@ -96,10 +98,13 @@ impl EstimatedIncomeForm {
                 cx,
             )
         });
+
         let results = cx.new(|_| ResultForm::default());
+        let qbi = Self::make_qbi_form(window, cx);
 
         Self {
             worksheet,
+            qbi,
             tax_year,
             filing_status,
             expected_agi: make_decimal_input("Exp AGI", 2, window, cx),
@@ -113,6 +118,23 @@ impl EstimatedIncomeForm {
             is_tax_year_ready: false,
             results,
         }
+    }
+
+    /// Creates the QBI form and connects its Apply action to the expected QBI
+    /// deduction field.
+    fn make_qbi_form(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<QbiForm> {
+        let qbi = cx.new(|qbi_cx| QbiForm::new(window, qbi_cx));
+        cx.subscribe_in(&qbi, window, |this, _qbi, event, window, cx| match event {
+            QbiFormEvent::ApplyQbiDeduction(amount) => {
+                set_decimal_input(&this.expected_qbi_deduction, *amount, window, cx);
+                window.close_dialog(cx);
+            }
+        })
+        .detach();
+        qbi
     }
 
     fn recompute_tax_year_ready(
@@ -311,6 +333,7 @@ impl EstimatedIncomeForm {
         // only this form holds a handle to it, so swapping the entity is the
         // simplest way to reset every SE-worksheet input as well.
         self.worksheet = cx.new(|worksheet_cx| SeWorksheetForm::new(window, worksheet_cx));
+        self.qbi = Self::make_qbi_form(window, cx);
         self.is_tax_year_ready = false;
         cx.notify();
     }
@@ -327,6 +350,18 @@ impl EstimatedIncomeForm {
         });
     }
 
+    /// Returns `true` when the filing-status dropdown shows married filing jointly.
+    fn is_joint_filing(
+        &self,
+        cx: &App,
+    ) -> bool {
+        self.filing_status
+            .read(cx)
+            .selected_value()
+            .and_then(|label| filing_status_from_label(label.as_ref()))
+            .is_some_and(|code| code == FilingStatusCode::MarriedFilingJointly)
+    }
+
     fn call_calculate_tax_estimate(
         &self,
         window: &mut Window,
@@ -341,6 +376,7 @@ impl EstimatedIncomeForm {
                 se_model.line_10_total_se_tax.unwrap_or_default(),
             )
         };
+
         let form_input = match form_input {
             Ok(input) => input,
             Err(errors) => {
@@ -370,7 +406,6 @@ impl EstimatedIncomeForm {
         cx.notify();
 
         tracing::info!(input = %form_input, %result, "Estimated taxes");
-
         self.spawn_save_estimate(form_input, computed, window, cx);
     }
 
@@ -389,7 +424,6 @@ impl EstimatedIncomeForm {
             "The estimate was calculated but could not be saved to the database";
 
         let window_handle = window.window_handle();
-
         cx.spawn(async move |_this, async_cx| {
             let repo = match async_cx.update(|app_cx: &mut App| {
                 TaxRepo::require(app_cx)
@@ -437,6 +471,39 @@ impl EstimatedIncomeForm {
         });
     }
 
+    fn call_qbi_dialog(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let tax_year = self.tax_year(cx);
+        let is_joint = self.is_joint_filing(cx);
+        let expected_agi = optional_decimal(&self.expected_agi, cx);
+        let expected_deduction = optional_decimal(&self.expected_deduction, cx);
+        self.qbi.update(cx, |qbi, qbi_cx| {
+            qbi.set_context(
+                tax_year,
+                is_joint,
+                expected_agi,
+                expected_deduction,
+                window,
+                qbi_cx,
+            );
+        });
+
+        let qbi_for_dialog = self.qbi.clone();
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            dialog
+                .overlay_closable(false)
+                .w(px(800.0))
+                .margin_top(px(-20.0))
+                .title("QBI Deduction (Form 8995)")
+                .child(qbi_for_dialog.clone())
+                .button_props(DialogButtonProps::default().cancel_text("Close"))
+                .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
+        });
+    }
+
     fn render_results(
         &self,
         cx: &mut Context<Self>,
@@ -474,6 +541,14 @@ impl EstimatedIncomeForm {
                     this.call_se_worksheet_dialog(window, cx);
                 }),
             ))
+            .child(make_button(
+                "open-qbi-form",
+                "QBI Deduction",
+                self.is_tax_year_ready,
+                cx.listener(|this, _ev, window, cx| {
+                    this.call_qbi_dialog(window, cx);
+                }),
+            ))
     }
 
     fn render_side_base(&self) -> Div {
@@ -500,7 +575,6 @@ impl EstimatedIncomeForm {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selected_year = self.tax_year(cx);
-
         self.render_side_base()
             .child(make_header_row("1040-ES Worksheet Inputs:"))
             .child(make_input_row_with_help(
