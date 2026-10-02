@@ -7,8 +7,9 @@
 use anyhow::{Context, Result};
 use rust_decimal::Decimal;
 use tax_core::calculations::{
-    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetResult, SeWorksheet,
-    SeWorksheetConfig, SeWorksheetResult,
+    EstimatedTaxWorksheet, EstimatedTaxWorksheetContext, EstimatedTaxWorksheetResult, QbiWorksheet,
+    QbiWorksheetConfig, QbiWorksheetInput, QbiWorksheetResult, SeWorksheet, SeWorksheetConfig,
+    SeWorksheetResult,
 };
 use tax_core::db::TaxRepository;
 use tax_core::models::TaxYearConfig;
@@ -78,6 +79,25 @@ pub fn se_tax_estimate(
         })?;
 
     debug!("SE worksheet result:\n{result}");
+    Ok(result)
+}
+
+/// Runs the Form 8995 qualified business income deduction computation for
+/// the given values.
+pub fn qbi_deduction_estimate(
+    config: QbiWorksheetConfig,
+    input: &QbiWorksheetInput,
+) -> Result<QbiWorksheetResult> {
+    let result = QbiWorksheet::new(config)
+        .calculate(input)
+        .with_context(|| {
+            format!(
+                "QBI worksheet calculation failed \
+                 (taxable_income_before_qbi={:?})",
+                input.taxable_income_before_qbi
+            )
+        })?;
+    debug!("QBI worksheet result:\n{result}");
     Ok(result)
 }
 
@@ -260,6 +280,33 @@ mod tests {
         // here we only care that the glue wires config + inputs through.
         let result = result.expect("SE worksheet should succeed");
         assert!(result.self_employment_tax > Decimal::ZERO);
+    }
+
+    #[test]
+    fn qbi_deduction_estimate_wires_config_and_input_through() {
+        let input = QbiWorksheetInput {
+            trade_or_business_income: vec![dec!(50_000)],
+            taxable_income_before_qbi: Some(dec!(100_000)),
+            ..QbiWorksheetInput::default()
+        };
+
+        let result = qbi_deduction_estimate(QbiWorksheetConfig::for_tax_year(2025, false), &input)
+            .expect("QBI worksheet should succeed");
+
+        // Exact figures are covered by tax-core's own QBI worksheet tests.
+        assert_eq!(result.qbi_deduction, dec!(10_000));
+    }
+
+    #[test]
+    fn qbi_deduction_estimate_reports_invalid_config() {
+        let config = QbiWorksheetConfig {
+            deduction_rate: dec!(2),
+            taxable_income_threshold: None,
+        };
+
+        let result = qbi_deduction_estimate(config, &QbiWorksheetInput::default());
+
+        assert!(result.is_err());
     }
 
     #[test]

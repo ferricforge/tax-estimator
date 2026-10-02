@@ -142,13 +142,13 @@ impl PreferencesDraft {
             ));
         }
 
-        if let (Some(min), Some(max)) = (min_connections, max_connections) {
-            if min > max {
-                errors.push(field_error(
-                    PreferenceField::MinConnections,
-                    "Cannot be more than the maximum connections.",
-                ));
-            }
+        if let (Some(min), Some(max)) = (min_connections, max_connections)
+            && min > max
+        {
+            errors.push(field_error(
+                PreferenceField::MinConnections,
+                "Cannot be more than the maximum connections.",
+            ));
         }
 
         if acquire_timeout_secs == Some(0) {
