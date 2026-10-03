@@ -4,6 +4,6 @@ pub mod models;
 
 pub use db::repository::{RepositoryError, TaxRepository};
 pub use models::{
-    FilingStatus, FilingStatusCode, StandardDeduction, TaxBracket, TaxEstimate,
-    TaxEstimateComputed, TaxEstimateInput, TaxYearConfig,
+    FilingStatus, FilingStatusCode, Qbi, QbiBusiness, QbiComputed, QbiInput, StandardDeduction,
+    TaxBracket, TaxEstimate, TaxEstimateComputed, TaxEstimateInput, TaxYearConfig,
 };

@@ -13,10 +13,12 @@ use tax_core::calculations::{
 };
 use tax_core::db::TaxRepository;
 use tax_core::models::TaxYearConfig;
-use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
+use tax_core::{
+    FilingStatusCode, RepositoryError, TaxEstimate, TaxEstimateComputed, TaxEstimateInput,
+};
 use tracing::debug;
 
-use crate::models::FilingStatusData;
+use crate::models::{FilingStatusData, QbiWorksheetModel};
 use crate::state::ActiveTaxYear;
 
 /// Why an estimate could not be calculated for the input the user entered.
@@ -166,6 +168,30 @@ pub async fn save_tax_estimate(
         .context("failed to store computed values for tax estimate")?;
 
     Ok(estimate)
+}
+
+/// Persists the Form 8995 entries for the estimate with `estimate_id`, or
+/// removes any previously saved entries when the form is blank. Called after
+/// [`save_tax_estimate`], which supplies the id.
+pub async fn save_qbi_entries(
+    repo: &dyn TaxRepository,
+    estimate_id: i64,
+    model: &QbiWorksheetModel,
+) -> Result<()> {
+    if model.has_entries() {
+        let qbi = model.to_qbi(estimate_id);
+        debug!("Saving Form 8995 entries for estimate {estimate_id}");
+        return repo
+            .save_qbi(&qbi)
+            .await
+            .context("failed to save Form 8995 entries");
+    }
+
+    match repo.delete_qbi(estimate_id).await {
+        // A blank form with nothing saved is the usual case.
+        Ok(()) | Err(RepositoryError::NotFound) => Ok(()),
+        Err(e) => Err(e).context("failed to remove Form 8995 entries"),
+    }
 }
 
 #[cfg(test)]

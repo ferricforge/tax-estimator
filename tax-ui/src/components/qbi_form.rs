@@ -11,12 +11,13 @@ use gpui::{
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::{ActiveTheme, h_flex, v_flex};
 use rust_decimal::Decimal;
+use tax_core::Qbi;
 use tax_core::calculations::taxable_income_before_qbi;
 
 use crate::components::{
     ErrorDialog, make_button, make_carryforward_display_row_with_help, make_decimal_input,
     make_display_row, make_display_row_with_help, make_header_row, make_help_slot,
-    make_input_row_fixed_with_help, make_text_input, set_input_value,
+    make_input_row_fixed_with_help, make_text_input, set_input_value, set_optional_decimal_input,
 };
 use crate::estimate::qbi_deduction_estimate;
 use crate::instructions::{UiInstructionField, help_for_field};
@@ -131,15 +132,56 @@ impl QbiForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.update_context(tax_year, is_joint, expected_agi, expected_deduction, cx);
+        self.check_threshold(window, cx);
+    }
+
+    /// Like [`Self::set_context`], but without the threshold alert. Used
+    /// before saving, so the stored line 11 and the lines figured from it
+    /// match the estimate being saved.
+    pub fn update_context(
+        &mut self,
+        tax_year: Option<i32>,
+        is_joint: bool,
+        expected_agi: Option<Decimal>,
+        expected_deduction: Option<Decimal>,
+        cx: &mut Context<Self>,
+    ) {
         let income = taxable_income_before_qbi(expected_agi, expected_deduction);
         self.model.set_filing_context(tax_year, is_joint, income);
         self.recalculate(cx);
-        self.check_threshold(window, cx);
+    }
+
+    /// The Form 8995 values as last read from the inputs.
+    pub fn model(&self) -> &QbiWorksheetModel {
+        &self.model
+    }
+
+    /// Fills the inputs from a saved record and recalculates the lines. The
+    /// values from the estimate are kept.
+    pub fn populate_from_qbi(
+        &mut self,
+        qbi: &Qbi,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let row_count = self.trade_rows.len();
+        if qbi.input.businesses.len() > row_count {
+            tracing::warn!(
+                estimate_id = qbi.tax_estimate_id,
+                stored = qbi.input.businesses.len(),
+                shown = row_count,
+                "Form 8995 has more line 1 rows than the form shows; the rest are not loaded"
+            );
+        }
+        self.model.populate_from_qbi(qbi);
+        self.write_inputs(window, cx);
+        self.recalculate(cx);
     }
 
     /// Empties every value the user enters and recalculates the lines. The
     /// values from the estimate are kept.
-    fn clear(
+    pub fn clear(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -199,6 +241,48 @@ impl QbiForm {
         model.line_7_reit_ptp_loss_carryforward =
             read_optional(&self.line_7_reit_ptp_carryforward, cx);
         model.line_12_net_capital_gain = read_optional(&self.line_12_capital_gain_dividends, cx);
+    }
+
+    /// Copies the entered values from the model into the inputs.
+    fn write_inputs(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let model = &self.model;
+        for (trade, row) in model
+            .line_1_trades_or_businesses
+            .iter()
+            .zip(&self.trade_rows)
+        {
+            set_input_value(&row.name, trade.name.clone(), window, cx);
+            set_input_value(&row.taxpayer_id, trade.taxpayer_id.clone(), window, cx);
+            set_optional_decimal_input(&row.qbi, trade.qbi_or_loss, window, cx);
+        }
+        set_optional_decimal_input(
+            &self.line_3_carryforward,
+            model.line_3_qbi_loss_carryforward,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(
+            &self.line_6_reit_ptp,
+            model.line_6_reit_ptp_income,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(
+            &self.line_7_reit_ptp_carryforward,
+            model.line_7_reit_ptp_loss_carryforward,
+            window,
+            cx,
+        );
+        set_optional_decimal_input(
+            &self.line_12_capital_gain_dividends,
+            model.line_12_net_capital_gain,
+            window,
+            cx,
+        );
     }
 
     /// Computes the Form 8995 lines from the values in the model.

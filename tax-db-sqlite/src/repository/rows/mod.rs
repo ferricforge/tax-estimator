@@ -5,6 +5,7 @@
 mod estimate;
 mod filing_status;
 mod filing_status_data;
+mod qbi;
 mod standard_deduction;
 mod tax_bracket;
 mod tax_year_config;
@@ -12,6 +13,7 @@ mod tax_year_config;
 pub(crate) use estimate::EstimateRow;
 pub(crate) use filing_status::FilingStatusRow;
 pub(crate) use filing_status_data::FilingStatusDataRow;
+pub(crate) use qbi::QbiRow;
 pub(crate) use standard_deduction::StandardDeductionRow;
 pub(crate) use tax_bracket::TaxBracketRow;
 pub(crate) use tax_year_config::TaxYearConfigRow;

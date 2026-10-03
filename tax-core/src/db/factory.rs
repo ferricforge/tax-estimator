@@ -128,7 +128,8 @@ mod tests {
     use async_trait::async_trait;
 
     use crate::models::{
-        FilingStatus, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput, TaxYearConfig,
+        FilingStatus, Qbi, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput,
+        TaxYearConfig,
     };
 
     use super::{DbConfig, RepositoryError, RepositoryFactory, RepositoryRegistry, TaxRepository};
@@ -227,6 +228,24 @@ mod tests {
             &self,
             _tax_year: Option<i32>,
         ) -> Result<Vec<TaxEstimate>, RepositoryError> {
+            unimplemented!()
+        }
+        async fn get_qbi(
+            &self,
+            _estimate_id: i64,
+        ) -> Result<Option<Qbi>, RepositoryError> {
+            unimplemented!()
+        }
+        async fn save_qbi(
+            &self,
+            _qbi: &Qbi,
+        ) -> Result<(), RepositoryError> {
+            unimplemented!()
+        }
+        async fn delete_qbi(
+            &self,
+            _estimate_id: i64,
+        ) -> Result<(), RepositoryError> {
             unimplemented!()
         }
     }

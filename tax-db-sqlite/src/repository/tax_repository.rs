@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use tax_core::{
-    FilingStatus, RepositoryError, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput,
-    TaxRepository, TaxYearConfig,
+    FilingStatus, Qbi, RepositoryError, StandardDeduction, TaxBracket, TaxEstimate,
+    TaxEstimateInput, TaxRepository, TaxYearConfig,
 };
 
 use super::SqliteRepository;
 use super::rows::{
-    EstimateRow, FilingStatusDataRow, FilingStatusRow, StandardDeductionRow, TaxBracketRow,
+    EstimateRow, FilingStatusDataRow, FilingStatusRow, QbiRow, StandardDeductionRow, TaxBracketRow,
     TaxYearConfigRow, parse_filing_status_code,
 };
 use crate::decimal::decimal_to_f64;
@@ -83,6 +83,43 @@ const CREATE_ESTIMATE_SQL: &str = "INSERT INTO tax_estimate (
         se_income, expected_crp_payments, expected_wages,
         calculated_se_tax, calculated_total_tax, calculated_required_payment,
         created_at, updated_at";
+
+/// Read the Form 8995 data for one estimate. The LEFT JOIN repeats the `qbi`
+/// columns once per Line 1 row, or once with NULL business columns when the
+/// estimate has no Line 1 rows.
+const SELECT_QBI_SQL: &str = "SELECT q.tax_estimate_id, q.qbi_loss_carryforward,
+            q.reit_ptp_income, q.reit_ptp_loss_carryforward,
+            q.taxable_income_before_qbi, q.net_capital_gain,
+            q.calculated_qbi_deduction, q.calculated_qbi_loss_carryforward,
+            q.calculated_reit_ptp_loss_carryforward,
+            b.line_number, b.business_name, b.taxpayer_id, b.qualified_business_income
+     FROM qbi q
+     LEFT JOIN qbi_business b ON b.tax_estimate_id = q.tax_estimate_id
+     WHERE q.tax_estimate_id = ?
+     ORDER BY b.line_number";
+
+/// Insert or update the `qbi` row for one estimate.
+///
+/// The values come from a `SELECT` guarded by `WHERE EXISTS`, so the statement
+/// affects no rows when the estimate does not exist. SQLite also requires a
+/// `WHERE` clause on the `SELECT` for `ON CONFLICT` to be parsed after it.
+const UPSERT_QBI_SQL: &str = "INSERT INTO qbi (
+        tax_estimate_id, qbi_loss_carryforward, reit_ptp_income,
+        reit_ptp_loss_carryforward, taxable_income_before_qbi, net_capital_gain,
+        calculated_qbi_deduction, calculated_qbi_loss_carryforward,
+        calculated_reit_ptp_loss_carryforward
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (SELECT 1 FROM tax_estimate WHERE id = ?)
+    ON CONFLICT (tax_estimate_id) DO UPDATE SET
+        qbi_loss_carryforward = excluded.qbi_loss_carryforward,
+        reit_ptp_income = excluded.reit_ptp_income,
+        reit_ptp_loss_carryforward = excluded.reit_ptp_loss_carryforward,
+        taxable_income_before_qbi = excluded.taxable_income_before_qbi,
+        net_capital_gain = excluded.net_capital_gain,
+        calculated_qbi_deduction = excluded.calculated_qbi_deduction,
+        calculated_qbi_loss_carryforward = excluded.calculated_qbi_loss_carryforward,
+        calculated_reit_ptp_loss_carryforward = excluded.calculated_reit_ptp_loss_carryforward";
 
 fn db_err(error: sqlx::Error) -> RepositoryError {
     RepositoryError::Database(error.into())
@@ -441,5 +478,100 @@ impl TaxRepository for SqliteRepository {
         .map_err(db_err)?;
 
         rows.into_iter().map(TaxEstimate::try_from).collect()
+    }
+
+    async fn get_qbi(
+        &self,
+        estimate_id: i64,
+    ) -> Result<Option<Qbi>, RepositoryError> {
+        let rows = sqlx::query_as::<_, QbiRow>(SELECT_QBI_SQL)
+            .bind(estimate_id)
+            .fetch_all(self.pool())
+            .await
+            .map_err(db_err)?;
+
+        QbiRow::into_qbi(rows)
+    }
+
+    async fn save_qbi(
+        &self,
+        qbi: &Qbi,
+    ) -> Result<(), RepositoryError> {
+        let (
+            calculated_qbi_deduction,
+            calculated_qbi_loss_carryforward,
+            calculated_reit_ptp_loss_carryforward,
+        ) = match &qbi.computed {
+            Some(computed) => (
+                Some(decimal_to_f64(computed.qbi_deduction)),
+                Some(decimal_to_f64(computed.total_qbi_loss_carryforward)),
+                Some(decimal_to_f64(computed.total_reit_ptp_loss_carryforward)),
+            ),
+            None => (None, None, None),
+        };
+
+        let mut tx = self.pool().begin().await.map_err(db_err)?;
+
+        let result = sqlx::query(UPSERT_QBI_SQL)
+            .bind(qbi.tax_estimate_id)
+            .bind(decimal_to_f64(qbi.input.qbi_loss_carryforward))
+            .bind(decimal_to_f64(qbi.input.reit_ptp_income))
+            .bind(decimal_to_f64(qbi.input.reit_ptp_loss_carryforward))
+            .bind(qbi.input.taxable_income_before_qbi.map(decimal_to_f64))
+            .bind(decimal_to_f64(qbi.input.net_capital_gain))
+            .bind(calculated_qbi_deduction)
+            .bind(calculated_qbi_loss_carryforward)
+            .bind(calculated_reit_ptp_loss_carryforward)
+            .bind(qbi.tax_estimate_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        if result.rows_affected() == 0 {
+            // No estimate has this id. Dropping `tx` rolls the transaction back.
+            return Err(RepositoryError::NotFound);
+        }
+
+        // Replace the Line 1 rows as a set, so removed and reordered rows need
+        // no separate handling.
+        sqlx::query("DELETE FROM qbi_business WHERE tax_estimate_id = ?")
+            .bind(qbi.tax_estimate_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        for (line_number, business) in (1_i64..).zip(&qbi.input.businesses) {
+            sqlx::query(
+                "INSERT INTO qbi_business (
+                    tax_estimate_id, line_number, business_name, taxpayer_id,
+                    qualified_business_income
+                 ) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(qbi.tax_estimate_id)
+            .bind(line_number)
+            .bind(business.name.as_str())
+            .bind(business.taxpayer_id.as_str())
+            .bind(decimal_to_f64(business.qualified_business_income))
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        }
+
+        tx.commit().await.map_err(db_err)
+    }
+
+    async fn delete_qbi(
+        &self,
+        estimate_id: i64,
+    ) -> Result<(), RepositoryError> {
+        // The qbi_business rows go with it through ON DELETE CASCADE.
+        let result = sqlx::query("DELETE FROM qbi WHERE tax_estimate_id = ?")
+            .bind(estimate_id)
+            .execute(self.pool())
+            .await
+            .map_err(db_err)?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
     }
 }

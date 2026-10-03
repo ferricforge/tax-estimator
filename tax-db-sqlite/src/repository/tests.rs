@@ -2,8 +2,8 @@ use pretty_assertions::assert_eq;
 use rust_decimal_macros::dec;
 use sqlx::sqlite::SqlitePoolOptions;
 use tax_core::{
-    FilingStatusCode, RepositoryError, TaxBracket, TaxEstimateComputed, TaxEstimateInput,
-    TaxRepository,
+    FilingStatusCode, Qbi, QbiBusiness, QbiComputed, QbiInput, RepositoryError, TaxBracket,
+    TaxEstimateComputed, TaxEstimateInput, TaxRepository,
 };
 
 use crate::seeds;
@@ -32,6 +32,8 @@ async fn setup_test_db() -> SqliteRepository {
 /// Remove every row from every table, honouring foreign-key order.
 async fn clear_all_data(repo: &SqliteRepository) {
     for statement in [
+        "DELETE FROM qbi_business",
+        "DELETE FROM qbi",
         "DELETE FROM tax_estimate",
         "DELETE FROM standard_deductions",
         "DELETE FROM tax_brackets",
@@ -189,6 +191,58 @@ fn assert_estimate_input_eq(
     assert_eq!(actual.prior_year_tax, expected.prior_year_tax);
 }
 
+/// Form 8995 data with two Line 1 rows and every line populated.
+fn qbi_input() -> QbiInput {
+    QbiInput {
+        businesses: vec![
+            QbiBusiness {
+                name: "Consulting".to_string(),
+                taxpayer_id: "12-3456789".to_string(),
+                qualified_business_income: dec!(70000.50),
+            },
+            QbiBusiness {
+                name: "Rental aggregation".to_string(),
+                taxpayer_id: "98-7654321".to_string(),
+                qualified_business_income: dec!(-1200.00),
+            },
+        ],
+        qbi_loss_carryforward: dec!(-3000.00),
+        reit_ptp_income: dec!(500.00),
+        reit_ptp_loss_carryforward: dec!(-100.00),
+        taxable_income_before_qbi: Some(dec!(80000.25)),
+        net_capital_gain: dec!(550.75),
+    }
+}
+
+fn qbi_computed() -> QbiComputed {
+    QbiComputed {
+        qbi_deduction: dec!(13480.10),
+        total_qbi_loss_carryforward: dec!(0.00),
+        total_reit_ptp_loss_carryforward: dec!(0.00),
+    }
+}
+
+/// Seed the estimate reference data and create one estimate for Form 8995
+/// data to belong to. Returns the estimate id.
+async fn create_estimate_for_qbi(repo: &SqliteRepository) -> i64 {
+    setup_estimate_data(repo).await;
+    repo.create_estimate(estimate_input(8888))
+        .await
+        .expect("Should create estimate")
+        .id
+}
+
+async fn count_qbi_business_rows(
+    repo: &SqliteRepository,
+    estimate_id: i64,
+) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM qbi_business WHERE tax_estimate_id = ?")
+        .bind(estimate_id)
+        .fetch_one(repo.pool())
+        .await
+        .expect("Should count qbi_business rows")
+}
+
 const SAMPLE_BRACKETS: [(f64, Option<f64>, f64, f64); 3] = [
     (0.0, Some(10000.0), 0.10, 0.0),
     (10000.0, Some(50000.0), 0.15, 1000.0),
@@ -223,6 +277,8 @@ not_found_test!(get_estimate_missing_id_is_not_found, |repo| repo
     .get_estimate(99999));
 not_found_test!(delete_estimate_missing_id_is_not_found, |repo| repo
     .delete_estimate(99999));
+not_found_test!(delete_qbi_missing_estimate_is_not_found, |repo| repo
+    .delete_qbi(99999));
 
 // ---------------------------------------------------------------------------
 // tax_year_config
@@ -661,6 +717,148 @@ async fn list_estimates_returns_empty_for_year_without_rows() {
         .expect("Should list for 7777");
 
     assert!(for_7777.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// qbi
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn get_qbi_returns_none_when_nothing_is_saved() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+
+    assert_eq!(fetched, None);
+}
+
+#[tokio::test]
+async fn save_qbi_round_trips_every_field() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+    let qbi = Qbi {
+        tax_estimate_id: estimate_id,
+        input: qbi_input(),
+        computed: Some(qbi_computed()),
+    };
+
+    repo.save_qbi(&qbi).await.expect("Should save qbi");
+
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+    assert_eq!(fetched, Some(qbi));
+}
+
+#[tokio::test]
+async fn save_qbi_round_trips_empty_lines() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+    let qbi = Qbi {
+        tax_estimate_id: estimate_id,
+        input: QbiInput::default(),
+        computed: None,
+    };
+
+    repo.save_qbi(&qbi).await.expect("Should save qbi");
+
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+    assert_eq!(fetched, Some(qbi));
+}
+
+#[tokio::test]
+async fn save_qbi_replaces_line_1_rows() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+    let mut qbi = Qbi {
+        tax_estimate_id: estimate_id,
+        input: qbi_input(),
+        computed: None,
+    };
+    repo.save_qbi(&qbi).await.expect("Should save qbi");
+
+    qbi.input.businesses.remove(0);
+    repo.save_qbi(&qbi).await.expect("Should save qbi again");
+
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+    assert_eq!(fetched, Some(qbi));
+    assert_eq!(count_qbi_business_rows(&repo, estimate_id).await, 1);
+}
+
+#[tokio::test]
+async fn save_qbi_unknown_estimate_is_not_found() {
+    let repo = setup_test_db().await;
+    setup_estimate_data(&repo).await;
+    let qbi = Qbi {
+        tax_estimate_id: 99999,
+        input: qbi_input(),
+        computed: None,
+    };
+
+    let result = repo.save_qbi(&qbi).await;
+
+    assert!(matches!(result, Err(RepositoryError::NotFound)));
+    assert_eq!(count_qbi_business_rows(&repo, 99999).await, 0);
+}
+
+#[tokio::test]
+async fn delete_qbi_removes_qbi_and_line_1_rows() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+    let qbi = Qbi {
+        tax_estimate_id: estimate_id,
+        input: qbi_input(),
+        computed: None,
+    };
+    repo.save_qbi(&qbi).await.expect("Should save qbi");
+
+    repo.delete_qbi(estimate_id)
+        .await
+        .expect("Should delete qbi");
+
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+    assert_eq!(fetched, None);
+    assert_eq!(count_qbi_business_rows(&repo, estimate_id).await, 0);
+}
+
+#[tokio::test]
+async fn delete_estimate_removes_qbi_rows() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+    let qbi = Qbi {
+        tax_estimate_id: estimate_id,
+        input: qbi_input(),
+        computed: None,
+    };
+    repo.save_qbi(&qbi).await.expect("Should save qbi");
+
+    repo.delete_estimate(estimate_id)
+        .await
+        .expect("Should delete estimate");
+
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+    assert_eq!(fetched, None);
+    assert_eq!(count_qbi_business_rows(&repo, estimate_id).await, 0);
+}
+
+#[tokio::test]
+async fn create_estimate_upsert_keeps_qbi_rows() {
+    let repo = setup_test_db().await;
+    let estimate_id = create_estimate_for_qbi(&repo).await;
+    let qbi = Qbi {
+        tax_estimate_id: estimate_id,
+        input: qbi_input(),
+        computed: None,
+    };
+    repo.save_qbi(&qbi).await.expect("Should save qbi");
+
+    let again = repo
+        .create_estimate(estimate_input(8888))
+        .await
+        .expect("Should upsert estimate");
+
+    assert_eq!(again.id, estimate_id);
+    let fetched = repo.get_qbi(estimate_id).await.expect("Should fetch qbi");
+    assert_eq!(fetched, Some(qbi));
 }
 
 // ---------------------------------------------------------------------------

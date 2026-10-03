@@ -13,6 +13,7 @@ use tax_core::calculations::{
     QBI_DEDUCTION_RATE, QbiWorksheetConfig, QbiWorksheetInput, QbiWorksheetResult,
     qbi_taxable_income_threshold,
 };
+use tax_core::{Qbi, QbiBusiness, QbiComputed, QbiInput};
 
 use crate::utils::opt_decimal_display;
 
@@ -56,6 +57,15 @@ impl fmt::Debug for QbiTradeEntry {
             .field("taxpayer_id", &mask_taxpayer_id(&self.taxpayer_id))
             .field("qbi_or_loss", &self.qbi_or_loss)
             .finish()
+    }
+}
+
+impl QbiTradeEntry {
+    /// Returns `true` when every column is blank.
+    pub fn is_blank(&self) -> bool {
+        self.name.trim().is_empty()
+            && self.taxpayer_id.trim().is_empty()
+            && self.qbi_or_loss.is_none()
     }
 }
 
@@ -200,6 +210,73 @@ impl QbiWorksheetModel {
             ..Self::default()
         };
     }
+
+    /// Returns `true` when the user has entered anything on the form. Line 11
+    /// does not count, because it comes from the estimate.
+    pub fn has_entries(&self) -> bool {
+        let has_trade = self
+            .line_1_trades_or_businesses
+            .iter()
+            .any(|trade| !trade.is_blank());
+        has_trade
+            || self.line_3_qbi_loss_carryforward.is_some()
+            || self.line_6_reit_ptp_income.is_some()
+            || self.line_7_reit_ptp_loss_carryforward.is_some()
+            || self.line_12_net_capital_gain.is_some()
+    }
+
+    /// Builds the persisted computed lines. `None` until lines 15, 16, and 17
+    /// have all been figured.
+    pub fn to_computed(&self) -> Option<QbiComputed> {
+        Some(QbiComputed {
+            qbi_deduction: self.line_15_qbi_deduction?,
+            total_qbi_loss_carryforward: self.line_16_total_qbi_loss_carryforward?,
+            total_reit_ptp_loss_carryforward: self.line_17_total_reit_ptp_loss_carryforward?,
+        })
+    }
+
+    /// Builds the persisted record for the estimate with `tax_estimate_id`.
+    pub fn to_qbi(
+        &self,
+        tax_estimate_id: i64,
+    ) -> Qbi {
+        Qbi {
+            tax_estimate_id,
+            input: QbiInput::from(self),
+            computed: self.to_computed(),
+        }
+    }
+
+    /// Replaces the entered lines, line 11, and lines 15 through 17 with the
+    /// values in `qbi`. Line 1 rows beyond the five on the form are dropped.
+    /// The tax year and threshold are kept, and the other computed lines are
+    /// left for the next recalculation.
+    pub fn populate_from_qbi(
+        &mut self,
+        qbi: &Qbi,
+    ) {
+        let input = &qbi.input;
+
+        self.line_1_trades_or_businesses = Default::default();
+        for (trade, business) in self
+            .line_1_trades_or_businesses
+            .iter_mut()
+            .zip(&input.businesses)
+        {
+            *trade = QbiTradeEntry::from(business);
+        }
+        self.line_3_qbi_loss_carryforward = Some(input.qbi_loss_carryforward);
+        self.line_6_reit_ptp_income = Some(input.reit_ptp_income);
+        self.line_7_reit_ptp_loss_carryforward = Some(input.reit_ptp_loss_carryforward);
+        self.line_11_taxable_income_before_qbi = input.taxable_income_before_qbi;
+        self.line_12_net_capital_gain = Some(input.net_capital_gain);
+
+        let computed = qbi.computed.as_ref();
+        self.line_15_qbi_deduction = computed.map(|c| c.qbi_deduction);
+        self.line_16_total_qbi_loss_carryforward = computed.map(|c| c.total_qbi_loss_carryforward);
+        self.line_17_total_reit_ptp_loss_carryforward =
+            computed.map(|c| c.total_reit_ptp_loss_carryforward);
+    }
 }
 
 /// Maps a [`QbiWorksheetResult`] into the computed lines. The entered lines,
@@ -215,6 +292,48 @@ impl From<&QbiWorksheetResult> for QbiWorksheetModel {
 impl From<QbiWorksheetResult> for QbiWorksheetModel {
     fn from(result: QbiWorksheetResult) -> Self {
         Self::from(&result)
+    }
+}
+
+/// Maps a line 1 row into the persisted form. A blank amount is stored as
+/// zero.
+impl From<&QbiTradeEntry> for QbiBusiness {
+    fn from(entry: &QbiTradeEntry) -> Self {
+        Self {
+            name: entry.name.clone(),
+            taxpayer_id: entry.taxpayer_id.clone(),
+            qualified_business_income: entry.qbi_or_loss.unwrap_or_default(),
+        }
+    }
+}
+
+impl From<&QbiBusiness> for QbiTradeEntry {
+    fn from(business: &QbiBusiness) -> Self {
+        Self {
+            name: business.name.clone(),
+            taxpayer_id: business.taxpayer_id.clone(),
+            qbi_or_loss: Some(business.qualified_business_income),
+        }
+    }
+}
+
+/// Maps the entered lines into the persisted form. Blank line 1 rows are
+/// left out, and blank amounts are stored as zero.
+impl From<&QbiWorksheetModel> for QbiInput {
+    fn from(model: &QbiWorksheetModel) -> Self {
+        Self {
+            businesses: model
+                .line_1_trades_or_businesses
+                .iter()
+                .filter(|trade| !trade.is_blank())
+                .map(QbiBusiness::from)
+                .collect(),
+            qbi_loss_carryforward: model.line_3_qbi_loss_carryforward.unwrap_or_default(),
+            reit_ptp_income: model.line_6_reit_ptp_income.unwrap_or_default(),
+            reit_ptp_loss_carryforward: model.line_7_reit_ptp_loss_carryforward.unwrap_or_default(),
+            taxable_income_before_qbi: model.line_11_taxable_income_before_qbi,
+            net_capital_gain: model.line_12_net_capital_gain.unwrap_or_default(),
+        }
     }
 }
 
@@ -425,6 +544,104 @@ mod tests {
         let mut expected = QbiWorksheetModel::default();
         expected.set_filing_context(Some(2025), false, Some(dec!(80000)));
         assert_eq!(model, expected);
+    }
+
+    /// Rows i and iii filled in, row iii being an aggregation with no
+    /// taxpayer identification number.
+    fn entered_model() -> QbiWorksheetModel {
+        let mut model = QbiWorksheetModel::default();
+        model.line_1_trades_or_businesses[0] = QbiTradeEntry {
+            name: "Consulting".to_string(),
+            taxpayer_id: "12-3456789".to_string(),
+            qbi_or_loss: Some(dec!(70000.50)),
+        };
+        model.line_1_trades_or_businesses[2] = QbiTradeEntry {
+            name: "Aggregation 1".to_string(),
+            taxpayer_id: String::new(),
+            qbi_or_loss: Some(dec!(-1200)),
+        };
+        model.line_3_qbi_loss_carryforward = Some(dec!(-3000));
+        model.line_11_taxable_income_before_qbi = Some(dec!(80000.25));
+        model.line_12_net_capital_gain = Some(dec!(550.75));
+        model
+    }
+
+    #[test]
+    fn qbi_input_skips_blank_rows_and_stores_blank_amounts_as_zero() {
+        assert_eq!(
+            QbiInput::from(&entered_model()),
+            QbiInput {
+                businesses: vec![
+                    QbiBusiness {
+                        name: "Consulting".to_string(),
+                        taxpayer_id: "12-3456789".to_string(),
+                        qualified_business_income: dec!(70000.50),
+                    },
+                    QbiBusiness {
+                        name: "Aggregation 1".to_string(),
+                        taxpayer_id: String::new(),
+                        qualified_business_income: dec!(-1200),
+                    },
+                ],
+                qbi_loss_carryforward: dec!(-3000),
+                reit_ptp_income: Decimal::ZERO,
+                reit_ptp_loss_carryforward: Decimal::ZERO,
+                taxable_income_before_qbi: Some(dec!(80000.25)),
+                net_capital_gain: dec!(550.75),
+            }
+        );
+    }
+
+    #[test]
+    fn has_entries_ignores_values_from_the_estimate() {
+        let mut model = QbiWorksheetModel::default();
+        model.set_filing_context(Some(2025), false, Some(dec!(80000)));
+        assert!(!model.has_entries());
+
+        model.line_6_reit_ptp_income = Some(Decimal::ZERO);
+        assert!(model.has_entries());
+    }
+
+    #[test]
+    fn to_computed_needs_every_stored_line() {
+        let mut model = QbiWorksheetModel::default();
+        assert_eq!(model.to_computed(), None);
+
+        model.line_15_qbi_deduction = Some(dec!(500));
+        model.line_16_total_qbi_loss_carryforward = Some(Decimal::ZERO);
+        assert_eq!(model.to_computed(), None);
+
+        model.line_17_total_reit_ptp_loss_carryforward = Some(dec!(-50));
+        assert_eq!(
+            model.to_computed(),
+            Some(QbiComputed {
+                qbi_deduction: dec!(500),
+                total_qbi_loss_carryforward: Decimal::ZERO,
+                total_reit_ptp_loss_carryforward: dec!(-50),
+            })
+        );
+    }
+
+    #[test]
+    fn populate_from_qbi_round_trips_the_persisted_record() {
+        let mut model = entered_model();
+        model.line_15_qbi_deduction = Some(dec!(13000));
+        model.line_16_total_qbi_loss_carryforward = Some(Decimal::ZERO);
+        model.line_17_total_reit_ptp_loss_carryforward = Some(Decimal::ZERO);
+        let qbi = model.to_qbi(42);
+        assert_eq!(qbi.tax_estimate_id, 42);
+
+        let mut loaded = QbiWorksheetModel::default();
+        loaded.set_filing_context(Some(2025), false, None);
+        loaded.line_1_trades_or_businesses[4].name = "Stale".to_string();
+        loaded.populate_from_qbi(&qbi);
+
+        assert_eq!(QbiInput::from(&loaded), qbi.input);
+        assert_eq!(loaded.to_computed(), qbi.computed);
+        assert_eq!(loaded.tax_year, Some(2025));
+        // Stored rows fill the form from the top; the rest are cleared.
+        assert_eq!(loaded.line_1_trades_or_businesses[1].name, "Aggregation 1");
+        assert!(loaded.line_1_trades_or_businesses[4].is_blank());
     }
 
     #[test]

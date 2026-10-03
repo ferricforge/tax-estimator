@@ -20,9 +20,11 @@ use crate::components::{
     make_integer_input, make_select_row, set_decimal_input, set_input_value,
     set_optional_decimal_input, show_err,
 };
-use crate::estimate::{EstimateError, calculate_estimate, computed_values, save_tax_estimate};
+use crate::estimate::{
+    EstimateError, calculate_estimate, computed_values, save_qbi_entries, save_tax_estimate,
+};
 use crate::instructions::{UiInstructionField, help_for_field};
-use crate::models::SeWorksheetModel;
+use crate::models::{QbiWorksheetModel, SeWorksheetModel};
 use crate::repository::TaxRepo;
 use crate::state::ActiveTaxYear;
 use crate::utils::{parse_decimal, parse_optional_decimal};
@@ -235,6 +237,7 @@ impl EstimatedIncomeForm {
     /// and the 1040-ES worksheet inputs from a previously saved
     /// [`TaxEstimate`]. When the estimate carries computed results, those
     /// are shown in the results panel; otherwise the panel is cleared.
+    /// The Form 8995 entries are fetched in the background.
     ///
     /// Triggers [`ActiveTaxYear::load`] so the tax-year config is fetched
     /// and the **SE Worksheet** button becomes enabled once the config
@@ -246,15 +249,12 @@ impl EstimatedIncomeForm {
         cx: &mut Context<Self>,
     ) {
         let input = &estimate.input;
-
         set_input_value(&self.tax_year, input.tax_year.to_string(), window, cx);
         if is_loadable_tax_year(input.tax_year) {
             ActiveTaxYear::load(input.tax_year, cx);
         }
         self.recompute_tax_year_ready(cx);
-
         self.select_filing_status(input.filing_status, window, cx);
-
         set_decimal_input(&self.expected_agi, input.expected_agi, window, cx);
         set_decimal_input(
             &self.expected_deduction,
@@ -283,7 +283,6 @@ impl EstimatedIncomeForm {
             cx,
         );
         set_optional_decimal_input(&self.prior_year_tax, input.prior_year_tax, window, cx);
-
         self.results.update(cx, |rf, rf_cx| {
             if let Some(ref computed) = estimate.computed {
                 rf.set_from_computed(computed);
@@ -292,12 +291,53 @@ impl EstimatedIncomeForm {
             }
             rf_cx.notify();
         });
-
         self.worksheet.update(cx, |ws, ws_cx| {
             ws.populate_from_estimate(input, window, ws_cx);
         });
-
+        self.spawn_load_qbi(estimate.id, window, cx);
         cx.notify();
+    }
+
+    /// Clears the QBI form, then fetches the Form 8995 entries saved for the
+    /// estimate in the background and fills the form when there are any.
+    fn spawn_load_qbi(
+        &self,
+        estimate_id: i64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.qbi.update(cx, |qbi, qbi_cx| qbi.clear(window, qbi_cx));
+
+        let repo = match TaxRepo::require(cx) {
+            Ok(repo) => repo,
+            Err(e) => {
+                tracing::warn!(error = %e, "cannot load Form 8995 entries");
+                return;
+            }
+        };
+        let window_handle = window.window_handle();
+        cx.spawn(
+            async move |this, async_cx| match repo.get_qbi(estimate_id).await {
+                Ok(None) => {
+                    tracing::info!(estimate_id, "No Form 8995 entries saved for the estimate");
+                }
+                Ok(Some(qbi)) => {
+                    let _ = window_handle.update(async_cx, |_, window, cx| {
+                        let _ = this.update(cx, |form, form_cx| {
+                            form.qbi.update(form_cx, |qbi_form, qbi_cx| {
+                                qbi_form.populate_from_qbi(&qbi, window, qbi_cx);
+                            });
+                        });
+                    });
+                }
+                Err(e) => {
+                    let e = anyhow::Error::from(e).context("Could not load Form 8995 entries");
+                    tracing::error!(error = ?e, "Failed to load Form 8995 entries");
+                    show_err(window_handle, async_cx, "Load failed", &e);
+                }
+            },
+        )
+        .detach();
     }
 
     /// Returns the form to its initial empty state: blank inputs, the default
@@ -376,7 +416,6 @@ impl EstimatedIncomeForm {
                 se_model.line_10_total_se_tax.unwrap_or_default(),
             )
         };
-
         let form_input = match form_input {
             Ok(input) => input,
             Err(errors) => {
@@ -387,7 +426,6 @@ impl EstimatedIncomeForm {
                 return;
             }
         };
-
         let result = match calculate_estimate(ActiveTaxYear::get(cx), &form_input, se_tax) {
             Ok(result) => result,
             Err(error) => {
@@ -395,7 +433,6 @@ impl EstimatedIncomeForm {
                 return;
             }
         };
-
         // One summary feeds both the results panel and the saved record, so
         // the field mapping runs exactly once.
         let computed = computed_values(se_tax, &result);
@@ -404,24 +441,42 @@ impl EstimatedIncomeForm {
             cx.notify();
         });
         cx.notify();
-
         tracing::info!(input = %form_input, %result, "Estimated taxes");
-        self.spawn_save_estimate(form_input, computed, window, cx);
+
+        // Refresh the values Form 8995 takes from the estimate, so the saved
+        // line 11 and the lines figured from it match the estimate being saved.
+        let is_joint = form_input.filing_status == FilingStatusCode::MarriedFilingJointly;
+        let qbi_model = self.qbi.update(cx, |qbi, qbi_cx| {
+            qbi.update_context(
+                Some(form_input.tax_year),
+                is_joint,
+                Some(form_input.expected_agi),
+                Some(form_input.expected_deduction),
+                qbi_cx,
+            );
+            qbi.model().clone()
+        });
+        self.spawn_save_estimate(form_input, computed, qbi_model, window, cx);
     }
 
-    /// Persists a calculated estimate in the background, reporting any
-    /// failure in a dialog. The results are already on screen when this runs,
-    /// so a failure here is a save failure, not a calculation failure.
+    /// Persists a calculated estimate and its Form 8995 entries in the
+    /// background, reporting any failure in a dialog. The results are already
+    /// on screen when this runs, so a failure here is a save failure, not a
+    /// calculation failure.
     fn spawn_save_estimate(
         &self,
         form_input: TaxEstimateInput,
         computed: TaxEstimateComputed,
+        qbi_model: QbiWorksheetModel,
         window: &Window,
         cx: &mut Context<Self>,
     ) {
         const SAVE_FAILED_TITLE: &str = "Estimate not saved";
         const SAVE_FAILED_CONTEXT: &str =
             "The estimate was calculated but could not be saved to the database";
+        const QBI_SAVE_FAILED_TITLE: &str = "Form 8995 entries not saved";
+        const QBI_SAVE_FAILED_CONTEXT: &str =
+            "The estimate was saved, but its Form 8995 entries could not be saved";
 
         let window_handle = window.window_handle();
         cx.spawn(async move |_this, async_cx| {
@@ -438,11 +493,19 @@ impl EstimatedIncomeForm {
                     return;
                 }
             };
-
-            if let Err(e) = save_tax_estimate(repo.as_ref(), &form_input, computed).await {
-                let e = e.context(SAVE_FAILED_CONTEXT);
-                tracing::error!(error = ?e, "save_tax_estimate failed");
-                show_err(window_handle, async_cx, SAVE_FAILED_TITLE, &e);
+            let estimate = match save_tax_estimate(repo.as_ref(), &form_input, computed).await {
+                Ok(estimate) => estimate,
+                Err(e) => {
+                    let e = e.context(SAVE_FAILED_CONTEXT);
+                    tracing::error!(error = ?e, "save_tax_estimate failed");
+                    show_err(window_handle, async_cx, SAVE_FAILED_TITLE, &e);
+                    return;
+                }
+            };
+            if let Err(e) = save_qbi_entries(repo.as_ref(), estimate.id, &qbi_model).await {
+                let e = e.context(QBI_SAVE_FAILED_CONTEXT);
+                tracing::error!(error = ?e, "save_qbi_entries failed");
+                show_err(window_handle, async_cx, QBI_SAVE_FAILED_TITLE, &e);
             }
         })
         .detach();

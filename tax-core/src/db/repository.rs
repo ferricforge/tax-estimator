@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::models::{
-    FilingStatus, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput, TaxYearConfig,
+    FilingStatus, Qbi, StandardDeduction, TaxBracket, TaxEstimate, TaxEstimateInput, TaxYearConfig,
 };
 
 #[derive(Debug, Error)]
@@ -105,4 +105,31 @@ pub trait TaxRepository: Send + Sync {
         &self,
         tax_year: Option<i32>,
     ) -> Result<Vec<TaxEstimate>, RepositoryError>;
+
+    // Form 8995 (QBI deduction) data, stored per estimate
+
+    /// Fetch the Form 8995 data saved for the estimate with `estimate_id`.
+    ///
+    /// Returns `Ok(None)` when the estimate has no saved Form 8995 data.
+    async fn get_qbi(
+        &self,
+        estimate_id: i64,
+    ) -> Result<Option<Qbi>, RepositoryError>;
+
+    /// Insert or replace the Form 8995 data for `qbi.tax_estimate_id`,
+    /// including every Line 1 row, as one unit.
+    ///
+    /// Returns [`RepositoryError::NotFound`] when the estimate does not exist.
+    async fn save_qbi(
+        &self,
+        qbi: &Qbi,
+    ) -> Result<(), RepositoryError>;
+
+    /// Remove the Form 8995 data for the estimate with `estimate_id`.
+    ///
+    /// Returns [`RepositoryError::NotFound`] when there is none to remove.
+    async fn delete_qbi(
+        &self,
+        estimate_id: i64,
+    ) -> Result<(), RepositoryError>;
 }
