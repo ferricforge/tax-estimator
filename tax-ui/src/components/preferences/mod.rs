@@ -35,7 +35,7 @@ const TITLE: &str = "Preferences";
 fn default_size() -> Size<Pixels> {
     Size {
         width: px(560.0),
-        height: px(520.0),
+        height: px(640.0),
     }
 }
 

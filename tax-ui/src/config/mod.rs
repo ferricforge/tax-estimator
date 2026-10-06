@@ -1,9 +1,11 @@
+mod appearance;
 mod database;
 mod geometry;
 mod preferences;
 mod recent;
 mod store;
 
+pub use appearance::AppearanceConfig;
 pub use database::{DatabaseBackend, DatabaseConfig, PoolSettings};
 pub use geometry::{
     MAIN_WINDOW, PREFERENCES_WINDOW, WindowGeometries, WindowGeometry, WindowSize,
@@ -116,16 +118,14 @@ impl LoggingConfig {
 pub struct AppConfig {
     /// Version of the application that last wrote the file.
     pub version: String,
-
+    /// Appearance settings, stored under `[appearance]`.
+    pub appearance: AppearanceConfig,
     /// Database settings, stored under `[database]`.
     pub database: DatabaseConfig,
-
     /// Logging settings, stored under `[logging]`.
     pub logging: LoggingConfig,
-
     /// Recently used connections, stored under `[recent]`.
     pub recent: RecentConfig,
-
     /// Remembered window geometry, stored under `[window_geometry]`.
     pub window_geometry: WindowGeometries,
 }
@@ -134,6 +134,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             version: CONFIG_VERSION.to_string(),
+            appearance: AppearanceConfig::default(),
             database: DatabaseConfig::default(),
             logging: LoggingConfig::default(),
             recent: RecentConfig::default(),
@@ -152,21 +153,17 @@ impl Default for AppConfig {
 #[derive(Deserialize)]
 struct AppConfigFile {
     version: Option<String>,
-
+    #[serde(default)]
+    appearance: AppearanceConfig,
     database: Option<DatabaseConfig>,
-
     #[serde(default)]
     logging: LoggingConfig,
-
     #[serde(default)]
     recent: RecentConfig,
-
     #[serde(default)]
     window_geometry: WindowGeometries,
-
     /// Former name of `database.url`.
     database_url: Option<String>,
-
     /// Former name of `database.backend`.
     database_backend: Option<DatabaseBackend>,
 }
@@ -187,6 +184,7 @@ impl From<AppConfigFile> for AppConfig {
 
         Self {
             version: file.version.unwrap_or_default(),
+            appearance: file.appearance,
             database,
             logging: file.logging,
             recent: file.recent,

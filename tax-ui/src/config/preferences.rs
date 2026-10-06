@@ -1,5 +1,5 @@
-//! The preferences the user can edit: logging, the database connection pool,
-//! and the length of the recent connections list.
+//! The preferences the user can edit: appearance, logging, the database
+//! connection pool, and the length of the recent connections list.
 //!
 //! [`PreferencesDraft`] holds what the user typed. [`PreferencesDraft::validate`]
 //! converts it into [`Preferences`]. The database URL and backend are not
@@ -11,8 +11,9 @@ use std::str::FromStr;
 
 use tracing_subscriber::EnvFilter;
 
-use super::{AppConfig, LoggingConfig, PoolSettings};
+use super::{AppConfig, AppearanceConfig, LoggingConfig, PoolSettings};
 use crate::logging::SourcePathDisplay;
+use crate::themes::ThemeMode;
 
 /// An editable preference. Validation messages name the field they belong to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,7 @@ pub struct FieldError {
 /// Preferences as the user typed them. Numbers stay as text until validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreferencesDraft {
+    pub theme: ThemeMode,
     pub level: String,
     pub application_only: bool,
     pub stdout: bool,
@@ -55,6 +57,7 @@ pub struct PreferencesDraft {
 /// Preferences after validation. Every value has its final type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Preferences {
+    pub appearance: AppearanceConfig,
     pub logging: LoggingConfig,
     pub pool: PoolSettings,
     pub recent_limit: usize,
@@ -67,6 +70,7 @@ impl PreferencesDraft {
         let pool = &config.database.pool;
 
         Self {
+            theme: config.appearance.theme,
             level: logging.level.clone(),
             application_only: logging.application_only,
             stdout: logging.stdout,
@@ -141,7 +145,6 @@ impl PreferencesDraft {
                 "Enter at least 1.",
             ));
         }
-
         if let (Some(min), Some(max)) = (min_connections, max_connections)
             && min > max
         {
@@ -150,7 +153,6 @@ impl PreferencesDraft {
                 "Cannot be more than the maximum connections.",
             ));
         }
-
         if acquire_timeout_secs == Some(0) {
             errors.push(field_error(
                 PreferenceField::AcquireTimeout,
@@ -174,6 +176,7 @@ impl PreferencesDraft {
                 Some(max_lifetime_secs),
                 Some(recent_limit),
             ) if errors.is_empty() => Ok(Preferences {
+                appearance: AppearanceConfig { theme: self.theme },
                 logging: LoggingConfig {
                     level,
                     application_only: self.application_only,
@@ -204,6 +207,7 @@ impl Preferences {
         self,
         config: &mut AppConfig,
     ) {
+        config.appearance = self.appearance;
         config.logging = self.logging;
         config.database.pool = self.pool;
         config.recent.limit = self.recent_limit;
@@ -240,7 +244,10 @@ fn parse_number<T: FromStr>(
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use super::{AppConfig, LoggingConfig, PoolSettings, PreferenceField, PreferencesDraft};
+    use super::{
+        AppConfig, AppearanceConfig, LoggingConfig, PoolSettings, PreferenceField, PreferencesDraft,
+    };
+    use crate::themes::ThemeMode;
 
     fn valid_draft() -> PreferencesDraft {
         PreferencesDraft::from_config(&AppConfig::default())
@@ -250,6 +257,7 @@ mod tests {
     fn defaults_validate_to_the_default_preferences() {
         let preferences = valid_draft().validate().expect("defaults must be valid");
 
+        assert_eq!(preferences.appearance, AppearanceConfig::default());
         assert_eq!(preferences.logging, LoggingConfig::default());
         assert_eq!(preferences.pool, PoolSettings::default());
         assert_eq!(preferences.recent_limit, AppConfig::default().recent.limit);
@@ -261,12 +269,24 @@ mod tests {
         config.database.url = "custom.db".to_string();
         let mut draft = PreferencesDraft::from_config(&config);
         draft.level = "debug".to_string();
-        let preferences = draft.validate().expect("draft must be valid");
 
+        let preferences = draft.validate().expect("draft must be valid");
         preferences.apply_to(&mut config);
 
         assert_eq!(config.database.url, "custom.db");
         assert_eq!(config.logging.level, "debug");
+    }
+
+    #[test]
+    fn theme_is_saved_with_the_other_preferences() {
+        let mut config = AppConfig::default();
+        let mut draft = PreferencesDraft::from_config(&config);
+        draft.theme = ThemeMode::Dark;
+
+        let preferences = draft.validate().expect("draft must be valid");
+        preferences.apply_to(&mut config);
+
+        assert_eq!(config.appearance.theme, ThemeMode::Dark);
     }
 
     #[test]
@@ -321,6 +341,7 @@ mod tests {
         draft.file_enabled = true;
 
         let errors = draft.validate().expect_err("draft must be invalid");
+
         assert!(
             errors
                 .iter()

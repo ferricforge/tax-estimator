@@ -21,17 +21,11 @@ use tracing::info;
 #[cfg(target_os = "macos")]
 use crate::components::build_app_menus;
 use crate::components::{
-    bind_menu_keys, bind_preferences_keys, init_theme_colors, open_preferences,
+    apply_configured_theme, bind_menu_keys, bind_preferences_keys, open_preferences,
     save_tracked_window_bounds,
 };
 use crate::config::{AppConfig, ConfigStore};
 use crate::state::ActiveTaxYear;
-#[cfg(target_os = "linux")]
-use crate::themes::apply_linux_system_theme;
-#[cfg(target_os = "macos")]
-use crate::themes::apply_macos_system_theme;
-#[cfg(target_os = "windows")]
-use crate::themes::apply_windows_system_theme;
 
 actions!(tax_estimator, [Quit]);
 
@@ -64,15 +58,8 @@ pub fn setup_app(
 
     gpui_component::init(app_cx);
 
-    #[cfg(target_os = "macos")]
-    apply_macos_system_theme(app_cx);
-    #[cfg(target_os = "windows")]
-    apply_windows_system_theme(app_cx);
-    #[cfg(target_os = "linux")]
-    apply_linux_system_theme(app_cx);
-
-    // Populate legacy theme constants from the now-active theme.
-    init_theme_colors(app_cx);
+    // Applies the saved appearance and populates the cached theme colors.
+    apply_configured_theme(app_cx);
 
     #[cfg(target_os = "macos")]
     app_cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);

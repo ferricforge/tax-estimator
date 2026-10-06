@@ -35,7 +35,7 @@ pub use preferences::{OpenPreferences, bind_preferences_keys, open_preferences};
 pub use qbi_form::{QbiForm, QbiFormEvent};
 pub use results_form::ResultForm;
 pub use se_worksheet_form::SeWorksheetForm;
-pub use theme::init_theme_colors;
+pub use theme::{apply_configured_theme, init_theme_colors, reapply_configured_theme};
 pub use window::{AppWindow, ReloadConnection};
 pub use window_geometry::{
     restore_saved_window_bounds, save_tracked_window_bounds, save_window_bounds, track_window,

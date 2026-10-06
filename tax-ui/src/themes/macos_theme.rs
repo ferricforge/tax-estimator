@@ -1,26 +1,64 @@
 use gpui::{App, Hsla};
-use objc2_app_kit::{NSColor, NSColorSpace};
+use objc2::MainThreadMarker;
+use objc2::rc::Retained;
+use objc2_app_kit::{
+    NSAppearance, NSAppearanceNameAqua, NSAppearanceNameDarkAqua, NSApplication, NSColor,
+    NSColorSpace,
+};
 
-use super::{SystemPalette, apply_palette, hex, rgba_to_hsla};
+use super::{SystemPalette, ThemeMode, apply_palette, hex, rgba_to_hsla};
 
-/// Converts an `NSColor` to `Hsla`, going through sRGB first.
-fn nscolor_to_hsla(color: &NSColor) -> Option<Hsla> {
-    let srgb_space = NSColorSpace::sRGBColorSpace();
-    let converted = color.colorUsingColorSpace(&srgb_space)?;
-    Some(rgba_to_hsla(
-        converted.redComponent() as f32,
-        converted.greenComponent() as f32,
-        converted.blueComponent() as f32,
-        converted.alphaComponent() as f32,
-    ))
-}
-
-/// Converts an `NSColor` to `Hsla`, falling back to `fallback` on failure.
+/// Converts an `NSColor` to `Hsla` through sRGB.
+///
+/// Dynamic system colours have no components until they are resolved in a
+/// concrete colour space, so `fallback` covers the case where conversion
+/// is not possible.
 fn nscolor_or(
     color: &NSColor,
     fallback: Hsla,
 ) -> Hsla {
-    nscolor_to_hsla(color).unwrap_or(fallback)
+    let Some(converted) = color.colorUsingColorSpace(&NSColorSpace::sRGBColorSpace()) else {
+        return fallback;
+    };
+
+    rgba_to_hsla(
+        converted.redComponent() as f32,
+        converted.greenComponent() as f32,
+        converted.blueComponent() as f32,
+        converted.alphaComponent() as f32,
+    )
+}
+
+/// The appearance `mode` asks for, or `None` to follow the operating system.
+fn appearance_for(mode: ThemeMode) -> Option<Retained<NSAppearance>> {
+    match mode {
+        ThemeMode::System => None,
+        ThemeMode::Light => NSAppearance::appearanceNamed(unsafe { NSAppearanceNameAqua }),
+        ThemeMode::Dark => NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua }),
+    }
+}
+
+/// Runs `read` with `appearance` installed as the current appearance, so the
+/// dynamic system colors resolve to it, then restores the previous value.
+///
+/// `currentAppearance` and `setCurrentAppearance` are deprecated in favour of
+/// `performAsCurrentDrawingAppearance`, which takes an Objective-C block. The
+/// block form needs a `block2` dependency and feature flags that have not been
+/// checked here.
+#[allow(deprecated)]
+fn with_current_appearance<R>(
+    appearance: &NSAppearance,
+    read: impl FnOnce() -> R,
+) -> R {
+    let previous = NSAppearance::currentAppearance();
+
+    // SAFETY: both arguments are valid references or `None`. The call only
+    // changes the appearance used for drawing on this thread.
+    unsafe { NSAppearance::setCurrentAppearance(Some(appearance)) };
+    let result = read();
+    unsafe { NSAppearance::setCurrentAppearance(previous.as_deref()) };
+
+    result
 }
 
 /// Builds a [`SystemPalette`] from the current macOS appearance.
@@ -55,9 +93,36 @@ fn build_palette() -> SystemPalette {
     }
 }
 
+/// Installs `mode` as the application appearance.
+///
+/// Window frames follow this at once, and it decides what
+/// `effectiveAppearance` reports when the palette is read. Call it while no
+/// `App` borrow is held: AppKit notifies the open windows during the call and
+/// gpui's handler borrows the application.
+pub fn install_appearance(mode: ThemeMode) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+
+    NSApplication::sharedApplication(mtm).setAppearance(appearance_for(mode).as_deref());
+}
+
 /// Applies macOS system colours to the gpui-component global [`Theme`].
 ///
-/// Call after `gpui_component::init(cx)`.
-pub fn apply_macos_system_theme(cx: &mut App) {
-    apply_palette(cx, &build_palette());
+/// The palette is read with the application's effective appearance installed
+/// as the current one, because the dynamic system colors otherwise resolve
+/// against a nil appearance, which falls back to Aqua. The effective
+/// appearance already reflects the mode that [`install_appearance`] set, or
+/// the system setting when nothing is forced, so `_mode` is not read here.
+pub fn apply_macos_system_theme(
+    cx: &mut App,
+    _mode: ThemeMode,
+) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        apply_palette(cx, &build_palette());
+        return;
+    };
+
+    let effective = NSApplication::sharedApplication(mtm).effectiveAppearance();
+    apply_palette(cx, &with_current_appearance(&effective, build_palette));
 }

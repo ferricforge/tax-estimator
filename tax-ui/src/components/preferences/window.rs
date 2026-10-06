@@ -2,11 +2,14 @@
 //! the commit logic.
 //!
 //! On macOS each change is saved as it is made. On Windows and Linux, changes
-//! are saved when Apply or OK is chosen, and Cancel discards them.
+//! are saved when Apply or OK is chosen, and Cancel discards them. Appearance
+//! changes follow the same rule: the theme is applied when the changes are
+//! saved.
 
 use gpui::{
-    App, AppContext, ClickEvent, Context, Entity, IntoElement, ParentElement, PromptLevel, Render,
-    Styled, Subscription, Window, div, px,
+    App, AppContext, ClickEvent, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement, PromptLevel, Render, StatefulInteractiveElement as _, Styled, Subscription,
+    Window, div, px,
 };
 use gpui_component::{
     button::{Button, ButtonVariants},
@@ -16,11 +19,14 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::components::{ReloadConnection, save_window_bounds, tracked_window};
+use crate::components::{
+    ReloadConnection, reapply_configured_theme, save_window_bounds, tracked_window,
+};
 use crate::config::{
     AppConfig, FieldError, MAIN_WINDOW, PREFERENCES_WINDOW, PreferenceField, PreferencesDraft,
 };
 use crate::logging::{SourcePathDisplay, apply_settings};
+use crate::themes::ThemeMode;
 
 /// Width of the label column in each row, in logical pixels.
 const LABEL_WIDTH: f32 = 200.0;
@@ -43,6 +49,24 @@ const SOURCE_PATH_CHOICES: [SourcePathDisplay; 4] = [
     SourcePathDisplay::Hidden,
 ];
 
+/// The label shown on a theme button.
+fn theme_mode_name(mode: ThemeMode) -> &'static str {
+    match mode {
+        ThemeMode::System => "System",
+        ThemeMode::Light => "Light",
+        ThemeMode::Dark => "Dark",
+    }
+}
+
+/// The element id of a theme button.
+fn theme_mode_id(mode: ThemeMode) -> &'static str {
+    match mode {
+        ThemeMode::System => "theme-system",
+        ThemeMode::Light => "theme-light",
+        ThemeMode::Dark => "theme-dark",
+    }
+}
+
 /// The name shown on the source path button.
 fn source_path_name(path: SourcePathDisplay) -> &'static str {
     match path {
@@ -53,14 +77,16 @@ fn source_path_name(path: SourcePathDisplay) -> &'static str {
     }
 }
 
-/// The source path choice after `path`, wrapping to the first choice.
-fn next_source_path(path: SourcePathDisplay) -> SourcePathDisplay {
-    let index = SOURCE_PATH_CHOICES
+/// The choice after `current` in `choices`, wrapping to the first choice.
+fn next_choice<T: Copy + PartialEq, const N: usize>(
+    choices: [T; N],
+    current: T,
+) -> T {
+    let index = choices
         .iter()
-        .position(|choice| *choice == path)
+        .position(|choice| *choice == current)
         .unwrap_or(0);
-
-    SOURCE_PATH_CHOICES[(index + 1) % SOURCE_PATH_CHOICES.len()]
+    choices[(index + 1) % N]
 }
 
 /// A text input holding `value`.
@@ -136,6 +162,7 @@ pub struct PreferencesWindow {
     idle_timeout_secs: Entity<InputState>,
     max_lifetime_secs: Entity<InputState>,
     recent_limit: Entity<InputState>,
+    theme: ThemeMode,
     application_only: bool,
     stdout: bool,
     file_enabled: bool,
@@ -190,6 +217,7 @@ impl PreferencesWindow {
             idle_timeout_secs,
             max_lifetime_secs,
             recent_limit,
+            theme: draft.theme,
             application_only: draft.application_only,
             stdout: draft.stdout,
             file_enabled: draft.file_enabled,
@@ -236,6 +264,7 @@ impl PreferencesWindow {
         cx: &App,
     ) -> PreferencesDraft {
         PreferencesDraft {
+            theme: self.theme,
             level: self.level.read(cx).value().to_string(),
             application_only: self.application_only,
             stdout: self.stdout,
@@ -255,8 +284,9 @@ impl PreferencesWindow {
     /// Validates the form and, when it is valid, saves and applies the
     /// preferences. Returns whether they were saved.
     ///
-    /// When the pool settings changed, also asks whether to reload the
-    /// connection.
+    /// The theme is applied from a spawned task, after this update finishes.
+    /// When the pool settings changed, the user is also asked whether to
+    /// reload the connection.
     fn commit(
         &mut self,
         cx: &mut Context<Self>,
@@ -272,21 +302,20 @@ impl PreferencesWindow {
         self.errors.clear();
 
         let pool_changed = AppConfig::get(cx).database.pool != preferences.pool;
-
         AppConfig::update(cx, |config| preferences.apply_to(config));
 
         if let Err(error) = AppConfig::save(cx) {
             tracing::error!(%error, "failed to save preferences");
         }
-
         if let Err(error) = apply_settings(&AppConfig::get(cx).logging.settings()) {
             tracing::error!(%error, "failed to apply logging settings");
         }
 
+        reapply_configured_theme(cx);
+
         if pool_changed {
             offer_pool_reload(cx);
         }
-
         cx.notify();
         true
     }
@@ -310,6 +339,40 @@ impl PreferencesWindow {
             .children(message.map(|message| div().text_size(px(11.0)).child(message)))
     }
 
+    /// One button per theme choice. The active choice is filled.
+    fn theme_button(
+        &self,
+        mode: ThemeMode,
+        cx: &Context<Self>,
+    ) -> Button {
+        let button = Button::new(theme_mode_id(mode))
+            .label(theme_mode_name(mode))
+            .on_click(cx.listener(move |this, _: &ClickEvent, _window, cx| {
+                if this.theme != mode {
+                    this.theme = mode;
+                    this.changed(cx);
+                }
+            }));
+
+        if mode == self.theme {
+            button.primary()
+        } else {
+            button
+        }
+    }
+
+    fn render_appearance(
+        &self,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let choices = ThemeMode::ALL.map(|mode| self.theme_button(mode, cx));
+
+        v_flex()
+            .gap_2()
+            .child(section_title("Appearance"))
+            .child(labeled_control("Theme", h_flex().gap_1().children(choices)))
+    }
+
     fn render_logging(
         &self,
         cx: &Context<Self>,
@@ -317,7 +380,7 @@ impl PreferencesWindow {
         let source_path = Button::new("source-path")
             .label(source_path_name(self.source_path))
             .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                this.source_path = next_source_path(this.source_path);
+                this.source_path = next_choice(SOURCE_PATH_CHOICES, this.source_path);
                 this.changed(cx);
             }));
 
@@ -468,9 +531,13 @@ impl Render for PreferencesWindow {
             .size_full()
             .child(
                 v_flex()
+                    .id("preferences-body")
                     .flex_1()
+                    .min_h(px(0.0))
+                    .overflow_y_scroll()
                     .p_5()
                     .gap_4()
+                    .child(self.render_appearance(cx))
                     .child(self.render_logging(cx))
                     .child(self.render_pool(cx))
                     .child(self.render_recent()),

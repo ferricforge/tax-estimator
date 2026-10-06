@@ -5,7 +5,7 @@ use windows::Win32::System::Registry::{
 };
 use windows::core::PCWSTR;
 
-use super::{SystemPalette, apply_palette, hex, rgba_to_hsla};
+use super::{SystemPalette, ThemeMode, apply_palette, hex, pick};
 
 // ── Registry helpers ──────────────────────────────────────────────
 
@@ -73,11 +73,11 @@ fn accent_from_registry() -> Option<Hsla> {
         windows::core::w!("SOFTWARE\\Microsoft\\Windows\\DWM"),
         windows::core::w!("AccentColor"),
     )?;
-    // ABGR layout: byte 0 = R, byte 1 = G, byte 2 = B, byte 3 = A
-    let red = (raw & 0xFF) as f32 / 255.0;
-    let green = ((raw >> 8) & 0xFF) as f32 / 255.0;
-    let blue = ((raw >> 16) & 0xFF) as f32 / 255.0;
-    Some(rgba_to_hsla(red, green, blue, 1.0))
+    // Swap the red and blue bytes so the value reads as 0xRRGGBB.
+    let red = (raw & 0xFF) << 16;
+    let green = raw & 0x0000_FF00;
+    let blue = (raw >> 16) & 0xFF;
+    Some(hex(red | green | blue))
 }
 
 /// Falls back to the DWM colourisation colour (**ARGB** byte order).
@@ -92,10 +92,8 @@ fn accent_from_dwm() -> Option<Hsla> {
     unsafe {
         DwmGetColorizationColor(&mut argb, &mut opaque_blend).ok()?;
     }
-    let red = ((argb >> 16) & 0xFF) as f32 / 255.0;
-    let green = ((argb >> 8) & 0xFF) as f32 / 255.0;
-    let blue = (argb & 0xFF) as f32 / 255.0;
-    Some(rgba_to_hsla(red, green, blue, 1.0))
+    // The low 24 bits already hold 0xRRGGBB; drop the alpha byte.
+    Some(hex(argb & 0x00FF_FFFF))
 }
 
 /// Best-effort accent colour: registry → DWM → default Windows blue.
@@ -141,25 +139,16 @@ const DEFAULT_BLUE: u32 = 0x0078D4;
 
 // ── Palette builder ───────────────────────────────────────────────
 
-/// Selects the correct constant for the current mode.
-fn pick(
-    dark: bool,
-    light_value: u32,
-    dark_value: u32,
-) -> Hsla {
-    hex(if dark { dark_value } else { light_value })
-}
-
-/// Builds a [`SystemPalette`] that mirrors the current Windows theme.
-fn build_palette() -> SystemPalette {
-    let dark = is_dark_mode();
+/// Builds a [`SystemPalette`] that mirrors the Windows theme for `mode`.
+fn build_palette(mode: ThemeMode) -> SystemPalette {
+    let dark = mode.is_dark(is_dark_mode);
     let accent = accent_color();
 
     // Selection background: a desaturated tint of the accent colour
     // so that selected text remains legible.
     let selected_text_bg = Hsla {
         s: accent.s * 0.55,
-        l: if dark { 0.32 } else { 0.82 },
+        l: pick(dark, 0.82, 0.32),
         a: 1.0,
         ..accent
     };
@@ -167,16 +156,16 @@ fn build_palette() -> SystemPalette {
     SystemPalette {
         accent,
         accent_foreground: hex(0xFFFFFF),
-        window_bg: pick(dark, LIGHT_WINDOW_BG, DARK_WINDOW_BG),
-        control_bg: pick(dark, LIGHT_CONTROL_BG, DARK_CONTROL_BG),
-        label: pick(dark, LIGHT_LABEL, DARK_LABEL),
-        secondary_label: pick(dark, LIGHT_SECONDARY_LABEL, DARK_SECONDARY_LABEL),
-        tertiary_label: pick(dark, LIGHT_TERTIARY_LABEL, DARK_TERTIARY_LABEL),
-        separator: pick(dark, LIGHT_SEPARATOR, DARK_SEPARATOR),
+        window_bg: hex(pick(dark, LIGHT_WINDOW_BG, DARK_WINDOW_BG)),
+        control_bg: hex(pick(dark, LIGHT_CONTROL_BG, DARK_CONTROL_BG)),
+        label: hex(pick(dark, LIGHT_LABEL, DARK_LABEL)),
+        secondary_label: hex(pick(dark, LIGHT_SECONDARY_LABEL, DARK_SECONDARY_LABEL)),
+        tertiary_label: hex(pick(dark, LIGHT_TERTIARY_LABEL, DARK_TERTIARY_LABEL)),
+        separator: hex(pick(dark, LIGHT_SEPARATOR, DARK_SEPARATOR)),
         selected_text_bg,
         keyboard_focus: accent,
-        link: pick(dark, LIGHT_LINK, DARK_LINK),
-        unemphasized_bg: pick(dark, LIGHT_UNEMPHASIZED, DARK_UNEMPHASIZED),
+        link: hex(pick(dark, LIGHT_LINK, DARK_LINK)),
+        unemphasized_bg: hex(pick(dark, LIGHT_UNEMPHASIZED, DARK_UNEMPHASIZED)),
         red: hex(WIN_RED),
         orange: hex(WIN_ORANGE),
         yellow: hex(WIN_YELLOW),
@@ -190,7 +179,10 @@ fn build_palette() -> SystemPalette {
 
 /// Applies Windows system colours to the gpui-component global [`Theme`].
 ///
-/// Call after `gpui_component::init(cx)`.
-pub fn apply_windows_system_theme(cx: &mut App) {
-    apply_palette(cx, &build_palette());
+/// `mode` decides between light and dark. Call after `gpui_component::init(cx)`.
+pub fn apply_windows_system_theme(
+    cx: &mut App,
+    mode: ThemeMode,
+) {
+    apply_palette(cx, &build_palette(mode));
 }
