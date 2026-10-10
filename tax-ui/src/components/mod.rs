@@ -1,4 +1,5 @@
 mod buttons;
+mod clear_confirm;
 mod dialogs;
 mod edit_menu;
 mod estimate_form;
@@ -12,11 +13,13 @@ mod recent_labels;
 mod results_form;
 mod se_worksheet_form;
 mod theme;
+mod validation_view;
 mod window;
 mod window_geometry;
 mod window_preferences;
 
 pub use buttons::make_button;
+pub use clear_confirm::confirm_clear;
 pub use dialogs::{ErrorDialog, InfoDialog, show_err};
 pub use estimate_form::EstimatedIncomeForm;
 pub use estimate_selector::EstimateSelector;
@@ -36,6 +39,7 @@ pub use qbi_form::{QbiForm, QbiFormEvent};
 pub use results_form::ResultForm;
 pub use se_worksheet_form::SeWorksheetForm;
 pub use theme::{apply_configured_theme, init_theme_colors, reapply_configured_theme};
+pub use validation_view::{FieldVisibility, field_messages, form_error_banner, visible_issues};
 pub use window::{AppWindow, ReloadConnection};
 pub use window_geometry::{
     restore_saved_window_bounds, save_tracked_window_bounds, save_window_bounds, track_window,

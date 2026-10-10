@@ -1,5 +1,4 @@
 //! Form 8995 data that is saved with a tax estimate.
-
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -59,40 +58,6 @@ pub struct Qbi {
     pub computed: Option<QbiComputed>,
 }
 
-impl QbiInput {
-    /// Validates business rules before persistence or calculation.
-    pub fn validate_for_submit(&self) -> Result<(), Vec<String>> {
-        let mut errors = Vec::new();
-
-        for (index, business) in self.businesses.iter().enumerate() {
-            let line = index + 1;
-            if business.name.trim().is_empty() {
-                errors.push(format!("Line 1 row {line}: business name is required"));
-            }
-            if business.taxpayer_id.trim().is_empty() {
-                errors.push(format!(
-                    "Line 1 row {line}: taxpayer identification number is required"
-                ));
-            }
-        }
-        if self.qbi_loss_carryforward > Decimal::ZERO {
-            errors.push("QBI loss carryforward cannot be positive".to_string());
-        }
-        if self.reit_ptp_loss_carryforward > Decimal::ZERO {
-            errors.push("REIT and PTP loss carryforward cannot be positive".to_string());
-        }
-        if self.net_capital_gain < Decimal::ZERO {
-            errors.push("Net capital gain cannot be negative".to_string());
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
-    }
-}
-
 impl From<&QbiInput> for QbiWorksheetInput {
     fn from(input: &QbiInput) -> Self {
         Self {
@@ -141,49 +106,6 @@ mod tests {
             taxable_income_before_qbi: Some(dec!(80000.25)),
             net_capital_gain: dec!(550.75),
         }
-    }
-
-    #[test]
-    fn validate_for_submit_accepts_valid_input() {
-        assert!(valid_input().validate_for_submit().is_ok());
-    }
-
-    #[test]
-    fn validate_for_submit_requires_name_and_taxpayer_id() {
-        let mut input = valid_input();
-        input.businesses[0].name = " ".to_string();
-        input.businesses[0].taxpayer_id = String::new();
-
-        let err = input
-            .validate_for_submit()
-            .expect_err("expected validation error");
-
-        assert_eq!(
-            err,
-            vec![
-                "Line 1 row 1: business name is required",
-                "Line 1 row 1: taxpayer identification number is required",
-            ]
-        );
-    }
-
-    #[test]
-    fn validate_for_submit_rejects_positive_loss_carryforwards() {
-        let mut input = valid_input();
-        input.qbi_loss_carryforward = dec!(1.00);
-        input.reit_ptp_loss_carryforward = dec!(1.00);
-
-        let err = input
-            .validate_for_submit()
-            .expect_err("expected validation error");
-
-        assert_eq!(
-            err,
-            vec![
-                "QBI loss carryforward cannot be positive",
-                "REIT and PTP loss carryforward cannot be positive",
-            ]
-        );
     }
 
     #[test]

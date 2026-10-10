@@ -1,5 +1,6 @@
 mod appearance;
 mod database;
+mod dialogs;
 mod geometry;
 mod preferences;
 mod recent;
@@ -7,6 +8,7 @@ mod store;
 
 pub use appearance::AppearanceConfig;
 pub use database::{DatabaseBackend, DatabaseConfig, PoolSettings};
+pub use dialogs::DialogsConfig;
 pub use geometry::{
     MAIN_WINDOW, PREFERENCES_WINDOW, WindowGeometries, WindowGeometry, WindowSize,
     on_screen_geometry, resolve_geometry,
@@ -122,6 +124,8 @@ pub struct AppConfig {
     pub appearance: AppearanceConfig,
     /// Database settings, stored under `[database]`.
     pub database: DatabaseConfig,
+    /// Hidden confirmations, stored under `[dialogs]`.
+    pub dialogs: DialogsConfig,
     /// Logging settings, stored under `[logging]`.
     pub logging: LoggingConfig,
     /// Recently used connections, stored under `[recent]`.
@@ -136,6 +140,7 @@ impl Default for AppConfig {
             version: CONFIG_VERSION.to_string(),
             appearance: AppearanceConfig::default(),
             database: DatabaseConfig::default(),
+            dialogs: DialogsConfig::default(),
             logging: LoggingConfig::default(),
             recent: RecentConfig::default(),
             window_geometry: WindowGeometries::default(),
@@ -156,6 +161,8 @@ struct AppConfigFile {
     #[serde(default)]
     appearance: AppearanceConfig,
     database: Option<DatabaseConfig>,
+    #[serde(default)]
+    dialogs: DialogsConfig,
     #[serde(default)]
     logging: LoggingConfig,
     #[serde(default)]
@@ -186,6 +193,7 @@ impl From<AppConfigFile> for AppConfig {
             version: file.version.unwrap_or_default(),
             appearance: file.appearance,
             database,
+            dialogs: file.dialogs,
             logging: file.logging,
             recent: file.recent,
             window_geometry: file.window_geometry,

@@ -16,7 +16,7 @@ use tax_core::models::TaxYearConfig;
 use tax_core::{
     FilingStatusCode, RepositoryError, TaxEstimate, TaxEstimateComputed, TaxEstimateInput,
 };
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::models::{FilingStatusData, QbiWorksheetModel};
 use crate::state::ActiveTaxYear;
@@ -86,6 +86,9 @@ pub fn se_tax_estimate(
 
 /// Runs the Form 8995 qualified business income deduction computation for
 /// the given values.
+///
+/// The form recalculates on every edit, so the result is traced rather than
+/// logged at debug level.
 pub fn qbi_deduction_estimate(
     config: QbiWorksheetConfig,
     input: &QbiWorksheetInput,
@@ -99,7 +102,7 @@ pub fn qbi_deduction_estimate(
                 input.taxable_income_before_qbi
             )
         })?;
-    debug!("QBI worksheet result:\n{result}");
+    trace!("QBI worksheet result:\n{result}");
     Ok(result)
 }
 

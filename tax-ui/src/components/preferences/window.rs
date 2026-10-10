@@ -361,6 +361,49 @@ impl PreferencesWindow {
         }
     }
 
+    /// Turns every hidden confirmation back on and saves the change.
+    ///
+    /// This takes effect at once on every platform, because it is an action
+    /// rather than an edited field.
+    fn reset_dialogs(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        let restored = AppConfig::update(cx, |config| config.dialogs.reset());
+        if restored == 0 {
+            return;
+        }
+
+        if let Err(error) = AppConfig::save(cx) {
+            tracing::error!(%error, "failed to save the hidden confirmations");
+        }
+        cx.notify();
+    }
+
+    /// How many confirmations are hidden, and a button that shows them again.
+    fn render_dialogs(
+        &self,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let hidden = AppConfig::get(cx).dialogs.suppressed_count();
+        let summary = match hidden {
+            0 => "No confirmations are hidden.".to_string(),
+            1 => "1 confirmation is hidden.".to_string(),
+            count => format!("{count} confirmations are hidden."),
+        };
+        let reset = Button::new("reset-dialogs")
+            .label("Show all again")
+            .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                this.reset_dialogs(cx);
+            }));
+
+        v_flex()
+            .gap_2()
+            .child(section_title("Confirmations"))
+            .child(labeled_control("Hidden confirmations", reset))
+            .child(div().text_size(px(11.0)).child(summary))
+    }
+
     fn render_appearance(
         &self,
         cx: &Context<Self>,
@@ -540,7 +583,8 @@ impl Render for PreferencesWindow {
                     .child(self.render_appearance(cx))
                     .child(self.render_logging(cx))
                     .child(self.render_pool(cx))
-                    .child(self.render_recent()),
+                    .child(self.render_recent())
+                    .child(self.render_dialogs(cx)),
             )
             .children(self.render_footer(cx))
     }

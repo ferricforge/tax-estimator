@@ -426,6 +426,7 @@ impl EstimatedIncomeForm {
                 return;
             }
         };
+
         let result = match calculate_estimate(ActiveTaxYear::get(cx), &form_input, se_tax) {
             Ok(result) => result,
             Err(error) => {
@@ -433,6 +434,7 @@ impl EstimatedIncomeForm {
                 return;
             }
         };
+
         // One summary feeds both the results panel and the saved record, so
         // the field mapping runs exactly once.
         let computed = computed_values(se_tax, &result);

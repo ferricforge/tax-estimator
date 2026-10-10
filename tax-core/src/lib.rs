@@ -1,6 +1,7 @@
 pub mod calculations;
 pub mod db;
 pub mod models;
+pub mod validation;
 
 pub use db::repository::{RepositoryError, TaxRepository};
 pub use models::{
