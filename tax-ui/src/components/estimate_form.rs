@@ -1,9 +1,7 @@
 use gpui::{
     App, AppContext, Context, Div, Entity, InteractiveElement, IntoElement, ParentElement, Render,
-    RenderOnce, SharedString, Styled, Window, div, px,
+    RenderOnce, SharedString, Styled, Window, div,
 };
-use gpui_component::WindowExt;
-use gpui_component::dialog::DialogButtonProps;
 use gpui_component::{
     IndexPath, h_flex,
     input::{InputEvent, InputState},
@@ -15,9 +13,9 @@ use rust_decimal::Decimal;
 use tax_core::{FilingStatusCode, TaxEstimate, TaxEstimateComputed, TaxEstimateInput};
 
 use crate::components::{
-    ErrorDialog, QbiForm, QbiFormEvent, ResultForm, SeWorksheetForm, make_button,
+    ErrorDialog, FormWindow, QbiForm, QbiFormEvent, ResultForm, SeWorksheetForm, make_button,
     make_decimal_input, make_header_row, make_input_row, make_input_row_with_help,
-    make_integer_input, make_select_row, set_decimal_input, set_input_value,
+    make_integer_input, make_select_row, open_form_window, set_decimal_input, set_input_value,
     set_optional_decimal_input, show_err,
 };
 use crate::estimate::{
@@ -32,7 +30,13 @@ use crate::utils::{parse_decimal, parse_optional_decimal};
 #[derive(Clone, Debug)]
 pub struct EstimatedIncomeForm {
     worksheet: Entity<SeWorksheetForm>,
+    /// The window showing the SE worksheet, once it has been opened. The
+    /// user may since have closed it.
+    se_window: Option<FormWindow>,
     qbi: Entity<QbiForm>,
+    /// The window showing the QBI form, once it has been opened. The user
+    /// may since have closed it.
+    qbi_window: Option<FormWindow>,
     tax_year: Entity<InputState>,
     filing_status: Entity<SelectState<Vec<SharedString>>>,
     // 1040-ES Worksheet inputs
@@ -106,7 +110,9 @@ impl EstimatedIncomeForm {
 
         Self {
             worksheet,
+            se_window: None,
             qbi,
+            qbi_window: None,
             tax_year,
             filing_status,
             expected_agi: make_decimal_input("Exp AGI", 2, window, cx),
@@ -123,7 +129,7 @@ impl EstimatedIncomeForm {
     }
 
     /// Creates the QBI form and connects its Apply action to the expected QBI
-    /// deduction field.
+    /// deduction field. Applying also closes the form's window.
     fn make_qbi_form(
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -132,7 +138,9 @@ impl EstimatedIncomeForm {
         cx.subscribe_in(&qbi, window, |this, _qbi, event, window, cx| match event {
             QbiFormEvent::ApplyQbiDeduction(amount) => {
                 set_decimal_input(&this.expected_qbi_deduction, *amount, window, cx);
-                window.close_dialog(cx);
+                if let Some(qbi_window) = this.qbi_window.take() {
+                    qbi_window.close(cx);
+                }
             }
         })
         .detach();
@@ -370,8 +378,10 @@ impl EstimatedIncomeForm {
         });
 
         // Rebuild the child worksheet rather than clearing it field-by-field:
-        // only this form holds a handle to it, so swapping the entity is the
-        // simplest way to reset every SE-worksheet input as well.
+        // swapping the entity is the simplest way to reset every SE-worksheet
+        // input as well. Its window is closed first, because it shows the
+        // worksheet that is being replaced.
+        self.close_form_windows(cx);
         self.worksheet = cx.new(|worksheet_cx| SeWorksheetForm::new(window, worksheet_cx));
         self.qbi = Self::make_qbi_form(window, cx);
         self.is_tax_year_ready = false;
@@ -513,31 +523,50 @@ impl EstimatedIncomeForm {
         .detach();
     }
 
-    fn call_se_worksheet_dialog(
-        &self,
+    /// Shows the SE worksheet in a window of its own. A worksheet window
+    /// that is already open is brought to the front instead.
+    fn open_se_worksheet(
+        &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let tax_year = self.tax_year(cx);
-        self.worksheet.update(cx, |ws, _cx| {
+        self.worksheet.update(cx, |ws, ws_cx| {
             ws.set_tax_year(tax_year);
+            ws_cx.notify();
         });
 
-        let worksheet_for_dialog = self.worksheet.clone();
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog
-                .overlay_closable(false)
-                .w(px(600.0))
-                .margin_top(px(-20.0))
-                .title("SE Tax Worksheet")
-                .child(worksheet_for_dialog.clone())
-                .button_props(DialogButtonProps::default().cancel_text("Close"))
-                .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
-        });
+        if self.se_window.is_some_and(|handle| handle.activate(cx)) {
+            return;
+        }
+
+        match open_form_window(self.worksheet.clone(), window, cx) {
+            Ok(handle) => self.se_window = Some(handle),
+            Err(e) => {
+                self.se_window = None;
+                tracing::error!(error = ?e, "Failed to open the SE worksheet window");
+                ErrorDialog::show("Window not opened", &[format!("{e:#}")], window, cx);
+            }
+        }
     }
 
-    fn call_qbi_dialog(
-        &self,
+    /// Closes the windows this form has opened. Called when the main window
+    /// closes, so that no form window is left open without it.
+    pub fn close_form_windows(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        let windows = [self.se_window.take(), self.qbi_window.take()];
+        for handle in windows.into_iter().flatten() {
+            handle.close(cx);
+        }
+    }
+
+    /// Shows the QBI form in a window of its own, after giving it the
+    /// estimate values that Form 8995 depends on. A QBI window that is
+    /// already open is brought to the front instead.
+    fn open_qbi(
+        &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -545,28 +574,22 @@ impl EstimatedIncomeForm {
         let is_joint = self.is_joint_filing(cx);
         let expected_agi = optional_decimal(&self.expected_agi, cx);
         let expected_deduction = optional_decimal(&self.expected_deduction, cx);
-        self.qbi.update(cx, |qbi, qbi_cx| {
-            qbi.set_context(
-                tax_year,
-                is_joint,
-                expected_agi,
-                expected_deduction,
-                window,
-                qbi_cx,
-            );
+        self.qbi.update(cx, |qbi, cx| {
+            qbi.update_context(tax_year, is_joint, expected_agi, expected_deduction, cx);
         });
 
-        let qbi_for_dialog = self.qbi.clone();
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog
-                .overlay_closable(false)
-                .w(px(800.0))
-                .margin_top(px(-20.0))
-                .title("QBI Deduction (Form 8995)")
-                .child(qbi_for_dialog.clone())
-                .button_props(DialogButtonProps::default().cancel_text("Close"))
-                .footer(|_ok, cancel, window, cx| vec![cancel(window, cx)])
-        });
+        if self.qbi_window.is_some_and(|handle| handle.activate(cx)) {
+            return;
+        }
+
+        match open_form_window(self.qbi.clone(), window, cx) {
+            Ok(handle) => self.qbi_window = Some(handle),
+            Err(e) => {
+                self.qbi_window = None;
+                tracing::error!(error = ?e, "Failed to open the QBI window");
+                ErrorDialog::show("Window not opened", &[format!("{e:#}")], window, cx);
+            }
+        }
     }
 
     fn render_results(
@@ -603,7 +626,7 @@ impl EstimatedIncomeForm {
                 "SE Worksheet",
                 self.is_tax_year_ready,
                 cx.listener(|this, _ev, window, cx| {
-                    this.call_se_worksheet_dialog(window, cx);
+                    this.open_se_worksheet(window, cx);
                 }),
             ))
             .child(make_button(
@@ -611,7 +634,7 @@ impl EstimatedIncomeForm {
                 "QBI Deduction",
                 self.is_tax_year_ready,
                 cx.listener(|this, _ev, window, cx| {
-                    this.call_qbi_dialog(window, cx);
+                    this.open_qbi(window, cx);
                 }),
             ))
     }

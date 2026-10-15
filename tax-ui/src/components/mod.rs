@@ -6,6 +6,7 @@ mod estimate_form;
 mod estimate_selector;
 mod file_menu;
 mod form_rows;
+mod form_window;
 mod inputs;
 mod preferences;
 mod qbi_form;
@@ -33,6 +34,7 @@ pub use form_rows::{
     SE_FIELD_WIDTH, SE_LABEL_WIDTH, make_display_row, make_header_row, make_input_row,
     make_input_row_fixed, make_labeled_row, make_labeled_row_fixed, make_select_row,
 };
+pub use form_window::{FormWindow, WindowedForm, open_form_window};
 pub use inputs::{make_decimal_input, make_integer_input, make_text_input};
 pub use preferences::{OpenPreferences, bind_preferences_keys, open_preferences};
 pub use qbi_form::{QbiForm, QbiFormEvent};
@@ -40,7 +42,7 @@ pub use results_form::ResultForm;
 pub use se_worksheet_form::SeWorksheetForm;
 pub use theme::{apply_configured_theme, init_theme_colors, reapply_configured_theme};
 pub use validation_view::{FieldVisibility, field_messages, form_error_banner, visible_issues};
-pub use window::{AppWindow, ReloadConnection};
+pub use window::{AppWindow, MAIN_WINDOW, ReloadConnection};
 pub use window_geometry::{
     restore_saved_window_bounds, save_tracked_window_bounds, save_window_bounds, track_window,
     tracked_window,

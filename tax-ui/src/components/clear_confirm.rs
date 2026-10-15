@@ -7,9 +7,7 @@
 
 use std::rc::Rc;
 
-use gpui::{
-    App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div, px,
-};
+use gpui::{App, AppContext, Context, IntoElement, ParentElement, Render, Styled, Window, div, px};
 use gpui_component::checkbox::Checkbox;
 use gpui_component::{WindowExt, h_flex, v_flex};
 

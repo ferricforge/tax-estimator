@@ -9,8 +9,10 @@ use gpui_component_assets::Assets;
 use std::path::PathBuf;
 
 use tax_ui::{
-    components::{AppWindow, WindowPreferences, restore_saved_window_bounds, track_window},
-    config::{AppConfig, ConfigStore, MAIN_WINDOW, TomlConfigStore},
+    components::{
+        AppWindow, MAIN_WINDOW, WindowPreferences, restore_saved_window_bounds, track_window,
+    },
+    config::{AppConfig, ConfigStore, TomlConfigStore},
     logging::{apply_settings, init_default_logging, log_task_error},
     setup_app,
     startup::{StartupOutcome, open_database_or_ask},

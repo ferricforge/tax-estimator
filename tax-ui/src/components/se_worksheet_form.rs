@@ -1,7 +1,7 @@
 use anyhow::Result;
 use gpui::{
-    App, ClickEvent, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
-    Window,
+    App, ClickEvent, Context, Entity, IntoElement, ParentElement, Pixels, Render, SharedString,
+    Size, Styled, Window, px,
 };
 use gpui_component::{
     h_flex,
@@ -18,8 +18,8 @@ use tax_core::{TaxEstimateInput, TaxYearConfig};
 use crate::estimate::se_tax_estimate;
 use crate::{
     components::{
-        FieldVisibility, confirm_clear, field_messages, form_error_banner, make_button,
-        make_decimal_input, make_display_row_with_help, make_header_row,
+        FieldVisibility, WindowedForm, confirm_clear, field_messages, form_error_banner,
+        make_button, make_decimal_input, make_display_row_with_help, make_header_row,
         make_input_row_fixed_with_help, set_input_value, set_optional_decimal_input,
         visible_issues,
     },
@@ -56,26 +56,7 @@ impl SeWorksheetForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let se_income = make_decimal_input("Net SE income", 2, window, cx);
-        let crp_payments = make_decimal_input("CRP payments", 2, window, cx);
-        let expected_wages = make_decimal_input("Expected wages", 2, window, cx);
-
-        // Each edit marks its field as touched and re-checks every field, so
-        // the stored result is never stale.
-        for (input, field) in [
-            (&se_income, SeField::SeIncome),
-            (&crp_payments, SeField::CrpPayments),
-            (&expected_wages, SeField::ExpectedWages),
-        ] {
-            cx.subscribe(input, move |this, _input, event, cx| {
-                if let InputEvent::Change = event {
-                    this.visibility.touch(field);
-                    this.validate_inputs(cx);
-                    cx.notify();
-                }
-            })
-            .detach();
-        }
+        let [se_income, crp_payments, expected_wages] = Self::make_inputs(window, cx);
 
         // Re-render whenever the active tax year's config changes.
         cx.observe_global::<ActiveTaxYear>(|this, cx| {
@@ -98,6 +79,37 @@ impl SeWorksheetForm {
             validated: Validated::default(),
             visibility: FieldVisibility::default(),
         }
+    }
+
+    /// Creates the inputs for lines 1a, 1b, and 6 in `window` and follows
+    /// their edits.
+    ///
+    /// Each edit marks its field as touched and re-checks every field, so
+    /// the stored result is never stale.
+    fn make_inputs(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> [Entity<InputState>; 3] {
+        let se_income = make_decimal_input("Net SE income", 2, window, cx);
+        let crp_payments = make_decimal_input("CRP payments", 2, window, cx);
+        let expected_wages = make_decimal_input("Expected wages", 2, window, cx);
+
+        for (input, field) in [
+            (&se_income, SeField::SeIncome),
+            (&crp_payments, SeField::CrpPayments),
+            (&expected_wages, SeField::ExpectedWages),
+        ] {
+            cx.subscribe(input, move |this, _input, event, cx| {
+                if let InputEvent::Change = event {
+                    this.visibility.touch(field);
+                    this.validate_inputs(cx);
+                    cx.notify();
+                }
+            })
+            .detach();
+        }
+
+        [se_income, crp_payments, expected_wages]
     }
 
     pub fn set_tax_year(
@@ -412,6 +424,45 @@ impl Render for SeWorksheetForm {
                         },
                     )),
             )
+    }
+}
+
+impl WindowedForm for SeWorksheetForm {
+    const WINDOW_ID: &'static str = "se-worksheet";
+
+    const WINDOW_TITLE: &'static str = "SE Tax Worksheet";
+
+    const WINDOW_SIZE: Size<Pixels> = Size {
+        width: px(600.0),
+        height: px(720.0),
+    };
+
+    /// Recreates the three text inputs in `window` and copies the current
+    /// entries into them. Blank entries are skipped, so their fields are not
+    /// marked as edited.
+    fn attach_to_window(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let entries = [
+            self.se_income(cx),
+            self.crp_payments(cx),
+            self.expected_wages(cx),
+        ];
+        let inputs = Self::make_inputs(window, cx);
+
+        for (input, entry) in inputs.iter().zip(entries) {
+            if !entry.is_empty() {
+                set_input_value(input, entry, window, cx);
+            }
+        }
+
+        let [se_income, crp_payments, expected_wages] = inputs;
+        self.se_income = se_income;
+        self.crp_payments = crp_payments;
+        self.expected_wages = expected_wages;
+        cx.notify();
     }
 }
 

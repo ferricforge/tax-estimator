@@ -3,12 +3,12 @@
 //! Two models are held here. `model` holds the values the estimate saves, and
 //! changes only when the user chooses Apply to Estimate. `draft` holds the
 //! lines computed from what is currently in the inputs, and drives the screen.
-//! Closing the dialog leaves the inputs and the draft in place, but does not
-//! change what gets saved.
+//! Closing the form's window leaves the inputs and the draft in place, but
+//! does not change what gets saved.
 
 use gpui::{
-    App, Context, Div, Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement,
-    Render, SharedString, StatefulInteractiveElement as _, Styled, TextAlign, Window, div, px,
+    App, Context, Div, Entity, EventEmitter, IntoElement, ParentElement, Pixels, Render,
+    SharedString, Size, Styled, TextAlign, Window, div, px,
 };
 use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::{ActiveTheme, h_flex, v_flex};
@@ -21,8 +21,8 @@ use tax_core::validation::{
 };
 
 use crate::components::{
-    ErrorDialog, FieldVisibility, confirm_clear, field_messages, form_error_banner, make_button,
-    make_carryforward_display_row_with_help, make_decimal_input, make_display_row,
+    ErrorDialog, FieldVisibility, WindowedForm, confirm_clear, field_messages, form_error_banner,
+    make_button, make_carryforward_display_row_with_help, make_decimal_input, make_display_row,
     make_display_row_with_help, make_header_row, make_help_slot, make_input_row_fixed_with_help,
     make_text_input, set_input_value, set_optional_decimal_input, visible_issues,
 };
@@ -41,9 +41,6 @@ const TRADE_TIN_WIDTH: f32 = 120.0;
 
 /// Width of the qualified business income column.
 const TRADE_QBI_WIDTH: f32 = 150.0;
-
-/// Maximum height of the scrolling body before the dialog scrolls.
-const BODY_MAX_HEIGHT: f32 = 600.0;
 
 /// Fields outside the line 1 table, in form order.
 const LINE_FIELDS: [QbiField; 4] = [
@@ -72,6 +69,47 @@ struct TradeRow {
     name: Entity<InputState>,
     taxpayer_id: Entity<InputState>,
     qbi: Entity<InputState>,
+}
+
+/// Every text input of the form. They are created as a set because an input
+/// belongs to the window it is created in, and the whole set is replaced
+/// when the form is shown in another window.
+struct QbiInputs {
+    trade_rows: Vec<TradeRow>,
+    line_3_carryforward: Entity<InputState>,
+    line_6_reit_ptp: Entity<InputState>,
+    line_7_reit_ptp_carryforward: Entity<InputState>,
+    line_12_capital_gain_dividends: Entity<InputState>,
+}
+
+impl QbiInputs {
+    fn new(
+        window: &mut Window,
+        cx: &mut Context<QbiForm>,
+    ) -> Self {
+        let trade_rows: Vec<TradeRow> = QBI_TRADE_ROW_LABELS
+            .iter()
+            .map(|_| TradeRow {
+                name: make_text_input("Trade or business name", window, cx),
+                taxpayer_id: make_text_input("Taxpayer ID", window, cx),
+                qbi: make_decimal_input("QBI or (loss)", 2, window, cx),
+            })
+            .collect();
+        let line_3_carryforward = make_decimal_input("QBI carryforward", 2, window, cx);
+        let line_6_reit_ptp = make_decimal_input("REIT and PTP income", 2, window, cx);
+        let line_7_reit_ptp_carryforward =
+            make_decimal_input("REIT and PTP carryforward", 2, window, cx);
+        let line_12_capital_gain_dividends =
+            make_decimal_input("Capital gain and dividends", 2, window, cx);
+
+        Self {
+            trade_rows,
+            line_3_carryforward,
+            line_6_reit_ptp,
+            line_7_reit_ptp_carryforward,
+            line_12_capital_gain_dividends,
+        }
+    }
 }
 
 pub struct QbiForm {
@@ -103,27 +141,13 @@ impl QbiForm {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let trade_rows: Vec<TradeRow> = QBI_TRADE_ROW_LABELS
-            .iter()
-            .map(|_| TradeRow {
-                name: make_text_input("Trade or business name", window, cx),
-                taxpayer_id: make_text_input("Taxpayer ID", window, cx),
-                qbi: make_decimal_input("QBI or (loss)", 2, window, cx),
-            })
-            .collect();
-        let line_3_carryforward = make_decimal_input("QBI carryforward", 2, window, cx);
-        let line_6_reit_ptp = make_decimal_input("REIT and PTP income", 2, window, cx);
-        let line_7_reit_ptp_carryforward =
-            make_decimal_input("REIT and PTP carryforward", 2, window, cx);
-        let line_12_capital_gain_dividends =
-            make_decimal_input("Capital gain and dividends", 2, window, cx);
-
+        let inputs = QbiInputs::new(window, cx);
         let mut form = Self {
-            trade_rows,
-            line_3_carryforward,
-            line_6_reit_ptp,
-            line_7_reit_ptp_carryforward,
-            line_12_capital_gain_dividends,
+            trade_rows: inputs.trade_rows,
+            line_3_carryforward: inputs.line_3_carryforward,
+            line_6_reit_ptp: inputs.line_6_reit_ptp,
+            line_7_reit_ptp_carryforward: inputs.line_7_reit_ptp_carryforward,
+            line_12_capital_gain_dividends: inputs.line_12_capital_gain_dividends,
             model: QbiWorksheetModel::default(),
             draft: QbiWorksheetModel::default(),
             validated: Validated::default(),
@@ -135,23 +159,10 @@ impl QbiForm {
     }
 
     /// Sets the tax year, filing status, and the estimate values that make up
-    /// taxable income before the QBI deduction, then checks the threshold.
-    pub fn set_context(
-        &mut self,
-        tax_year: Option<i32>,
-        is_joint: bool,
-        expected_agi: Option<Decimal>,
-        expected_deduction: Option<Decimal>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.update_context(tax_year, is_joint, expected_agi, expected_deduction, cx);
-        self.check_threshold(window, cx);
-    }
-
-    /// Like [`Self::set_context`], but without the threshold alert. Used
-    /// before saving, so the saved line 11 and the lines figured from it match
-    /// the estimate being saved.
+    /// taxable income before the QBI deduction, then recomputes the lines.
+    ///
+    /// Called before the form's window opens, and before saving, so the saved
+    /// line 11 and the lines figured from it match the estimate being saved.
     pub fn update_context(
         &mut self,
         tax_year: Option<i32>,
@@ -638,58 +649,106 @@ impl Render for QbiForm {
         let clear_target = this.clone();
         let show_banner = self.visibility.is_submitted() && !self.is_valid();
 
-        div()
-            .id("qbi-form-body")
-            .overflow_y_scroll()
-            .max_h(px(BODY_MAX_HEIGHT))
+        v_flex()
+            .gap_3()
+            .p_4()
+            .child(self.render_note())
+            .child(self.render_threshold_warning(cx))
+            .child(make_header_row("Line 1: Trades or Businesses:"))
+            .child(self.render_trade_table(cx))
+            .child(self.render_lines(cx))
+            .children(show_banner.then(|| {
+                form_error_banner("Correct the fields marked above before applying.", cx)
+            }))
             .child(
-                v_flex()
-                    .gap_3()
-                    .p_4()
-                    .child(self.render_note())
-                    .child(self.render_threshold_warning(cx))
-                    .child(make_header_row("Line 1: Trades or Businesses:"))
-                    .child(self.render_trade_table(cx))
-                    .child(self.render_lines(cx))
-                    .children(show_banner.then(|| {
-                        form_error_banner("Correct the fields marked above before applying.", cx)
-                    }))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .justify_end()
-                            .mt_4()
-                            .child(make_button(
-                                "qbi_clear",
-                                "Clear",
-                                true,
-                                move |_ev, window, app_cx| {
-                                    let this = clear_target.clone();
-                                    confirm_clear(
-                                        CLEAR_CONFIRM_KEY,
-                                        CLEAR_CONFIRM_MESSAGE,
-                                        move |window, app| {
-                                            this.update(app, |form, cx| {
-                                                form.clear(window, cx);
-                                            });
-                                        },
-                                        window,
-                                        app_cx,
-                                    );
-                                },
-                            ))
-                            .child(make_button(
-                                "qbi_apply",
-                                "Apply to Estimate",
-                                true,
-                                move |_ev, _window, app_cx| {
-                                    this.update(app_cx, |form, cx| {
-                                        form.apply_deduction(cx);
+                h_flex()
+                    .gap_2()
+                    .justify_end()
+                    .mt_4()
+                    .child(make_button(
+                        "qbi_clear",
+                        "Clear",
+                        true,
+                        move |_ev, window, app_cx| {
+                            let this = clear_target.clone();
+                            confirm_clear(
+                                CLEAR_CONFIRM_KEY,
+                                CLEAR_CONFIRM_MESSAGE,
+                                move |window, app| {
+                                    this.update(app, |form, cx| {
+                                        form.clear(window, cx);
                                     });
                                 },
-                            )),
-                    ),
+                                window,
+                                app_cx,
+                            );
+                        },
+                    ))
+                    .child(make_button(
+                        "qbi_apply",
+                        "Apply to Estimate",
+                        true,
+                        move |_ev, _window, app_cx| {
+                            this.update(app_cx, |form, cx| {
+                                form.apply_deduction(cx);
+                            });
+                        },
+                    )),
             )
+    }
+}
+
+impl WindowedForm for QbiForm {
+    const WINDOW_ID: &'static str = "qbi-form";
+
+    const WINDOW_TITLE: &'static str = "QBI Deduction (Form 8995)";
+
+    const WINDOW_SIZE: Size<Pixels> = Size {
+        width: px(800.0),
+        height: px(800.0),
+    };
+
+    /// Recreates every text input in `window` and copies the current entries
+    /// into them. Blank entries are skipped, so their fields are not marked
+    /// as edited. The saved values are not changed.
+    fn attach_to_window(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let entries: Vec<(QbiField, SharedString)> = self
+            .fields()
+            .into_iter()
+            .filter_map(|field| {
+                let text = self.input_for(field)?.read(cx).value();
+                (!text.is_empty()).then_some((field, text))
+            })
+            .collect();
+
+        let inputs = QbiInputs::new(window, cx);
+        self.trade_rows = inputs.trade_rows;
+        self.line_3_carryforward = inputs.line_3_carryforward;
+        self.line_6_reit_ptp = inputs.line_6_reit_ptp;
+        self.line_7_reit_ptp_carryforward = inputs.line_7_reit_ptp_carryforward;
+        self.line_12_capital_gain_dividends = inputs.line_12_capital_gain_dividends;
+        self.watch_inputs(cx);
+
+        for (field, text) in entries {
+            if let Some(input) = self.input_for(field) {
+                set_input_value(input, text, window, cx);
+            }
+        }
+        self.refresh(cx);
+    }
+
+    /// Shows the alert for taxable income above the threshold, in the form's
+    /// own window.
+    fn window_opened(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.check_threshold(window, cx);
     }
 }
 

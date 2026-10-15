@@ -62,6 +62,11 @@ pub fn restore_saved_window_bounds(
 /// Only the window's normal (not maximized, minimized, or fullscreen) bounds
 /// are meaningful to restore later. When the window is not in that state,
 /// nothing is saved, and the previously stored geometry is left in place.
+///
+/// The saved size is the size of the window's content. gpui applies a
+/// requested size to the content, below the title bar, but reports a size
+/// that includes the title bar. Saving the reported size would make the
+/// window taller by the height of the title bar each time it is restored.
 pub fn save_window_bounds(
     window_id: &str,
     window: &mut Window,
@@ -71,7 +76,11 @@ pub fn save_window_bounds(
         return;
     };
 
-    let geometry = bounds_to_geometry(bounds);
+    let restorable = Bounds {
+        origin: bounds.origin,
+        size: window.viewport_size(),
+    };
+    let geometry = bounds_to_geometry(restorable);
     AppConfig::update(cx, |config| config.window_geometry.set(window_id, geometry));
 
     if let Err(error) = AppConfig::save(cx) {

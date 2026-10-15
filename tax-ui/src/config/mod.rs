@@ -10,8 +10,7 @@ pub use appearance::AppearanceConfig;
 pub use database::{DatabaseBackend, DatabaseConfig, PoolSettings};
 pub use dialogs::DialogsConfig;
 pub use geometry::{
-    MAIN_WINDOW, PREFERENCES_WINDOW, WindowGeometries, WindowGeometry, WindowSize,
-    on_screen_geometry, resolve_geometry,
+    WindowGeometries, WindowGeometry, WindowSize, on_screen_geometry, resolve_geometry,
 };
 pub use preferences::{FieldError, PreferenceField, Preferences, PreferencesDraft};
 pub use recent::{RecentConfig, RecentConnection};
@@ -532,7 +531,7 @@ max_connections = 3
     fn app_config_round_trips_the_window_geometry_section() {
         let mut original = AppConfig::default();
         original.window_geometry.set(
-            MAIN_WINDOW,
+            "main",
             WindowGeometry {
                 x: 10.0,
                 y: 20.0,

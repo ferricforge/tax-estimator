@@ -20,11 +20,9 @@ use gpui_component::{
 };
 
 use crate::components::{
-    ReloadConnection, reapply_configured_theme, save_window_bounds, tracked_window,
+    MAIN_WINDOW, ReloadConnection, reapply_configured_theme, save_window_bounds, tracked_window,
 };
-use crate::config::{
-    AppConfig, FieldError, MAIN_WINDOW, PREFERENCES_WINDOW, PreferenceField, PreferencesDraft,
-};
+use crate::config::{AppConfig, FieldError, PreferenceField, PreferencesDraft};
 use crate::logging::{SourcePathDisplay, apply_settings};
 use crate::themes::ThemeMode;
 
@@ -152,6 +150,9 @@ fn offer_pool_reload(cx: &mut App) {
     })
     .detach();
 }
+
+/// Name under which the preferences window's position and size are saved.
+pub const PREFERENCES_WINDOW: &str = "preferences";
 
 pub struct PreferencesWindow {
     level: Entity<InputState>,

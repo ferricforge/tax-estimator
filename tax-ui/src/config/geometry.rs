@@ -7,12 +7,6 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Key of the main application window.
-pub const MAIN_WINDOW: &str = "main";
-
-/// Key of the preferences window.
-pub const PREFERENCES_WINDOW: &str = "preferences";
-
 /// Smallest width a window may be restored to, in logical pixels.
 const MIN_WIDTH: f32 = 320.0;
 
@@ -135,9 +129,15 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::{
-        MAIN_WINDOW, PREFERENCES_WINDOW, WindowGeometries, WindowGeometry, WindowSize,
-        on_screen_geometry, resolve_geometry,
+        WindowGeometries, WindowGeometry, WindowSize, on_screen_geometry, resolve_geometry,
     };
+
+    /// A window name used as a key. The real names are defined with their
+    /// windows.
+    const WINDOW: &str = "first";
+
+    /// A second window name, different from [`WINDOW`].
+    const OTHER_WINDOW: &str = "second";
 
     const PRIMARY: WindowGeometry = WindowGeometry {
         x: 0.0,
@@ -176,16 +176,16 @@ mod tests {
     fn missing_window_returns_none() {
         let geometries = WindowGeometries::default();
 
-        assert_eq!(geometries.get(MAIN_WINDOW), None);
+        assert_eq!(geometries.get(WINDOW), None);
     }
 
     #[test]
     fn set_then_get_returns_the_same_geometry() {
         let mut geometries = WindowGeometries::default();
 
-        geometries.set(MAIN_WINDOW, GEOMETRY);
+        geometries.set(WINDOW, GEOMETRY);
 
-        assert_eq!(geometries.get(MAIN_WINDOW), Some(GEOMETRY));
+        assert_eq!(geometries.get(WINDOW), Some(GEOMETRY));
     }
 
     #[test]
@@ -193,19 +193,19 @@ mod tests {
         let mut geometries = WindowGeometries::default();
         let moved = WindowGeometry { x: 5.0, ..GEOMETRY };
 
-        geometries.set(MAIN_WINDOW, GEOMETRY);
-        geometries.set(MAIN_WINDOW, moved);
+        geometries.set(WINDOW, GEOMETRY);
+        geometries.set(WINDOW, moved);
 
-        assert_eq!(geometries.get(MAIN_WINDOW), Some(moved));
+        assert_eq!(geometries.get(WINDOW), Some(moved));
     }
 
     #[test]
     fn windows_are_stored_separately() {
         let mut geometries = WindowGeometries::default();
 
-        geometries.set(MAIN_WINDOW, GEOMETRY);
+        geometries.set(WINDOW, GEOMETRY);
 
-        assert_eq!(geometries.get(PREFERENCES_WINDOW), None);
+        assert_eq!(geometries.get(OTHER_WINDOW), None);
     }
 
     #[test]

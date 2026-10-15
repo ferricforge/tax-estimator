@@ -14,9 +14,8 @@ use gpui::{
 use gpui_component::Root;
 
 use crate::components::{restore_saved_window_bounds, track_window, tracked_window};
-use crate::config::PREFERENCES_WINDOW;
 
-pub use window::PreferencesWindow;
+pub use window::{PREFERENCES_WINDOW, PreferencesWindow};
 
 actions!(tax_estimator, [OpenPreferences]);
 

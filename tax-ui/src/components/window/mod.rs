@@ -22,11 +22,13 @@ use crate::components::{
     EstimatedIncomeForm, LoadEstimate, NewConnection, OpenConnection, OpenRecentConnection,
     SaveConnection, SaveConnectionAs, SeWorksheetForm, save_window_bounds,
 };
-use crate::config::MAIN_WINDOW;
 #[cfg(not(target_os = "linux"))]
 use crate::quit;
 
 gpui::actions!(tax_estimator, [ReloadConnection]);
+
+/// Name under which the main window's position and size are saved.
+pub const MAIN_WINDOW: &str = "main";
 
 pub struct AppWindow {
     _window_close_subscription: Subscription,
@@ -40,10 +42,9 @@ impl AppWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Closing the last window quits the application. Today the main
-        // window is the only window, so this always fires when it closes.
-        // It will also run, harmlessly, when a future window (for example,
-        // preferences) outlives the main window and is then closed itself.
+        // Closing the last window quits the application. The callback runs
+        // whenever any window closes, including a form window or the
+        // preferences window, and does nothing while other windows remain.
         //
         // The Linux branch is intentionally excluded here; the reason has
         // not yet been confirmed against gpui's Linux platform code. See the
@@ -56,13 +57,6 @@ impl AppWindow {
             }
         });
 
-        // Saves the window's position and size before it closes, so the
-        // next launch can restore them.
-        window.on_window_should_close(cx, |window, app_cx| {
-            save_window_bounds(MAIN_WINDOW, window, app_cx);
-            true
-        });
-
         // Actions are dispatched along the focus path, so the root element
         // must be focused (or an ancestor of the focused element) for its
         // `on_action` handlers to run. Focus it up front so menu actions work
@@ -72,6 +66,20 @@ impl AppWindow {
 
         let worksheet = cx.new(|form_cx| SeWorksheetForm::new(window, form_cx));
         let form = cx.new(|form_cx| EstimatedIncomeForm::new(worksheet.clone(), window, form_cx));
+
+        // Before the window closes, save its position and size so the next
+        // launch can restore them, and close the form's own windows so none
+        // of them is left open without the main window.
+        let closing_form = form.downgrade();
+        window.on_window_should_close(cx, move |window, app_cx| {
+            save_window_bounds(MAIN_WINDOW, window, app_cx);
+            if let Some(form) = closing_form.upgrade() {
+                form.update(app_cx, |form, form_cx| {
+                    form.close_form_windows(form_cx);
+                });
+            }
+            true
+        });
 
         info!("Window constructed");
         Self {
